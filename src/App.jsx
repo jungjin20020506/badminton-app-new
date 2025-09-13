@@ -63,7 +63,8 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
             onTouchEnd={isAdmin ? handleMouseUp : null}
             onMouseLeave={isAdmin ? handleMouseUp : null}
         >
-            <div className="player-name text-white text-xs font-bold break-words leading-tight">{adminIcon}{player.name}</div>
+            {/* [수정] 이름이 한 줄에 표시되도록 폰트 크기 미세 조정 */}
+            <div className="player-name text-white text-[11px] font-bold break-words leading-tight">{adminIcon}{player.name}</div>
             <div className="player-info text-gray-400 text-[10px] leading-tight mt-px">
                 <span className={genderColor}>{player.gender}</span>|{player.level}|{player.gamesPlayed}겜
             </div>
@@ -366,7 +367,8 @@ export default function App() {
         .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
 
     return (
-        <div className="bg-black text-white h-screen font-sans flex flex-col" style={{ minWidth: '360px' }}>
+        // [수정] h-screen -> min-h-screen으로 변경하여 내용이 길어질 경우 스크롤 허용
+        <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ minWidth: '360px' }}>
             {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal.type === 'editGames' && <EditGamesModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} onSave={async (newCount) => { await updateDoc(doc(playersRef, modal.data.player.id), { gamesPlayed: newCount }); setModal({ type: null, data: null }); }} />}
@@ -379,8 +381,8 @@ export default function App() {
                 </div>
             </header>
 
-            {/* [수정] 메인 레이아웃을 Flexbox에서 Grid로 변경하여 겹침 문제 해결 */}
-            <main className="flex-grow grid grid-rows-[auto_1fr_1fr] gap-2 p-2 overflow-hidden">
+            {/* [수정] Grid 레이아웃 제거, 일반적인 Flex-col 방식으로 변경하여 스크롤 허용 */}
+            <main className="flex-grow flex flex-col gap-2 p-2">
                 {/* 1. 대기자 명단 (상단) */}
                 <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
@@ -400,9 +402,10 @@ export default function App() {
                 </section>
 
                 {/* 2. 경기 예정 (중간) */}
-                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col min-h-0">
+                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
                     <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
-                    <div id="scheduled-matches" className="flex-grow grid grid-cols-2 gap-2 overflow-y-auto">
+                    {/* [수정] 내부 스크롤 제거 */}
+                    <div id="scheduled-matches" className="grid grid-cols-2 gap-2">
                         {scheduledMatches.map((match, matchIndex) => (
                             <div key={matchIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
                                 <h3 className="font-bold text-center text-xs mb-1 text-white">경기 예정 {matchIndex + 1}</h3>
@@ -440,9 +443,10 @@ export default function App() {
                 </section>
 
                 {/* 3. 경기 진행 (하단) */}
-                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col min-h-0">
+                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
                     <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
-                    <div id="in-progress-courts" className="flex-grow grid grid-cols-2 gap-2 overflow-y-auto">
+                    {/* [수정] 내부 스크롤 제거 */}
+                    <div id="in-progress-courts" className="grid grid-cols-2 gap-2">
                        {inProgressCourts.map((court, courtIndex) => (
                            <div key={courtIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
                                <h3 className="font-bold text-center text-xs mb-1 text-white">{courtIndex + 1}번 코트</h3>
