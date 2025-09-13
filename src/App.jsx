@@ -38,7 +38,6 @@ const generateId = (name) => name.replace(/\s+/g, '_');
 // 자식 컴포넌트들
 // ===================================================================================
 
-// [수정] 플레이어 카드 컴포넌트 (전체적으로 크기 및 폰트 축소)
 const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete, onLongPress }) => {
     let pressTimer = null;
 
@@ -54,10 +53,9 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
     const genderColor = player.gender === '남' ? 'text-blue-400' : 'text-pink-400';
     const adminIcon = ADMIN_NAMES.includes(player.name) ? '👑' : '';
 
-    // [수정] 카드 크기(p-1, min-h-[60px]), 폰트 크기(text-xs, text-[10px]) 조정
     return (
         <div 
-            className={`player-card bg-gray-700 p-1 rounded-lg cursor-pointer border-2 relative flex flex-col justify-center text-center min-h-[60px] ${context.selected ? 'border-yellow-400 shadow-yellow' : 'border-transparent'}`}
+            className={`player-card bg-gray-700 p-1 rounded-md cursor-pointer border-2 relative flex flex-col justify-center text-center min-h-[56px] ${context.selected ? 'border-yellow-400 shadow-yellow' : 'border-transparent'}`}
             onClick={() => onCardClick(player.id)}
             onMouseDown={isAdmin ? handleMouseDown : null}
             onMouseUp={isAdmin ? handleMouseUp : null}
@@ -65,18 +63,17 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
             onTouchEnd={isAdmin ? handleMouseUp : null}
             onMouseLeave={isAdmin ? handleMouseUp : null}
         >
-            {/* [수정] truncate 제거하여 이름이 잘리지 않도록 하고, 폰트 크기 조정 */}
-            <div className="player-name text-white text-xs font-bold break-words">{adminIcon} {player.name}</div>
-            <div className="player-info text-gray-400 text-[10px] leading-tight">
+            <div className="player-name text-white text-xs font-bold break-words leading-tight">{adminIcon}{player.name}</div>
+            <div className="player-info text-gray-400 text-[10px] leading-tight mt-px">
                 <span className={genderColor}>{player.gender}</span>|{player.level}|{player.gamesPlayed}겜
             </div>
             {isAdmin && context.location && (
-                <button onClick={(e) => { e.stopPropagation(); onReturn(player.id); }} className="absolute top-0 right-0 p-1 text-gray-500 hover:text-yellow-400">
+                <button onClick={(e) => { e.stopPropagation(); onReturn(player.id); }} className="absolute -top-1 -right-1 p-1 text-gray-500 hover:text-yellow-400">
                     <i className="fas fa-times-circle fa-xs"></i>
                 </button>
             )}
             {isAdmin && !context.location && (
-                 <button onClick={(e) => { e.stopPropagation(); onDelete(player); }} className="absolute top-0 right-0 p-1 text-gray-500 hover:text-red-500">
+                 <button onClick={(e) => { e.stopPropagation(); onDelete(player); }} className="absolute -top-1 -right-1 p-1 text-gray-500 hover:text-red-500">
                     <i className="fas fa-times-circle fa-xs"></i>
                 </button>
             )}
@@ -84,18 +81,15 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
     );
 };
 
-// [수정] 빈 슬롯 컴포넌트 (카드 크기에 맞게 높이 조정)
 const EmptySlot = ({ onSlotClick }) => (
     <div 
-        className="player-slot min-h-[60px] bg-gray-900/50 rounded-lg flex items-center justify-center text-gray-500 border-2 border-dashed border-gray-600 cursor-pointer"
+        className="player-slot min-h-[56px] bg-gray-900/50 rounded-md flex items-center justify-center text-gray-500 border-2 border-dashed border-gray-600 cursor-pointer"
         onClick={onSlotClick}
     >
-        <span>+</span>
+        <span className="text-lg">+</span>
     </div>
 );
 
-
-// [수정] 타이머 컴포넌트 (폰트 크기 조정)
 const CourtTimer = ({ court }) => {
     const [time, setTime] = useState('00:00');
 
@@ -115,7 +109,7 @@ const CourtTimer = ({ court }) => {
         }
     }, [court]);
 
-    return <div className="text-center text-xl font-mono my-1 text-white">{time}</div>;
+    return <div className="text-center text-lg font-mono my-1 text-white">{time}</div>;
 };
 
 // ===================================================================================
@@ -372,25 +366,24 @@ export default function App() {
         .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
 
     return (
-        // [수정] 전체 앱 컨테이너에 min-width를 주어 화면이 너무 작아지는 것을 방지
-        <div className="bg-black text-white min-h-screen font-sans" style={{ minWidth: '360px' }}>
+        <div className="bg-black text-white h-screen font-sans flex flex-col" style={{ minWidth: '360px' }}>
             {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal.type === 'editGames' && <EditGamesModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} onSave={async (newCount) => { await updateDoc(doc(playersRef, modal.data.player.id), { gamesPlayed: newCount }); setModal({ type: null, data: null }); }} />}
 
-            <header className="p-2 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
-                <h1 className="text-xl font-bold text-yellow-400">Cockslighting</h1>
+            <header className="flex-shrink-0 p-2 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
+                <h1 className="text-lg font-bold text-yellow-400">Cockslighting</h1>
                 <div className="text-right">
                     <span className="text-xs">{isAdmin ? '👑' : ''} {currentUser.name}</span>
-                    <button onClick={handleExit} className="ml-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-lg text-xs">나가기</button>
+                    <button onClick={handleExit} className="ml-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">나가기</button>
                 </div>
             </header>
 
-            <main className="p-2 space-y-4">
-                <section>
-                    <h2 className="text-base font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
-                    {/* [수정] 대기자 명단을 한 줄에 6명씩, 초과 시 다음 줄로 넘어가도록 수정 */}
-                    <div id="waiting-list" className="grid grid-cols-6 gap-1">
+            <main className="flex-grow flex flex-col p-2 space-y-2 overflow-hidden">
+                {/* 1. 대기자 명단 (상단) */}
+                <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
+                    <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
+                    <div id="waiting-list" className="grid grid-cols-6 gap-1.5">
                         {waitingPlayers.map(player => (
                             <PlayerCard 
                                 key={player.id} 
@@ -404,99 +397,89 @@ export default function App() {
                         ))}
                     </div>
                 </section>
-                
-                <div className="grid grid-cols-2 gap-2">
-                    <section>
-                        <h2 className="text-base font-bold mb-2 text-yellow-400">경기 예정</h2>
-                        <div id="scheduled-matches" className="grid grid-cols-2 gap-2">
-                            {scheduledMatches.map((match, matchIndex) => (
-                                <div key={matchIndex} className="bg-gray-800 rounded-lg p-1 flex flex-col h-full">
-                                    <h3 className="font-bold text-center text-xs mb-1 text-white">경기 예정 {matchIndex + 1}</h3>
-                                    <div className="grid grid-cols-2 gap-1 flex-grow">
-                                        {Array(4).fill(null).map((_, slotIndex) => {
-                                            const playerId = match[slotIndex];
-                                            const player = players[playerId];
-                                            const context = { location: 'schedule', matchIndex, slotIndex };
-                                            return player ? (
-                                                <PlayerCard 
-                                                    key={playerId} 
-                                                    player={player} 
-                                                    context={{...context, selected: selectedPlayerIds.includes(playerId)}}
-                                                    isAdmin={isAdmin}
-                                                    onCardClick={handleCardClick}
-                                                    onReturn={async (pid) => {
-                                                        const newState = { scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), inProgressCourts };
-                                                        const loc = findPlayerLocation(pid);
-                                                        if(loc.location === 'schedule') newState.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
-                                                        await updateGameState(newState);
-                                                    }}
-                                                    onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
-                                                />
-                                            ) : (
-                                                <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick(context)} />
-                                            )
-                                        })}
-                                    </div>
-                                    {/* [수정] 버튼 크기 및 폰트 축소 */}
-                                    <button 
-                                        className={`w-full mt-1 py-1 px-2 rounded-lg font-semibold transition duration-300 flex-shrink-0 text-xs ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
-                                        disabled={match.filter(p=>p).length !== 4 || !isAdmin}
-                                        onClick={() => handleStartMatch(matchIndex)}
-                                    >
-                                        경기 시작
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </section>
 
-                    <section>
-                        <h2 className="text-base font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
-                        <div id="in-progress-courts" className="grid grid-cols-2 gap-2">
-                           {inProgressCourts.map((court, courtIndex) => (
-                               <div key={courtIndex} className="bg-gray-800 rounded-lg p-1 h-full flex flex-col">
-                                   <h3 className="font-bold text-center text-xs mb-1 text-white">{courtIndex + 1}번 코트</h3>
-                                   <div className="grid grid-cols-2 gap-1 flex-grow">
-                                        {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
-                                            const player = players[playerId];
-                                            return player ? (
-                                                <PlayerCard 
-                                                    key={playerId || slotIndex} 
-                                                    player={player} 
-                                                    context={{ location: 'court', selected: selectedPlayerIds.includes(playerId) }}
-                                                    isAdmin={isAdmin}
-                                                    onCardClick={handleCardClick}
-                                                    onReturn={async (pid) => {
-                                                        const newState = { scheduledMatches, inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) };
-                                                        const loc = findPlayerLocation(pid);
-                                                        if(loc.location === 'court') {
-                                                            newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = null;
-                                                            if (newState.inProgressCourts[loc.matchIndex].players.every(p => p === null)) {
-                                                                newState.inProgressCourts[loc.matchIndex] = null;
-                                                            }
+                {/* 2. 경기 예정 (중간) */}
+                <section className="flex-grow flex flex-col min-h-0 bg-gray-800/50 rounded-lg p-2">
+                    <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
+                    <div id="scheduled-matches" className="flex-grow grid grid-cols-2 gap-2">
+                        {scheduledMatches.map((match, matchIndex) => (
+                            <div key={matchIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
+                                <h3 className="font-bold text-center text-xs mb-1 text-white">경기 예정 {matchIndex + 1}</h3>
+                                <div className="grid grid-cols-2 gap-1 flex-grow">
+                                    {Array(4).fill(null).map((_, slotIndex) => {
+                                        const playerId = match[slotIndex];
+                                        const player = players[playerId];
+                                        return player ? (
+                                            <PlayerCard 
+                                                key={playerId} player={player} 
+                                                context={{location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)}}
+                                                isAdmin={isAdmin} onCardClick={handleCardClick}
+                                                onReturn={async(pid) => {
+                                                    const newState = { scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), inProgressCourts };
+                                                    const loc = findPlayerLocation(pid);
+                                                    if(loc.location === 'schedule') newState.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
+                                                    await updateGameState(newState);
+                                                }}
+                                                onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
+                                            />
+                                        ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                    })}
+                                </div>
+                                <button 
+                                    className={`w-full mt-1 py-1 px-2 rounded-md font-semibold transition duration-300 flex-shrink-0 text-xs ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
+                                    disabled={match.filter(p=>p).length !== 4 || !isAdmin}
+                                    onClick={() => handleStartMatch(matchIndex)}
+                                >
+                                    경기 시작
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+
+                {/* 3. 경기 진행 (하단) */}
+                <section className="flex-grow flex flex-col min-h-0 bg-gray-800/50 rounded-lg p-2">
+                    <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
+                    <div id="in-progress-courts" className="flex-grow grid grid-cols-2 gap-2">
+                       {inProgressCourts.map((court, courtIndex) => (
+                           <div key={courtIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
+                               <h3 className="font-bold text-center text-xs mb-1 text-white">{courtIndex + 1}번 코트</h3>
+                               <div className="grid grid-cols-2 gap-1 flex-grow">
+                                    {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
+                                        const player = players[playerId];
+                                        return player ? (
+                                            <PlayerCard 
+                                                key={playerId || slotIndex} player={player} 
+                                                context={{ location: 'court', selected: selectedPlayerIds.includes(playerId) }}
+                                                isAdmin={isAdmin} onCardClick={handleCardClick}
+                                                onReturn={async (pid) => {
+                                                    const newState = { scheduledMatches, inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) };
+                                                    const loc = findPlayerLocation(pid);
+                                                    if(loc.location === 'court') {
+                                                        newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = null;
+                                                        if (newState.inProgressCourts[loc.matchIndex].players.every(p => p === null)) {
+                                                            newState.inProgressCourts[loc.matchIndex] = null;
                                                         }
-                                                        await updateGameState(newState);
-                                                    }}
-                                                    onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
-                                                />
-                                            ) : (
-                                                <div key={slotIndex} className="player-slot min-h-[60px] bg-gray-900/50 rounded-lg" />
-                                            )
-                                        })}
-                                   </div>
-                                   <CourtTimer court={court} />
-                                   <button 
-                                       className={`w-full py-1 px-2 rounded-lg font-semibold transition duration-300 flex-shrink-0 text-xs ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
-                                       disabled={!court || !isAdmin}
-                                       onClick={() => handleEndMatch(courtIndex)}
-                                   >
-                                       경기 종료
-                                   </button>
+                                                    }
+                                                    await updateGameState(newState);
+                                                }}
+                                                onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
+                                            />
+                                        ) : ( <div key={slotIndex} className="player-slot min-h-[56px] bg-gray-900/50 rounded-md" /> )
+                                    })}
                                </div>
-                           ))}
-                        </div>
-                    </section>
-                </div>
+                               <CourtTimer court={court} />
+                               <button 
+                                   className={`w-full py-1 px-2 rounded-md font-semibold transition duration-300 flex-shrink-0 text-xs ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
+                                   disabled={!court || !isAdmin}
+                                   onClick={() => handleEndMatch(courtIndex)}
+                               >
+                                   경기 종료
+                               </button>
+                           </div>
+                       ))}
+                    </div>
+                </section>
             </main>
         </div>
     );
@@ -531,7 +514,7 @@ function EntryPage({ onEnter }) {
     };
 
     return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans">
+        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
             <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
                 <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center">Cockslighting</h1>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -543,8 +526,8 @@ function EntryPage({ onEnter }) {
                         <option>D조</option>
                     </select>
                     <div className="flex justify-around text-lg">
-                        <label><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2" /> 남자</label>
-                        <label><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2" /> 여자</label>
+                        <label className="flex items-center"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자</label>
+                        <label className="flex items-center"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자</label>
                     </div>
                     <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition duration-300">입장하기</button>
                 </form>
@@ -610,5 +593,4 @@ function EditGamesModal({ player, onSave, onCancel }) {
         </div>
     );
 }
-
 
