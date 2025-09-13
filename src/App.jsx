@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 
 // ===================================================================================
-// Firebase 설정 (환경 변수 오류 해결을 위해 직접 값을 입력합니다)
+// Firebase 설정
 // ===================================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCKT1JZ8MkA5WhBdL3XXxtm_0wLbnOBi5I",
@@ -43,7 +43,6 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
     let pressTimer = null;
 
     const handleMouseDown = (e) => {
-        // 기본 동작(예: 드래그)을 방지하여 롱프레스와 클릭을 구분하기 쉽게 함
         e.preventDefault();
         pressTimer = setTimeout(() => onLongPress(player), 1500);
     };
@@ -137,19 +136,16 @@ export default function App() {
 
     // --- Firebase 데이터 구독 (Side Effects) ---
     useEffect(() => {
-        // Players 컬렉션 구독
         const unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
             const playersData = {};
             snapshot.forEach(doc => playersData[doc.id] = doc.data());
             setPlayers(playersData);
         });
 
-        // GameState 문서 구독
         const unsubscribeGameState = onSnapshot(gameStateRef, (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
                 
-                // scheduledMatches 형식 변환
                 const firestoreMatches = data.scheduledMatches || {};
                 const newScheduledMatches = Array(4).fill(null).map((_, i) => {
                     const match = firestoreMatches[String(i)] || [];
@@ -157,12 +153,10 @@ export default function App() {
                 });
                 setScheduledMatches(newScheduledMatches);
 
-                // inProgressCourts 형식 보정
                 const courtsFromDB = Array.isArray(data.inProgressCourts) ? data.inProgressCourts : [];
                 const newInProgressCourts = Array(4).fill(null).map((_, i) => courtsFromDB[i] || null);
                 setInProgressCourts(newInProgressCourts);
             } else {
-                // 초기 상태 문서 생성
                 const initialState = {
                     scheduledMatches: { "0": [], "1": [], "2": [], "3": [] },
                     inProgressCourts: [null, null, null, null]
@@ -171,14 +165,12 @@ export default function App() {
             }
         });
 
-        // 컴포넌트 언마운트 시 구독 해제
         return () => {
             unsubscribePlayers();
             unsubscribeGameState();
         };
     }, []);
 
-    // 페이지 로드 시 자동 로그인
     useEffect(() => {
         const savedUserId = sessionStorage.getItem('badminton-currentUser-id');
         if (savedUserId && !currentUser) {
@@ -193,7 +185,6 @@ export default function App() {
     }, [currentUser]);
 
 
-    // --- Helper 함수들 (useCallback으로 최적화) ---
     const updateGameState = useCallback(async (newState) => {
         const scheduledMatchesForFirestore = {};
         (newState.scheduledMatches || []).forEach((match, index) => {
@@ -220,7 +211,6 @@ export default function App() {
         return { location: 'waiting' };
     }, [scheduledMatches, inProgressCourts]);
 
-    // --- 이벤트 핸들러 ---
     const handleEnter = useCallback(async (formData) => {
         const { name, level, gender } = formData;
         if (!name) { alert('이름을 입력해주세요.'); return; }
@@ -379,7 +369,6 @@ export default function App() {
         await updateGameState(newState);
     }, [scheduledMatches, inProgressCourts, updateGameState]);
 
-    // --- 렌더링 로직 ---
     if (!currentUser) {
         return <EntryPage onEnter={handleEnter} />;
     }
@@ -427,7 +416,8 @@ export default function App() {
             <main className="p-4 space-y-6">
                 <section>
                     <h2 className="text-xl font-bold mb-3 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
-                    <div id="waiting-list" className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2">
+                    {/* [수정됨] 반응형 클래스를 제거하고 데스크탑 기준으로 고정합니다. */}
+                    <div id="waiting-list" className="grid grid-cols-8 gap-2">
                         {waitingPlayers.map(player => (
                             <PlayerCard 
                                 key={player.id} 
@@ -442,10 +432,12 @@ export default function App() {
                     </div>
                 </section>
                 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* [수정됨] 반응형 클래스(lg:grid-cols-2)를 제거하고 항상 2열로 고정합니다. */}
+                <div className="grid grid-cols-2 gap-6">
                     <section>
                         <h2 className="text-xl font-bold mb-3 text-yellow-400">경기 예정</h2>
-                        <div id="scheduled-matches" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* [수정됨] 반응형 클래스(md:grid-cols-2)를 제거하고 항상 2열로 고정합니다. */}
+                        <div id="scheduled-matches" className="grid grid-cols-2 gap-4">
                             {scheduledMatches.map((match, matchIndex) => (
                                 <div key={matchIndex} className="bg-gray-800 rounded-lg p-3 flex flex-col h-full">
                                     <h3 className="font-bold text-center mb-2 text-white">경기 예정 {matchIndex + 1}</h3>
@@ -488,7 +480,8 @@ export default function App() {
 
                     <section>
                         <h2 className="text-xl font-bold mb-3 text-yellow-400">경기 진행 코트</h2>
-                        <div id="in-progress-courts" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* [수정됨] 반응형 클래스(md:grid-cols-2)를 제거하고 항상 2열로 고정합니다. */}
+                        <div id="in-progress-courts" className="grid grid-cols-2 gap-4">
                            {inProgressCourts.map((court, courtIndex) => (
                                <div key={courtIndex} className="bg-gray-800 rounded-lg p-3 h-full flex flex-col">
                                    <h3 className="font-bold text-center mb-2 text-white">{courtIndex + 1}번 코트</h3>
