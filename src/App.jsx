@@ -63,8 +63,8 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
             onTouchEnd={isAdmin ? handleMouseUp : null}
             onMouseLeave={isAdmin ? handleMouseUp : null}
         >
-            {/* [수정] 이름이 한 줄에 표시되도록 폰트 크기 미세 조정 */}
-            <div className="player-name text-white text-[11px] font-bold break-words leading-tight">{adminIcon}{player.name}</div>
+            {/* [수정] 관리자 이름이 한 줄에 표시되도록 폰트 크기 및 줄바꿈 정책 수정 */}
+            <div className="player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight">{adminIcon}{player.name}</div>
             <div className="player-info text-gray-400 text-[10px] leading-tight mt-px">
                 <span className={genderColor}>{player.gender}</span>|{player.level}|{player.gamesPlayed}겜
             </div>
@@ -348,7 +348,7 @@ export default function App() {
         if (emptyCourts.length === 1) {
             start(emptyCourts[0]);
         } else {
-            setModal({ type: 'courtSelection', data: { emptyCourts, onSelect: start } });
+            setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } });
         }
     }, [scheduledMatches, inProgressCourts, players, updateGameState]);
 
@@ -367,7 +367,6 @@ export default function App() {
         .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
 
     return (
-        // [수정] h-screen -> min-h-screen으로 변경하여 내용이 길어질 경우 스크롤 허용
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ minWidth: '360px' }}>
             {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
@@ -381,9 +380,7 @@ export default function App() {
                 </div>
             </header>
 
-            {/* [수정] Grid 레이아웃 제거, 일반적인 Flex-col 방식으로 변경하여 스크롤 허용 */}
             <main className="flex-grow flex flex-col gap-2 p-2">
-                {/* 1. 대기자 명단 (상단) */}
                 <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
                     <div id="waiting-list" className="grid grid-cols-6 gap-1.5">
@@ -401,10 +398,8 @@ export default function App() {
                     </div>
                 </section>
 
-                {/* 2. 경기 예정 (중간) */}
                 <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
                     <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
-                    {/* [수정] 내부 스크롤 제거 */}
                     <div id="scheduled-matches" className="grid grid-cols-2 gap-2">
                         {scheduledMatches.map((match, matchIndex) => (
                             <div key={matchIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
@@ -442,10 +437,8 @@ export default function App() {
                     </div>
                 </section>
 
-                {/* 3. 경기 진행 (하단) */}
                 <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
                     <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
-                    {/* [수정] 내부 스크롤 제거 */}
                     <div id="in-progress-courts" className="grid grid-cols-2 gap-2">
                        {inProgressCourts.map((court, courtIndex) => (
                            <div key={courtIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
