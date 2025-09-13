@@ -6,7 +6,7 @@ import {
 } from 'firebase/firestore';
 
 // ===================================================================================
-// Firebase 설정 (오류 방지를 위해 직접 값을 입력합니다)
+// Firebase 설정
 // ===================================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyCKT1JZ8MkA5WhBdL3XXxtm_0wLbnOBi5I",
@@ -38,7 +38,7 @@ const generateId = (name) => name.replace(/\s+/g, '_');
 // 자식 컴포넌트들
 // ===================================================================================
 
-// 플레이어 카드 컴포넌트
+// [수정] 플레이어 카드 컴포넌트 (전체적으로 크기 및 폰트 축소)
 const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete, onLongPress }) => {
     let pressTimer = null;
 
@@ -54,9 +54,10 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
     const genderColor = player.gender === '남' ? 'text-blue-400' : 'text-pink-400';
     const adminIcon = ADMIN_NAMES.includes(player.name) ? '👑' : '';
 
+    // [수정] 카드 크기(p-1, min-h-[60px]), 폰트 크기(text-xs, text-[10px]) 조정
     return (
         <div 
-            className={`player-card bg-gray-700 p-2 rounded-lg cursor-pointer border-2 relative flex flex-col justify-center text-center w-24 flex-shrink-0 ${context.selected ? 'border-yellow-400 shadow-yellow' : 'border-transparent'}`}
+            className={`player-card bg-gray-700 p-1 rounded-lg cursor-pointer border-2 relative flex flex-col justify-center text-center min-h-[60px] ${context.selected ? 'border-yellow-400 shadow-yellow' : 'border-transparent'}`}
             onClick={() => onCardClick(player.id)}
             onMouseDown={isAdmin ? handleMouseDown : null}
             onMouseUp={isAdmin ? handleMouseUp : null}
@@ -64,28 +65,29 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
             onTouchEnd={isAdmin ? handleMouseUp : null}
             onMouseLeave={isAdmin ? handleMouseUp : null}
         >
-            <div className="player-name text-white text-sm font-bold truncate">{adminIcon} {player.name}</div>
-            <div className="player-info text-gray-400 text-xs">
+            {/* [수정] truncate 제거하여 이름이 잘리지 않도록 하고, 폰트 크기 조정 */}
+            <div className="player-name text-white text-xs font-bold break-words">{adminIcon} {player.name}</div>
+            <div className="player-info text-gray-400 text-[10px] leading-tight">
                 <span className={genderColor}>{player.gender}</span>|{player.level}|{player.gamesPlayed}겜
             </div>
             {isAdmin && context.location && (
-                <button onClick={(e) => { e.stopPropagation(); onReturn(player.id); }} className="absolute top-1 right-1 p-1 text-gray-500 hover:text-yellow-400">
-                    <i className="fas fa-times-circle fa-sm"></i>
+                <button onClick={(e) => { e.stopPropagation(); onReturn(player.id); }} className="absolute top-0 right-0 p-1 text-gray-500 hover:text-yellow-400">
+                    <i className="fas fa-times-circle fa-xs"></i>
                 </button>
             )}
             {isAdmin && !context.location && (
-                 <button onClick={(e) => { e.stopPropagation(); onDelete(player); }} className="absolute top-1 right-1 p-1 text-gray-500 hover:text-red-500">
-                    <i className="fas fa-times-circle fa-sm"></i>
+                 <button onClick={(e) => { e.stopPropagation(); onDelete(player); }} className="absolute top-0 right-0 p-1 text-gray-500 hover:text-red-500">
+                    <i className="fas fa-times-circle fa-xs"></i>
                 </button>
             )}
         </div>
     );
 };
 
-// 빈 슬롯 컴포넌트
+// [수정] 빈 슬롯 컴포넌트 (카드 크기에 맞게 높이 조정)
 const EmptySlot = ({ onSlotClick }) => (
     <div 
-        className="player-slot h-full bg-gray-900/50 rounded-lg flex items-center justify-center text-gray-500 text-2xl border-2 border-dashed border-gray-600 cursor-pointer"
+        className="player-slot min-h-[60px] bg-gray-900/50 rounded-lg flex items-center justify-center text-gray-500 border-2 border-dashed border-gray-600 cursor-pointer"
         onClick={onSlotClick}
     >
         <span>+</span>
@@ -93,7 +95,7 @@ const EmptySlot = ({ onSlotClick }) => (
 );
 
 
-// 경기 진행 코트 타이머 컴포넌트
+// [수정] 타이머 컴포넌트 (폰트 크기 조정)
 const CourtTimer = ({ court }) => {
     const [time, setTime] = useState('00:00');
 
@@ -113,28 +115,22 @@ const CourtTimer = ({ court }) => {
         }
     }, [court]);
 
-    return <div className="text-center text-2xl font-mono my-2 text-white">{time}</div>;
+    return <div className="text-center text-xl font-mono my-1 text-white">{time}</div>;
 };
 
 // ===================================================================================
 // 메인 앱 컴포넌트
 // ===================================================================================
 export default function App() {
-    // --- 상태 관리 (State) ---
     const [players, setPlayers] = useState({});
     const [scheduledMatches, setScheduledMatches] = useState([[], [], [], []]);
     const [inProgressCourts, setInProgressCourts] = useState([null, null, null, null]);
-    
     const [currentUser, setCurrentUser] = useState(null);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
-    
-    // 모달 상태
     const [modal, setModal] = useState({ type: null, data: null });
 
-    // --- 파생된 상태 (Derived State) ---
     const isAdmin = useMemo(() => currentUser && ADMIN_NAMES.includes(currentUser.name), [currentUser]);
 
-    // --- Firebase 데이터 구독 (Side Effects) ---
     useEffect(() => {
         const unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
             const playersData = {};
@@ -183,8 +179,6 @@ export default function App() {
         }
     }, [currentUser]);
 
-
-    // --- Helper 함수들 ---
     const updateGameState = useCallback(async (newState) => {
         const scheduledMatchesForFirestore = {};
         (newState.scheduledMatches || []).forEach((match, index) => {
@@ -198,17 +192,19 @@ export default function App() {
 
     const findPlayerLocation = useCallback((playerId) => {
         for (let i = 0; i < 4; i++) {
-            if (scheduledMatches[i]?.includes(playerId)) {
-                return { location: 'schedule', matchIndex: i, slotIndex: scheduledMatches[i].indexOf(playerId) };
+            if (scheduledMatches[i]) {
+                const j = scheduledMatches[i].indexOf(playerId);
+                if (j > -1) return { location: 'schedule', matchIndex: i, slotIndex: j };
             }
-            if (inProgressCourts[i]?.players?.includes(playerId)) {
-                return { location: 'court', matchIndex: i, slotIndex: inProgressCourts[i].players.indexOf(playerId) };
+            const court = inProgressCourts[i];
+            if (court && court.players) {
+                const j = court.players.indexOf(playerId);
+                if (j > -1) return { location: 'court', matchIndex: i, slotIndex: j };
             }
         }
         return { location: 'waiting' };
     }, [scheduledMatches, inProgressCourts]);
 
-    // --- 이벤트 핸들러 ---
     const handleEnter = useCallback(async (formData) => {
         const { name, level, gender } = formData;
         if (!name) { alert('이름을 입력해주세요.'); return; }
@@ -224,6 +220,7 @@ export default function App() {
         } else {
             playerData = docSnap.data();
         }
+
         setCurrentUser(playerData);
         sessionStorage.setItem('badminton-currentUser-id', id);
     }, []);
@@ -268,15 +265,18 @@ export default function App() {
                     scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), 
                     inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) 
                 };
+
                 const getValue = (loc) => loc.location === 'schedule' ? newState.scheduledMatches[loc.matchIndex][loc.slotIndex] : newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex];
                 const setValue = (loc, value) => {
                     if (loc.location === 'schedule') newState.scheduledMatches[loc.matchIndex][loc.slotIndex] = value;
                     else if(loc.location === 'court') newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = value;
                 };
+
                 const valA = getValue(locA);
                 const valB = getValue(locB);
                 setValue(locA, valB);
                 setValue(locB, valA);
+
                 updateGameState(newState);
                 setSelectedPlayerIds([]);
             }
@@ -312,8 +312,10 @@ export default function App() {
                  return;
             }
         }
+
         setSelectedPlayerIds([]);
         await updateGameState(newState);
+
     }, [isAdmin, selectedPlayerIds, scheduledMatches, inProgressCourts, findPlayerLocation, updateGameState]);
     
     const handleStartMatch = useCallback((matchIndex) => {
@@ -361,37 +363,34 @@ export default function App() {
         await updateGameState(newState);
     }, [scheduledMatches, inProgressCourts, updateGameState]);
 
-    // --- 렌더링 로직 ---
     if (!currentUser) {
         return <EntryPage onEnter={handleEnter} />;
     }
 
     const waitingPlayers = Object.values(players)
-        .filter(p => findPlayerLocation(p.id).location === 'waiting')
+        .filter(p => !findPlayerLocation(p.id) || findPlayerLocation(p.id).location === 'waiting')
         .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
 
     return (
-        <div className="bg-black text-white min-h-screen font-sans">
-            {modal.type && (
-                <div className="fixed inset-0 z-50">
-                    {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
-                    {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
-                    {modal.type === 'editGames' && <EditGamesModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
-                </div>
-            )}
+        // [수정] 전체 앱 컨테이너에 min-width를 주어 화면이 너무 작아지는 것을 방지
+        <div className="bg-black text-white min-h-screen font-sans" style={{ minWidth: '360px' }}>
+            {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
+            {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
+            {modal.type === 'editGames' && <EditGamesModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} onSave={async (newCount) => { await updateDoc(doc(playersRef, modal.data.player.id), { gamesPlayed: newCount }); setModal({ type: null, data: null }); }} />}
 
-            <header className="p-4 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
-                <h1 className="text-xl sm:text-2xl font-bold text-yellow-400">Cockslighting</h1>
+            <header className="p-2 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
+                <h1 className="text-xl font-bold text-yellow-400">Cockslighting</h1>
                 <div className="text-right">
-                    <span className="text-sm">{isAdmin ? '👑' : ''} {currentUser.name}</span>
-                    <button onClick={handleExit} className="ml-4 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded-lg text-sm">나가기</button>
+                    <span className="text-xs">{isAdmin ? '👑' : ''} {currentUser.name}</span>
+                    <button onClick={handleExit} className="ml-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-lg text-xs">나가기</button>
                 </div>
             </header>
 
-            <main className="p-2 sm:p-4 space-y-4">
+            <main className="p-2 space-y-4">
                 <section>
-                    <h2 className="text-lg font-bold mb-2 text-yellow-400 px-2 sm:px-0">👥 대기자 명단 ({waitingPlayers.length})</h2>
-                    <div id="waiting-list" className="flex space-x-2 overflow-x-auto p-2 scrollbar-hide">
+                    <h2 className="text-base font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
+                    {/* [수정] 대기자 명단을 한 줄에 6명씩, 초과 시 다음 줄로 넘어가도록 수정 */}
+                    <div id="waiting-list" className="grid grid-cols-6 gap-1">
                         {waitingPlayers.map(player => (
                             <PlayerCard 
                                 key={player.id} 
@@ -406,21 +405,23 @@ export default function App() {
                     </div>
                 </section>
                 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-2">
                     <section>
-                        <h2 className="text-lg font-bold mb-2 text-yellow-400 px-2 sm:px-0">🗓️ 경기 예정</h2>
+                        <h2 className="text-base font-bold mb-2 text-yellow-400">경기 예정</h2>
                         <div id="scheduled-matches" className="grid grid-cols-2 gap-2">
                             {scheduledMatches.map((match, matchIndex) => (
-                                <div key={matchIndex} className="bg-gray-800 rounded-lg p-2 flex flex-col h-full">
-                                    <h3 className="font-bold text-center mb-2 text-white text-sm">경기 예정 {matchIndex + 1}</h3>
-                                    <div className="grid grid-cols-2 gap-2 flex-grow h-32">
+                                <div key={matchIndex} className="bg-gray-800 rounded-lg p-1 flex flex-col h-full">
+                                    <h3 className="font-bold text-center text-xs mb-1 text-white">경기 예정 {matchIndex + 1}</h3>
+                                    <div className="grid grid-cols-2 gap-1 flex-grow">
                                         {Array(4).fill(null).map((_, slotIndex) => {
                                             const playerId = match[slotIndex];
-                                            return playerId ? (
+                                            const player = players[playerId];
+                                            const context = { location: 'schedule', matchIndex, slotIndex };
+                                            return player ? (
                                                 <PlayerCard 
                                                     key={playerId} 
-                                                    player={players[playerId]} 
-                                                    context={{location: 'schedule', selected: selectedPlayerIds.includes(playerId)}}
+                                                    player={player} 
+                                                    context={{...context, selected: selectedPlayerIds.includes(playerId)}}
                                                     isAdmin={isAdmin}
                                                     onCardClick={handleCardClick}
                                                     onReturn={async (pid) => {
@@ -432,12 +433,13 @@ export default function App() {
                                                     onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
                                                 />
                                             ) : (
-                                                <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} />
+                                                <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick(context)} />
                                             )
                                         })}
                                     </div>
+                                    {/* [수정] 버튼 크기 및 폰트 축소 */}
                                     <button 
-                                        className={`w-full mt-2 py-2 px-2 rounded-lg font-bold transition duration-300 text-sm ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
+                                        className={`w-full mt-1 py-1 px-2 rounded-lg font-semibold transition duration-300 flex-shrink-0 text-xs ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
                                         disabled={match.filter(p=>p).length !== 4 || !isAdmin}
                                         onClick={() => handleStartMatch(matchIndex)}
                                     >
@@ -449,17 +451,18 @@ export default function App() {
                     </section>
 
                     <section>
-                        <h2 className="text-lg font-bold mb-2 text-yellow-400 px-2 sm:px-0">🏸 경기 진행 코트</h2>
+                        <h2 className="text-base font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
                         <div id="in-progress-courts" className="grid grid-cols-2 gap-2">
                            {inProgressCourts.map((court, courtIndex) => (
-                               <div key={courtIndex} className="bg-gray-800 rounded-lg p-2 h-full flex flex-col">
-                                   <h3 className="font-bold text-center mb-2 text-white text-sm">{courtIndex + 1}번 코트</h3>
-                                   <div className="grid grid-cols-2 gap-2 flex-grow h-32">
+                               <div key={courtIndex} className="bg-gray-800 rounded-lg p-1 h-full flex flex-col">
+                                   <h3 className="font-bold text-center text-xs mb-1 text-white">{courtIndex + 1}번 코트</h3>
+                                   <div className="grid grid-cols-2 gap-1 flex-grow">
                                         {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
-                                            return playerId ? (
+                                            const player = players[playerId];
+                                            return player ? (
                                                 <PlayerCard 
-                                                    key={playerId} 
-                                                    player={players[playerId]} 
+                                                    key={playerId || slotIndex} 
+                                                    player={player} 
                                                     context={{ location: 'court', selected: selectedPlayerIds.includes(playerId) }}
                                                     isAdmin={isAdmin}
                                                     onCardClick={handleCardClick}
@@ -467,23 +470,23 @@ export default function App() {
                                                         const newState = { scheduledMatches, inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) };
                                                         const loc = findPlayerLocation(pid);
                                                         if(loc.location === 'court') {
-                                                          newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = null;
-                                                          if (newState.inProgressCourts[loc.matchIndex].players.every(p => p === null)) {
-                                                              newState.inProgressCourts[loc.matchIndex] = null;
-                                                          }
+                                                            newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = null;
+                                                            if (newState.inProgressCourts[loc.matchIndex].players.every(p => p === null)) {
+                                                                newState.inProgressCourts[loc.matchIndex] = null;
+                                                            }
                                                         }
                                                         await updateGameState(newState);
                                                     }}
                                                     onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
                                                 />
                                             ) : (
-                                                <div key={slotIndex} className="player-slot h-full bg-gray-900/50 rounded-lg" />
+                                                <div key={slotIndex} className="player-slot min-h-[60px] bg-gray-900/50 rounded-lg" />
                                             )
                                         })}
                                    </div>
                                    <CourtTimer court={court} />
                                    <button 
-                                       className={`w-full py-2 px-2 rounded-lg font-bold transition duration-300 text-sm ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
+                                       className={`w-full py-1 px-2 rounded-lg font-semibold transition duration-300 flex-shrink-0 text-xs ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
                                        disabled={!court || !isAdmin}
                                        onClick={() => handleEndMatch(courtIndex)}
                                    >
@@ -528,17 +531,20 @@ function EntryPage({ onEnter }) {
     };
 
     return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
+        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans">
             <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
                 <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center">Cockslighting</h1>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
                     <select name="level" value={formData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400">
-                        <option>A조</option> <option>B조</option> <option>C조</option> <option>D조</option>
+                        <option>A조</option>
+                        <option>B조</option>
+                        <option>C조</option>
+                        <option>D조</option>
                     </select>
                     <div className="flex justify-around text-lg">
-                        <label className="flex items-center"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4" /> 남자</label>
-                        <label className="flex items-center"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4" /> 여자</label>
+                        <label><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2" /> 남자</label>
+                        <label><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2" /> 여자</label>
                     </div>
                     <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition duration-300">입장하기</button>
                 </form>
@@ -550,10 +556,9 @@ function EntryPage({ onEnter }) {
 // ===================================================================================
 // 모달 컴포넌트들
 // ===================================================================================
-
 function ConfirmationModal({ title, body, onConfirm, onCancel }) {
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
                 <h3 className="text-xl font-bold text-white mb-4">{title}</h3>
                 <p className="text-gray-300 mb-6">{body}</p>
@@ -568,7 +573,7 @@ function ConfirmationModal({ title, body, onConfirm, onCancel }) {
 
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
                 <h3 className="text-xl font-bold text-yellow-400 mb-4">코트 선택</h3>
                 <p className="text-gray-300 mb-6">경기를 시작할 코트를 선택해주세요.</p>
@@ -589,7 +594,7 @@ function EditGamesModal({ player, onSave, onCancel }) {
     const [count, setCount] = useState(player.gamesPlayed);
 
     return (
-         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4">
+         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-xs text-center shadow-lg">
                 <h3 className="text-xl font-bold text-yellow-400 mb-4">{player.name} 경기 수 수정</h3>
                 <div className="flex items-center justify-center gap-4 my-6">
