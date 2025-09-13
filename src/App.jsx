@@ -379,7 +379,8 @@ export default function App() {
                 </div>
             </header>
 
-            <main className="flex-grow flex flex-col p-2 space-y-2 overflow-hidden">
+            {/* [수정] 메인 레이아웃을 Flexbox에서 Grid로 변경하여 겹침 문제 해결 */}
+            <main className="flex-grow grid grid-rows-[auto_1fr_1fr] gap-2 p-2 overflow-hidden">
                 {/* 1. 대기자 명단 (상단) */}
                 <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
@@ -399,9 +400,9 @@ export default function App() {
                 </section>
 
                 {/* 2. 경기 예정 (중간) */}
-                <section className="flex-grow flex flex-col min-h-0 bg-gray-800/50 rounded-lg p-2">
+                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col min-h-0">
                     <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
-                    <div id="scheduled-matches" className="flex-grow grid grid-cols-2 gap-2">
+                    <div id="scheduled-matches" className="flex-grow grid grid-cols-2 gap-2 overflow-y-auto">
                         {scheduledMatches.map((match, matchIndex) => (
                             <div key={matchIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
                                 <h3 className="font-bold text-center text-xs mb-1 text-white">경기 예정 {matchIndex + 1}</h3>
@@ -409,10 +410,11 @@ export default function App() {
                                     {Array(4).fill(null).map((_, slotIndex) => {
                                         const playerId = match[slotIndex];
                                         const player = players[playerId];
+                                        const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
                                         return player ? (
                                             <PlayerCard 
                                                 key={playerId} player={player} 
-                                                context={{location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)}}
+                                                context={context}
                                                 isAdmin={isAdmin} onCardClick={handleCardClick}
                                                 onReturn={async(pid) => {
                                                     const newState = { scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), inProgressCourts };
@@ -438,19 +440,20 @@ export default function App() {
                 </section>
 
                 {/* 3. 경기 진행 (하단) */}
-                <section className="flex-grow flex flex-col min-h-0 bg-gray-800/50 rounded-lg p-2">
+                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col min-h-0">
                     <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
-                    <div id="in-progress-courts" className="flex-grow grid grid-cols-2 gap-2">
+                    <div id="in-progress-courts" className="flex-grow grid grid-cols-2 gap-2 overflow-y-auto">
                        {inProgressCourts.map((court, courtIndex) => (
                            <div key={courtIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
                                <h3 className="font-bold text-center text-xs mb-1 text-white">{courtIndex + 1}번 코트</h3>
                                <div className="grid grid-cols-2 gap-1 flex-grow">
                                     {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
                                         const player = players[playerId];
+                                        const context = { location: 'court', selected: selectedPlayerIds.includes(playerId) };
                                         return player ? (
                                             <PlayerCard 
                                                 key={playerId || slotIndex} player={player} 
-                                                context={{ location: 'court', selected: selectedPlayerIds.includes(playerId) }}
+                                                context={context}
                                                 isAdmin={isAdmin} onCardClick={handleCardClick}
                                                 onReturn={async (pid) => {
                                                     const newState = { scheduledMatches, inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) };
