@@ -62,7 +62,6 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
     const buttonHoverColor = isWaiting ? 'hover:text-red-500' : 'hover:text-yellow-400';
     const buttonIcon = "fas fa-times-circle fa-xs";
 
-    // [수정] 이름과 X 버튼이 겹치지 않도록 이름 오른쪽에 충분한 여백(pr-4)을 추가합니다.
     const playerNameClass = `player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight pr-4`;
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
 
@@ -89,7 +88,8 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
                         e.stopPropagation(); 
                         onAction(player); 
                     }} 
-                    className={`absolute top-0 right-0 p-1 text-gray-500 ${buttonHoverColor}`}
+                    // [수정] 버튼을 카드 경계선 위로 올려 이름과 겹치지 않게 합니다.
+                    className={`absolute -top-2 -right-2 p-1 text-gray-500 ${buttonHoverColor}`}
                     aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
                 >
                     <i className={buttonIcon}></i>
