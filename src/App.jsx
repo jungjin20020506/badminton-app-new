@@ -60,12 +60,11 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
     
     const isWaiting = !context.location;
     const buttonHoverColor = isWaiting ? 'hover:text-red-500' : 'hover:text-yellow-400';
-    // [수정] X 아이콘 크기를 'fa-xs'로 줄여 이름과 겹치지 않도록 합니다.
     const buttonIcon = "fas fa-times-circle fa-xs";
 
-    // [수정] 모든 카드의 글자 크기를 동일하게 유지하여 가독성을 확보합니다.
     const playerNameClass = `player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight`;
-    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px`;
+    // [수정] 선수 정보가 두 줄로 나뉘는 것을 방지하기 위해 'whitespace-nowrap'을 추가합니다.
+    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
 
     return (
         <div 
@@ -90,8 +89,8 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
                         e.stopPropagation(); 
                         onAction(player); 
                     }} 
-                    // [수정] 작아진 아이콘에 맞게 버튼 위치를 조정합니다.
-                    className={`absolute -top-1 -right-1 p-1 text-gray-500 ${buttonHoverColor}`}
+                    // [수정] 이름과 겹치지 않도록 버튼 위치를 카드 위쪽으로 더 이동시킵니다.
+                    className={`absolute -top-2 -right-2 p-1 text-gray-500 ${buttonHoverColor}`}
                     aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
                 >
                     <i className={buttonIcon}></i>
