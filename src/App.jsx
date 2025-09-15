@@ -9,6 +9,7 @@ import {
 // Firebase 설정
 // ===================================================================================
 const firebaseConfig = {
+  // 사용자의 Firebase 설정 정보
   apiKey: "AIzaSyCKT1JZ8MkA5WhBdL3XXxtm_0wLbnOBi5I",
   authDomain: "project-104956788310687609.firebaseapp.com",
   projectId: "project-104956788310687609",
@@ -38,7 +39,11 @@ const generateId = (name) => name.replace(/\s+/g, '_');
 // 자식 컴포넌트들
 // ===================================================================================
 
-const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete, onLongPress }) => {
+/**
+ * 선수 정보를 표시하는 카드 컴포넌트
+ * @param {object} props - player, context, isAdmin, onCardClick, onAction, onLongPress
+ */
+const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPress }) => {
     let pressTimer = null;
 
     const handleMouseDown = (e) => {
@@ -52,6 +57,10 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
     
     const genderColor = player.gender === '남' ? 'text-blue-400' : 'text-pink-400';
     const adminIcon = ADMIN_NAMES.includes(player.name) ? '👑' : '';
+    
+    const isWaiting = !context.location;
+    const buttonHoverColor = isWaiting ? 'hover:text-red-500' : 'hover:text-yellow-400';
+    const buttonIcon = "fas fa-times-circle fa-lg";
 
     return (
         <div 
@@ -63,19 +72,20 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onReturn, onDelete,
             onTouchEnd={isAdmin ? handleMouseUp : null}
             onMouseLeave={isAdmin ? handleMouseUp : null}
         >
-            {/* [수정] 관리자 이름이 한 줄에 표시되도록 폰트 크기 및 줄바꿈 정책 수정 */}
             <div className="player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight">{adminIcon}{player.name}</div>
             <div className="player-info text-gray-400 text-[10px] leading-tight mt-px">
                 <span className={genderColor}>{player.gender}</span>|{player.level}|{player.gamesPlayed}겜
             </div>
-            {isAdmin && context.location && (
-                <button onClick={(e) => { e.stopPropagation(); onReturn(player.id); }} className="absolute -top-1 -right-1 p-1 text-gray-500 hover:text-yellow-400">
-                    <i className="fas fa-times-circle fa-xs"></i>
-                </button>
-            )}
-            {isAdmin && !context.location && (
-                 <button onClick={(e) => { e.stopPropagation(); onDelete(player); }} className="absolute -top-1 -right-1 p-1 text-gray-500 hover:text-red-500">
-                    <i className="fas fa-times-circle fa-xs"></i>
+            {isAdmin && (
+                <button 
+                    onClick={(e) => { 
+                        e.stopPropagation(); 
+                        onAction(player); 
+                    }} 
+                    className={`absolute -top-2 -right-2 p-1 text-gray-500 ${buttonHoverColor}`}
+                    aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
+                >
+                    <i className={buttonIcon}></i>
                 </button>
             )}
         </div>
@@ -199,6 +209,41 @@ export default function App() {
         }
         return { location: 'waiting' };
     }, [scheduledMatches, inProgressCourts]);
+    
+    const handleReturnToWaiting = useCallback(async (playerId) => {
+        const loc = findPlayerLocation(playerId);
+        if (loc.location === 'waiting') return;
+
+        const newState = {
+            scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)),
+            inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts))
+        };
+
+        if (loc.location === 'schedule') {
+            newState.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
+        } else if (loc.location === 'court') {
+            newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = null;
+            if (newState.inProgressCourts[loc.matchIndex].players.every(p => p === null)) {
+                newState.inProgressCourts[loc.matchIndex] = null;
+            }
+        }
+        await updateGameState(newState);
+    }, [findPlayerLocation, scheduledMatches, inProgressCourts, updateGameState]);
+    
+    const handleDeleteFromWaiting = useCallback((player) => {
+        setModal({
+            type: 'confirm',
+            data: {
+                title: '선수 내보내기',
+                body: `${player.name} 선수를 내보낼까요?`,
+                onConfirm: async () => {
+                    await deleteDoc(doc(playersRef, player.id));
+                    setModal({ type: null, data: null });
+                }
+            }
+        });
+    }, []);
+
 
     const handleEnter = useCallback(async (formData) => {
         const { name, level, gender } = formData;
@@ -391,7 +436,7 @@ export default function App() {
                                 context={{ location: null, selected: selectedPlayerIds.includes(player.id) }}
                                 isAdmin={isAdmin}
                                 onCardClick={handleCardClick}
-                                onDelete={(p) => setModal({type: 'confirm', data: { title: `${p.name}님 삭제`, body: '대기 명단에서 이 선수를 삭제하시겠습니까?', onConfirm: () => deleteDoc(doc(playersRef, p.id))}})}
+                                onAction={handleDeleteFromWaiting}
                                 onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
                             />
                         ))}
@@ -414,12 +459,7 @@ export default function App() {
                                                 key={playerId} player={player} 
                                                 context={context}
                                                 isAdmin={isAdmin} onCardClick={handleCardClick}
-                                                onReturn={async(pid) => {
-                                                    const newState = { scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), inProgressCourts };
-                                                    const loc = findPlayerLocation(pid);
-                                                    if(loc.location === 'schedule') newState.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
-                                                    await updateGameState(newState);
-                                                }}
+                                                onAction={(p) => handleReturnToWaiting(p.id)}
                                                 onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
                                             />
                                         ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
@@ -452,17 +492,7 @@ export default function App() {
                                                 key={playerId || slotIndex} player={player} 
                                                 context={context}
                                                 isAdmin={isAdmin} onCardClick={handleCardClick}
-                                                onReturn={async (pid) => {
-                                                    const newState = { scheduledMatches, inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) };
-                                                    const loc = findPlayerLocation(pid);
-                                                    if(loc.location === 'court') {
-                                                        newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = null;
-                                                        if (newState.inProgressCourts[loc.matchIndex].players.every(p => p === null)) {
-                                                            newState.inProgressCourts[loc.matchIndex] = null;
-                                                        }
-                                                    }
-                                                    await updateGameState(newState);
-                                                }}
+                                                onAction={(p) => handleReturnToWaiting(p.id)}
                                                 onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
                                             />
                                         ) : ( <div key={slotIndex} className="player-slot min-h-[56px] bg-gray-900/50 rounded-md" /> )
