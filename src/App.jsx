@@ -88,8 +88,8 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
                         e.stopPropagation(); 
                         onAction(player); 
                     }} 
-                    // [수정] 버튼이 카드 밖으로 벗어나지 않고, 중앙 정렬에 영향을 주지 않도록 위치를 조정합니다.
-                    className={`absolute top-0 right-0 p-1 text-gray-500 ${buttonHoverColor}`}
+                    // [수정] 버튼이 카드 안쪽으로 들어오도록 위치를 top-1, right-1로 조정합니다.
+                    className={`absolute top-1 right-1 p-1 text-gray-500 ${buttonHoverColor}`}
                     aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
                 >
                     <i className={buttonIcon}></i>
@@ -435,7 +435,8 @@ export default function App() {
             <main className="flex-grow flex flex-col gap-2 p-2">
                 <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
-                    <div id="waiting-list" className="grid grid-cols-6 gap-1.5">
+                    {/* [수정] 한 줄에 6개에서 5개로 변경하여 카드 가로 공간을 확보합니다. */}
+                    <div id="waiting-list" className="grid grid-cols-5 gap-2">
                         {waitingPlayers.map(player => (
                             <PlayerCard 
                                 key={player.id} 
