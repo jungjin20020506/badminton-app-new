@@ -15,7 +15,7 @@ const firebaseConfig = {
   projectId: "project-104956788310687609",
   storageBucket: "project-104956788310687609.firebasestorage.app",
   messagingSenderId: "384562806148",
-  appId: "1:384562806148:web:d8bfb83b28928c13e671d1"
+  appId: "1:384956788310687609:web:d8bfb83b28928c13e671d1"
 };
 
 
@@ -62,7 +62,8 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
     const buttonHoverColor = isWaiting ? 'hover:text-red-500' : 'hover:text-yellow-400';
     const buttonIcon = "fas fa-times-circle fa-xs";
 
-    const playerNameClass = `player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight`;
+    // [수정] 이름과 X 버튼이 겹치지 않도록 이름 오른쪽에 충분한 여백(pr-4)을 추가합니다.
+    const playerNameClass = `player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight pr-4`;
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
 
     return (
@@ -88,7 +89,6 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
                         e.stopPropagation(); 
                         onAction(player); 
                     }} 
-                    // [수정] 버튼을 카드 오른쪽 맨 위 가장자리로 이동하여 이름과 겹치지 않도록 합니다.
                     className={`absolute top-0 right-0 p-1 text-gray-500 ${buttonHoverColor}`}
                     aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
                 >
