@@ -63,7 +63,6 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
     const buttonIcon = "fas fa-times-circle fa-xs";
 
     const playerNameClass = `player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight`;
-    // [수정] 선수 정보가 두 줄로 나뉘는 것을 방지하기 위해 'whitespace-nowrap'을 추가합니다.
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
 
     return (
@@ -89,8 +88,8 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
                         e.stopPropagation(); 
                         onAction(player); 
                     }} 
-                    // [수정] 이름과 겹치지 않도록 버튼 위치를 카드 위쪽으로 더 이동시킵니다.
-                    className={`absolute -top-2 -right-2 p-1 text-gray-500 ${buttonHoverColor}`}
+                    // [수정] 버튼이 카드 밖으로 벗어나지 않고, 중앙 정렬에 영향을 주지 않도록 위치를 조정합니다.
+                    className={`absolute top-0 right-0 p-1 text-gray-500 ${buttonHoverColor}`}
                     aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
                 >
                     <i className={buttonIcon}></i>
