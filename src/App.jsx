@@ -88,7 +88,6 @@ const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPre
                         e.stopPropagation(); 
                         onAction(player); 
                     }} 
-                    // [수정] 버튼을 카드 경계선 위로 올려 이름과 겹치지 않게 합니다.
                     className={`absolute -top-2 -right-2 p-1 text-gray-500 ${buttonHoverColor}`}
                     aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
                 >
@@ -330,51 +329,77 @@ export default function App() {
         }
     }, [isAdmin, selectedPlayerIds, findPlayerLocation, scheduledMatches, inProgressCourts, updateGameState]);
     
+    // [수정] 대기자 -> 경기진행 코트 이동 기능 추가
     const handleSlotClick = useCallback(async (context) => {
         if (!isAdmin || selectedPlayerIds.length === 0) return;
 
         const playerToMoveId = selectedPlayerIds[0];
         const originalLoc = findPlayerLocation(playerToMoveId);
 
-        if (originalLoc.location === 'court') {
-            setSelectedPlayerIds([]);
-            return;
-        }
-
-        const newState = { 
-            scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), 
-            inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) 
+        const newState = {
+            scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)),
+            inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts))
         };
 
-        if (originalLoc.location === 'schedule') {
-            newState.scheduledMatches[originalLoc.matchIndex][originalLoc.slotIndex] = null;
-        }
-
         if (context.location === 'schedule') {
+            if (originalLoc.location === 'court') {
+                setSelectedPlayerIds([]);
+                return;
+            }
+
+            if (originalLoc.location === 'schedule') {
+                newState.scheduledMatches[originalLoc.matchIndex][originalLoc.slotIndex] = null;
+            }
+
             const { matchIndex, slotIndex } = context;
             if (!newState.scheduledMatches[matchIndex][slotIndex]) {
-                 newState.scheduledMatches[matchIndex][slotIndex] = playerToMoveId;
+                newState.scheduledMatches[matchIndex][slotIndex] = playerToMoveId;
             } else {
-                 setSelectedPlayerIds([]);
-                 return;
+                setSelectedPlayerIds([]);
+                return;
+            }
+        } else if (context.location === 'court') {
+            if (originalLoc.location !== 'waiting') {
+                setSelectedPlayerIds([]);
+                return;
+            }
+
+            const { courtIndex, slotIndex } = context;
+            
+            if (!newState.inProgressCourts[courtIndex]) {
+                newState.inProgressCourts[courtIndex] = { players: Array(4).fill(null), startTime: new Date().toISOString() };
+            }
+
+            if (!newState.inProgressCourts[courtIndex].players[slotIndex]) {
+                newState.inProgressCourts[courtIndex].players[slotIndex] = playerToMoveId;
+                
+                const playerRef = doc(playersRef, playerToMoveId);
+                await updateDoc(playerRef, { gamesPlayed: players[playerToMoveId].gamesPlayed + 1 });
+                
+            } else {
+                setSelectedPlayerIds([]);
+                return;
             }
         }
 
         setSelectedPlayerIds([]);
         await updateGameState(newState);
-
-    }, [isAdmin, selectedPlayerIds, scheduledMatches, inProgressCourts, findPlayerLocation, updateGameState]);
+    }, [isAdmin, selectedPlayerIds, players, scheduledMatches, inProgressCourts, findPlayerLocation, updateGameState]);
     
+    // [수정] 코트 선택 모달 기능 복원
     const handleStartMatch = useCallback((matchIndex) => {
         const match = scheduledMatches[matchIndex] || [];
         if (match.filter(p => p).length !== 4) return;
 
         const emptyCourts = inProgressCourts.map((c, i) => c ? -1 : i).filter(i => i !== -1);
-        if (emptyCourts.length === 0) { alert("빈 코트가 없습니다."); return; }
+        if (emptyCourts.length === 0) {
+            alert("빈 코트가 없습니다.");
+            return;
+        }
 
         const start = async (courtIndex) => {
             const playersToMove = scheduledMatches[matchIndex].filter(p => p);
-            
+
             const batch = writeBatch(db);
             playersToMove.forEach(playerId => {
                 const player = players[playerId];
@@ -386,8 +411,8 @@ export default function App() {
             await batch.commit();
 
             const newState = {
-                scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), 
-                inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) 
+                scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)),
+                inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts))
             };
             newState.inProgressCourts[courtIndex] = { players: playersToMove, startTime: new Date().toISOString() };
             newState.scheduledMatches.splice(matchIndex, 1);
@@ -403,6 +428,7 @@ export default function App() {
             setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } });
         }
     }, [scheduledMatches, inProgressCourts, players, updateGameState]);
+
 
     const handleEndMatch = useCallback(async (courtIndex) => {
         const newState = { ...JSON.parse(JSON.stringify({ scheduledMatches, inProgressCourts })) };
@@ -502,7 +528,9 @@ export default function App() {
                                                 onAction={(p) => handleReturnToWaiting(p.id)}
                                                 onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
                                             />
-                                        ) : ( <div key={slotIndex} className="player-slot min-h-[56px] bg-gray-900/50 rounded-md" /> )
+                                        ) : (
+                                            <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} />
+                                        )
                                     })}
                                </div>
                                <CourtTimer court={court} />
@@ -591,6 +619,7 @@ function ConfirmationModal({ title, body, onConfirm, onCancel }) {
     );
 }
 
+// [추가] 코트 선택 모달
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
