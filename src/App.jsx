@@ -280,19 +280,35 @@ export default function App() {
             const playerToMoveId = selectedPlayerIds[0];
             const originalLoc = findPlayerLocation(playerToMoveId);
             if (!originalLoc) return;
+
             if (context.location === 'court' && originalLoc.location === 'waiting') {
                 const playerRef = doc(playersRef, playerToMoveId);
-                await updateDoc(playerRef, { gamesPlayed: players[playerToMoveId].gamesPlayed + 1 });
+                const player = players[playerToMoveId];
+                if (player) {
+                    await updateDoc(playerRef, { gamesPlayed: player.gamesPlayed + 1 });
+                }
             }
+            
             await updateGameState(currentState => {
                 const newState = JSON.parse(JSON.stringify(currentState));
+
+                // [버그 수정] 선수의 원래 위치를 먼저 지웁니다.
                 if (originalLoc.location === 'schedule') {
                     newState.scheduledMatches[String(originalLoc.matchIndex)][originalLoc.slotIndex] = null;
+                } else if (originalLoc.location === 'court') {
+                    // 이 부분이 누락되어 복제 버그가 발생했습니다.
+                    newState.inProgressCourts[originalLoc.matchIndex].players[originalLoc.slotIndex] = null;
                 }
+
+                // 선수를 새로운 위치에 배치합니다.
                 if (context.location === 'schedule') {
-                    newState.scheduledMatches[String(context.matchIndex)] = newState.scheduledMatches[String(context.matchIndex)] || Array(4).fill(null);
-                    if (!newState.scheduledMatches[String(context.matchIndex)][context.slotIndex]) {
-                        newState.scheduledMatches[String(context.matchIndex)][context.slotIndex] = playerToMoveId;
+                    const { matchIndex, slotIndex } = context;
+                    newState.scheduledMatches[String(matchIndex)] = newState.scheduledMatches[String(matchIndex)] || Array(4).fill(null);
+                    if (!newState.scheduledMatches[String(matchIndex)][slotIndex]) {
+                        newState.scheduledMatches[String(matchIndex)][slotIndex] = playerToMoveId;
+                    } else {
+                        console.warn("Target schedule slot is already occupied.");
+                        return currentState; // 이미 자리가 차 있으면 작업을 취소합니다.
                     }
                 } else if (context.location === 'court') {
                     const { courtIndex, slotIndex } = context;
@@ -301,6 +317,9 @@ export default function App() {
                     }
                     if (!newState.inProgressCourts[courtIndex].players[slotIndex]) {
                         newState.inProgressCourts[courtIndex].players[slotIndex] = playerToMoveId;
+                    } else {
+                        console.warn("Target court slot is already occupied.");
+                        return currentState; // 이미 자리가 차 있으면 작업을 취소합니다.
                     }
                 }
                 return newState;
@@ -332,22 +351,16 @@ export default function App() {
 
             await updateGameState(currentState => {
                 const newState = JSON.parse(JSON.stringify(currentState));
-                
                 newState.inProgressCourts[courtIndex] = { players: playersToMove, startTime: new Date().toISOString() };
-                
                 const currentScheduledArray = Array(4).fill(null).map((_, i) => newState.scheduledMatches[String(i)] || null);
-                
                 currentScheduledArray.splice(matchIndex, 1);
-                
                 currentScheduledArray.push(null);
-                
                 const updatedScheduledMatches = {};
                 currentScheduledArray.forEach((match, i) => {
                     if (match && match.some(p => p !== null)) {
                         updatedScheduledMatches[String(i)] = match;
                     }
                 });
-
                 newState.scheduledMatches = updatedScheduledMatches;
                 return newState;
             });
