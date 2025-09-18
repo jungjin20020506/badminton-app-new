@@ -156,7 +156,6 @@ export default function App() {
     const playerLocations = useMemo(() => {
         const locations = {};
         Object.keys(players).forEach(pId => locations[pId] = { location: 'waiting' });
-
         for (let i = 0; i < 4; i++) {
             const match = scheduledMatches[String(i)];
             if (match) {
@@ -291,25 +290,18 @@ export default function App() {
             
             await updateGameState(currentState => {
                 const newState = JSON.parse(JSON.stringify(currentState));
-
-                // [버그 수정] 선수의 원래 위치를 먼저 지웁니다.
                 if (originalLoc.location === 'schedule') {
                     newState.scheduledMatches[String(originalLoc.matchIndex)][originalLoc.slotIndex] = null;
                 } else if (originalLoc.location === 'court') {
-                    // 이 부분이 누락되어 복제 버그가 발생했습니다.
                     newState.inProgressCourts[originalLoc.matchIndex].players[originalLoc.slotIndex] = null;
                 }
 
-                // 선수를 새로운 위치에 배치합니다.
                 if (context.location === 'schedule') {
                     const { matchIndex, slotIndex } = context;
                     newState.scheduledMatches[String(matchIndex)] = newState.scheduledMatches[String(matchIndex)] || Array(4).fill(null);
                     if (!newState.scheduledMatches[String(matchIndex)][slotIndex]) {
                         newState.scheduledMatches[String(matchIndex)][slotIndex] = playerToMoveId;
-                    } else {
-                        console.warn("Target schedule slot is already occupied.");
-                        return currentState; // 이미 자리가 차 있으면 작업을 취소합니다.
-                    }
+                    } else { return currentState; }
                 } else if (context.location === 'court') {
                     const { courtIndex, slotIndex } = context;
                     if (!newState.inProgressCourts[courtIndex]) {
@@ -317,10 +309,7 @@ export default function App() {
                     }
                     if (!newState.inProgressCourts[courtIndex].players[slotIndex]) {
                         newState.inProgressCourts[courtIndex].players[slotIndex] = playerToMoveId;
-                    } else {
-                        console.warn("Target court slot is already occupied.");
-                        return currentState; // 이미 자리가 차 있으면 작업을 취소합니다.
-                    }
+                    } else { return currentState; }
                 }
                 return newState;
             });
@@ -416,20 +405,24 @@ export default function App() {
                 </div>
             </header>
 
-            <main className="flex-grow flex flex-col gap-2 p-2">
+            <main className="flex-grow flex flex-col gap-4 p-2">
                 <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
-                    <div id="waiting-list" className="grid grid-cols-5 gap-2">
+                    <div id="waiting-list" className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
                         {waitingPlayers.map(player => ( <PlayerCard key={player.id} player={player} context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleDeleteFromWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ))}
                     </div>
                 </section>
-                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
-                    <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
-                    <div id="scheduled-matches" className="grid grid-cols-2 gap-2">
+                
+                {/* [UI 변경] 경기 예정: 리스트 뷰 */}
+                <section>
+                    <h2 className="text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
+                    <div id="scheduled-matches" className="flex flex-col gap-2">
                         {scheduledMatchesArray.map((match, matchIndex) => (
-                            <div key={matchIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
-                                <h3 className="font-bold text-center text-xs mb-1 text-white">경기 예정 {matchIndex + 1}</h3>
-                                <div className="grid grid-cols-2 gap-1 flex-grow">
+                            <div key={matchIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-2 md:gap-4">
+                                <div className="w-20 md:w-28 text-center">
+                                    <h3 className="font-bold text-xs md:text-sm text-white">경기 예정 {matchIndex + 1}</h3>
+                                </div>
+                                <div className="grid grid-cols-4 gap-2 flex-1">
                                     {Array(4).fill(null).map((_, slotIndex) => {
                                         const playerId = match[slotIndex];
                                         const player = players[playerId];
@@ -437,26 +430,39 @@ export default function App() {
                                         return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                     })}
                                 </div>
-                                <button className={`w-full mt-1 py-1 px-2 rounded-md font-semibold transition duration-300 flex-shrink-0 text-xs ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={match.filter(p=>p).length !== 4 || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>경기 시작</button>
+                                <div className="w-16 md:w-24 text-center">
+                                    <div className="text-center text-lg font-mono my-1 text-gray-500">--:--</div>
+                                </div>
+                                <div className="w-20 md:w-28 text-center">
+                                     <button className={`w-full py-2 px-2 rounded-md font-semibold transition duration-300 text-xs ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={match.filter(p=>p).length !== 4 || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>경기 시작</button>
+                                </div>
                             </div>
                         ))}
                     </div>
                 </section>
-                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
-                    <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
-                    <div id="in-progress-courts" className="grid grid-cols-2 gap-2">
+
+                {/* [UI 변경] 경기 진행 코트: 리스트 뷰 */}
+                <section>
+                    <h2 className="text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
+                    <div id="in-progress-courts" className="flex flex-col gap-2">
                        {inProgressCourts.map((court, courtIndex) => (
-                           <div key={courtIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
-                               <h3 className="font-bold text-center text-xs mb-1 text-white">{courtIndex + 1}번 코트</h3>
-                               <div className="grid grid-cols-2 gap-1 flex-grow">
+                           <div key={courtIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-2 md:gap-4">
+                                <div className="w-20 md:w-28 text-center">
+                                    <h3 className="font-bold text-xs md:text-sm text-white">{courtIndex + 1}번 코트</h3>
+                                </div>
+                               <div className="grid grid-cols-4 gap-2 flex-1">
                                     {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
                                         const player = players[playerId];
                                         const context = { location: 'court', matchIndex: courtIndex, selected: selectedPlayerIds.includes(playerId) };
                                         return player ? ( <PlayerCard key={playerId || slotIndex} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={() => setModal({type: 'moveCourt', data: { sourceCourtIndex: courtIndex }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} /> )
                                     })}
                                </div>
-                               <CourtTimer court={court} />
-                               <button className={`w-full py-1 px-2 rounded-md font-semibold transition duration-300 flex-shrink-0 text-xs ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={() => handleEndMatch(courtIndex)}>경기 종료</button>
+                                <div className="w-16 md:w-24 text-center">
+                                    <CourtTimer court={court} />
+                                </div>
+                               <div className="w-20 md:w-28 text-center">
+                                    <button className={`w-full py-2 px-2 rounded-md font-semibold transition duration-300 text-xs ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={() => handleEndMatch(courtIndex)}>경기 종료</button>
+                               </div>
                            </div>
                        ))}
                     </div>
