@@ -357,7 +357,7 @@ export default function App() {
         .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
 
     return (
-        <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ minWidth: '360px' }}>
+        <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ minWidth: '320px' }}>
             {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal.type === 'editGames' && <EditGamesModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} onSave={async (newCount) => { await updateDoc(doc(playersRef, modal.data.player.id), { gamesPlayed: newCount }); setModal({ type: null, data: null }); }} />}
@@ -372,7 +372,7 @@ export default function App() {
                 </div>
             </header>
 
-            <main className="flex-grow flex flex-col gap-4 p-2">
+            <main className="flex-grow flex flex-col gap-4 p-1">
                 <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
                     <div id="waiting-list" className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
@@ -381,15 +381,15 @@ export default function App() {
                 </section>
                 
                 <section>
-                    <h2 className="text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
+                    <h2 className="text-sm font-bold mb-2 text-yellow-400 px-1">경기 예정</h2>
                     <div id="scheduled-matches" className="flex flex-col gap-2">
                         {scheduledMatchesArray.map((match, matchIndex) => (
-                            <div key={matchIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-2">
-                                <div className="flex-shrink-0 w-14 text-center">
-                                    <p className="font-semibold text-[10px] text-gray-400">경기 예정</p>
-                                    <p className="font-bold text-lg text-white">{matchIndex + 1}</p>
+                            <div key={matchIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-1 gap-1">
+                                <div className="flex-shrink-0 w-12 text-center">
+                                    <p className="font-semibold text-[10px] text-gray-400">예정</p>
+                                    <p className="font-bold text-base text-white">{matchIndex + 1}</p>
                                 </div>
-                                <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
+                                <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                     {Array(4).fill(null).map((_, slotIndex) => {
                                         const playerId = match[slotIndex];
                                         const player = players[playerId];
@@ -397,8 +397,8 @@ export default function App() {
                                         return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                     })}
                                 </div>
-                                <div className="flex-shrink-0 w-16 text-center">
-                                     <button className={`w-full py-2 px-1 rounded-md font-semibold transition duration-300 text-[11px] ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={match.filter(p=>p).length !== 4 || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>경기 시작</button>
+                                <div className="flex-shrink-0 w-14 text-center">
+                                     <button className={`w-full py-2 px-1 rounded-md font-semibold transition duration-300 text-[10px] ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={match.filter(p=>p).length !== 4 || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>경기 시작</button>
                                 </div>
                             </div>
                         ))}
@@ -406,22 +406,23 @@ export default function App() {
                 </section>
 
                 <section>
-                    <h2 className="text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
+                    <h2 className="text-sm font-bold mb-2 text-yellow-400 px-1">경기 진행 코트</h2>
                     <div id="in-progress-courts" className="flex flex-col gap-2">
                        {inProgressCourts.map((court, courtIndex) => (
-                           <div key={courtIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-2">
-                                <div className="flex-shrink-0 w-14 text-center">
-                                    <p className="font-semibold text-xs text-gray-400">{courtIndex + 1}번 코트</p>
+                           <div key={courtIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-1 gap-1">
+                                <div className="flex-shrink-0 w-12 text-center">
+                                    <p className="font-bold text-base text-white">{courtIndex + 1}</p>
+                                    <p className="font-semibold text-[10px] text-gray-400">코트</p>
                                 </div>
-                               <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-0">
+                               <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                     {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
                                         const player = players[playerId];
                                         const context = { location: 'court', matchIndex: courtIndex, selected: selectedPlayerIds.includes(playerId) };
                                         return player ? ( <PlayerCard key={playerId || slotIndex} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={() => setModal({type: 'moveCourt', data: { sourceCourtIndex: courtIndex }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} /> )
                                     })}
                                </div>
-                                <div className="flex-shrink-0 w-16 text-center">
-                                    <button className={`w-full py-2 px-1 rounded-md font-semibold transition duration-300 text-[11px] ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={() => handleEndMatch(courtIndex)}>경기 종료</button>
+                                <div className="flex-shrink-0 w-14 text-center">
+                                    <button className={`w-full py-2 px-1 rounded-md font-semibold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={() => handleEndMatch(courtIndex)}>경기 종료</button>
                                     <CourtTimer court={court} />
                                </div>
                            </div>
