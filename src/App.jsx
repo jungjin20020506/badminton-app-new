@@ -1,662 +1,458 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
-    getFirestore, doc, getDoc, setDoc, onSnapshot, 
-    collection, deleteDoc, updateDoc, writeBatch 
+    getAuth, 
+    GoogleAuthProvider, 
+    signInWithPopup, 
+    signOut, 
+    onAuthStateChanged 
+} from 'firebase/auth';
+import { 
+    getFirestore, 
+    collection, 
+    onSnapshot, 
+    doc, 
+    writeBatch,
+    serverTimestamp,
+    runTransaction
 } from 'firebase/firestore';
 
 // ===================================================================================
-// Firebase 설정
+// 중요: Firebase 설정
+// 여기에 본인의 Firebase 프로젝트 설정 객체를 붙여넣으세요.
 // ===================================================================================
 const firebaseConfig = {
-  // 사용자의 Firebase 설정 정보
-  apiKey: "AIzaSyCKT1JZ8MkA5WhBdL3XXxtm_0wLbnOBi5I",
-  authDomain: "project-104956788310687609.firebaseapp.com",
-  projectId: "project-104956788310687609",
-  storageBucket: "project-104956788310687609.firebasestorage.app",
-  messagingSenderId: "384562806148",
-  appId: "1:384956788310687609:web:d8bfb83b28928c13e671d1"
+    apiKey: "AIzaSyCKT1JZ8MkA5WhBdL3XXxtm_0wLbnOBi5I",
+    authDomain: "project-104956788310687609.firebaseapp.com",
+    projectId: "project-104956788310687609",
+    storageBucket: "project-104956788310687609.firebasestorage.app",
+    messagingSenderId: "384562806148",
+    appId: "1:384562806148:web:d8bfb83b28928c13e671d1"
 };
 
-
-// Firebase 초기화
+// Firebase 앱 초기화
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
 
-// 데이터베이스 참조
-const playersRef = collection(db, "players");
-const gameStateRef = doc(db, "gameState", "live");
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+//  헬퍼 함수 및 상수
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
 
-const ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "신영은", "오미리"];
+const COURT_COUNT = 4; // 전체 코트 수
 
-// ===================================================================================
-// Helper 함수
-// ===================================================================================
-const generateId = (name) => name.replace(/\s+/g, '_');
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+//  메인 App 컴포넌트
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
 
+function App() {
+    const [user, setUser] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [localUserName, setLocalUserName] = useState('');
 
-// ===================================================================================
-// 자식 컴포넌트들
-// ===================================================================================
+    useEffect(() => {
+        // 로컬 스토리지에서 사용자 이름 확인
+        const storedName = localStorage.getItem('userName');
+        if (storedName) {
+            setLocalUserName(storedName);
+        }
 
-/**
- * 선수 정보를 표시하는 카드 컴포넌트
- * @param {object} props - player, context, isAdmin, onCardClick, onAction, onLongPress
- */
-const PlayerCard = ({ player, context, isAdmin, onCardClick, onAction, onLongPress }) => {
-    let pressTimer = null;
+        // Firebase 인증 상태 리스너
+        const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+            if (firebaseUser) {
+                setUser(firebaseUser);
+                // Firebase 로그인 시 로컬 스토리지 이름 동기화/제거
+                localStorage.removeItem('userName'); 
+            } else {
+                setUser(null);
+            }
+            setLoading(false);
+        });
 
-    const handleMouseDown = (e) => {
-        e.preventDefault();
-        pressTimer = setTimeout(() => onLongPress(player), 1500);
-    };
+        return () => unsubscribe();
+    }, []);
 
-    const handleMouseUp = () => {
-        clearTimeout(pressTimer);
+    const handleLocalLogin = (name) => {
+        if (name.trim()) {
+            localStorage.setItem('userName', name.trim());
+            setLocalUserName(name.trim());
+        }
     };
     
-    const genderColor = player.gender === '남' ? 'text-blue-400' : 'text-pink-400';
-    const adminIcon = ADMIN_NAMES.includes(player.name) ? '👑' : '';
+    const handleLocalLogout = () => {
+        localStorage.removeItem('userName');
+        setLocalUserName('');
+    };
     
-    const isWaiting = !context.location;
-    const buttonHoverColor = isWaiting ? 'hover:text-red-500' : 'hover:text-yellow-400';
-    const buttonIcon = "fas fa-times-circle fa-xs";
+    const handleGoogleLogin = async () => {
+        const provider = new GoogleAuthProvider();
+        try {
+            await signInWithPopup(auth, provider);
+        } catch (error) {
+            console.error("Google 로그인 에러:", error);
+        }
+    };
 
-    const playerNameClass = `player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight pr-4`;
-    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
+    const handleLogout = async () => {
+        try {
+            await signOut(auth);
+            handleLocalLogout(); // 모든 로그아웃 처리
+        } catch (error) {
+            console.error("로그아웃 에러:", error);
+        }
+    };
+    
+    if (loading) {
+        return <div className="loading-screen">로딩 중...</div>;
+    }
+
+    const currentUserName = user?.displayName || localUserName;
 
     return (
-        <div 
-            className={`player-card bg-gray-700 p-1 rounded-md cursor-pointer border-2 relative flex flex-col justify-center text-center min-h-[56px] ${context.selected ? 'border-yellow-400 shadow-yellow' : 'border-transparent'}`}
-            onClick={() => onCardClick(player.id)}
-            onMouseDown={isAdmin ? handleMouseDown : null}
-            onMouseUp={isAdmin ? handleMouseUp : null}
-            onTouchStart={isAdmin ? handleMouseDown : null}
-            onTouchEnd={isAdmin ? handleMouseUp : null}
-            onMouseLeave={isAdmin ? handleMouseUp : null}
-        >
-            <div>
-                <div className={playerNameClass}>{adminIcon}{player.name}</div>
-                <div className={playerInfoClass}>
-                    <span className={genderColor}>{player.gender}</span>|{player.level}|{player.gamesPlayed}겜
-                </div>
-            </div>
-
-            {isAdmin && (
-                <button 
-                    onClick={(e) => { 
-                        e.stopPropagation(); 
-                        onAction(player); 
-                    }} 
-                    className={`absolute -top-2 -right-2 p-1 text-gray-500 ${buttonHoverColor}`}
-                    aria-label={isWaiting ? '선수 삭제' : '대기자로 이동'}
-                >
-                    <i className={buttonIcon}></i>
-                </button>
+        <div className="app-container">
+            <header className="app-header">
+                <h1>배드민턴 경기 관리 시스템</h1>
+                {currentUserName && (
+                    <div className="user-info">
+                        <span>환영합니다, {currentUserName} 님</span>
+                        <button onClick={handleLogout} className="logout-button">로그아웃</button>
+                    </div>
+                )}
+            </header>
+            
+            {!currentUserName ? (
+                <LoginScreen onLocalLogin={handleLocalLogin} onGoogleLogin={handleGoogleLogin} />
+            ) : (
+                <BadmintonManager />
             )}
         </div>
     );
-};
+}
 
-const EmptySlot = ({ onSlotClick }) => (
-    <div 
-        className="player-slot min-h-[56px] bg-gray-900/50 rounded-md flex items-center justify-center text-gray-500 border-2 border-dashed border-gray-600 cursor-pointer"
-        onClick={onSlotClick}
-    >
-        <span className="text-lg">+</span>
-    </div>
-);
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+//  로그인 화면 컴포넌트
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
 
-const CourtTimer = ({ court }) => {
-    const [time, setTime] = useState('00:00');
+function LoginScreen({ onLocalLogin, onGoogleLogin }) {
+    const [name, setName] = useState('');
 
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onLocalLogin(name);
+    };
+
+    return (
+        <div className="login-container">
+            <h2>입장하기</h2>
+            <form onSubmit={handleSubmit} className="login-form">
+                <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="이름을 입력하세요"
+                    className="name-input"
+                />
+                <button type="submit" className="login-button">입장</button>
+            </form>
+            <div className="social-login">
+                <p>또는</p>
+                <button onClick={onGoogleLogin} className="google-login-button">
+                    Google 계정으로 로그인
+                </button>
+            </div>
+        </div>
+    );
+}
+
+
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+//  배드민턴 관리자 메인 컴포넌트
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+
+function BadmintonManager() {
+    const [players, setPlayers] = useState([]);
+    const [courts, setCourts] = useState(Array(COURT_COUNT).fill(null));
+    const [selectedPlayers, setSelectedPlayers] = useState([]);
+    const [error, setError] = useState('');
+    const [movePlayerInfo, setMovePlayerInfo] = useState(null); // 코트 이동/교체 모달 상태
+
+    // 데이터베이스 실시간 구독
     useEffect(() => {
-        if (court && court.startTime) {
-            const timerId = setInterval(() => {
-                const now = new Date().getTime();
-                const startTime = new Date(court.startTime).getTime();
-                const diff = Math.floor((now - startTime) / 1000);
-                const minutes = String(Math.floor(diff / 60)).padStart(2, '0');
-                const seconds = String(diff % 60).padStart(2, '0');
-                setTime(`${minutes}:${seconds}`);
-            }, 1000);
-            return () => clearInterval(timerId);
-        } else {
-            setTime('00:00');
-        }
-    }, [court]);
-
-    return <div className="text-center text-lg font-mono my-1 text-white">{time}</div>;
-};
-
-// ===================================================================================
-// 메인 앱 컴포넌트
-// ===================================================================================
-export default function App() {
-    const [players, setPlayers] = useState({});
-    const [scheduledMatches, setScheduledMatches] = useState([[], [], [], []]);
-    const [inProgressCourts, setInProgressCourts] = useState([null, null, null, null]);
-    const [currentUser, setCurrentUser] = useState(null);
-    const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
-    const [modal, setModal] = useState({ type: null, data: null });
-
-    const isAdmin = useMemo(() => currentUser && ADMIN_NAMES.includes(currentUser.name), [currentUser]);
-
-    useEffect(() => {
-        const unsubscribePlayers = onSnapshot(playersRef, (snapshot) => {
-            const playersData = {};
-            snapshot.forEach(doc => playersData[doc.id] = doc.data());
+        const unsubscribePlayers = onSnapshot(collection(db, "players"), (snapshot) => {
+            const playersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setPlayers(playersData);
         });
 
-        const unsubscribeGameState = onSnapshot(gameStateRef, (doc) => {
-            if (doc.exists()) {
-                const data = doc.data();
-                const firestoreMatches = data.scheduledMatches || {};
-                const newScheduledMatches = Array(4).fill(null).map((_, i) => {
-                    const match = firestoreMatches[String(i)] || [];
-                    return Array(4).fill(null).map((__, j) => match[j] || null);
-                });
-                setScheduledMatches(newScheduledMatches);
-
-                const courtsFromDB = Array.isArray(data.inProgressCourts) ? data.inProgressCourts : [];
-                const newInProgressCourts = Array(4).fill(null).map((_, i) => courtsFromDB[i] || null);
-                setInProgressCourts(newInProgressCourts);
-            } else {
-                const initialState = {
-                    scheduledMatches: { "0": [], "1": [], "2": [], "3": [] },
-                    inProgressCourts: [null, null, null, null]
-                };
-                setDoc(gameStateRef, initialState);
-            }
+        const unsubscribeCourts = onSnapshot(collection(db, "courts"), (snapshot) => {
+            const courtsData = Array(COURT_COUNT).fill(null);
+            snapshot.docs.forEach(doc => {
+                const court = { id: doc.id, ...doc.data() };
+                if (court.courtIndex >= 0 && court.courtIndex < COURT_COUNT) {
+                    courtsData[court.courtIndex] = court;
+                }
+            });
+            setCourts(courtsData);
         });
 
         return () => {
             unsubscribePlayers();
-            unsubscribeGameState();
+            unsubscribeCourts();
         };
     }, []);
-
-    useEffect(() => {
-        const savedUserId = sessionStorage.getItem('badminton-currentUser-id');
-        if (savedUserId && !currentUser) {
-            getDoc(doc(playersRef, savedUserId)).then(docSnap => {
-                if (docSnap.exists()) {
-                    setCurrentUser(docSnap.data());
-                } else {
-                    sessionStorage.removeItem('badminton-currentUser-id');
-                }
-            });
-        }
-    }, [currentUser]);
-
-    const updateGameState = useCallback(async (newState) => {
-        const scheduledMatchesForFirestore = {};
-        (newState.scheduledMatches || []).forEach((match, index) => {
-            scheduledMatchesForFirestore[String(index)] = match || Array(4).fill(null);
-        });
-        await setDoc(gameStateRef, {
-            scheduledMatches: scheduledMatchesForFirestore,
-            inProgressCourts: newState.inProgressCourts || [null, null, null, null]
-        }, { merge: true });
-    }, []);
-
-    const findPlayerLocation = useCallback((playerId) => {
-        for (let i = 0; i < 4; i++) {
-            if (scheduledMatches[i]) {
-                const j = scheduledMatches[i].indexOf(playerId);
-                if (j > -1) return { location: 'schedule', matchIndex: i, slotIndex: j };
-            }
-            const court = inProgressCourts[i];
-            if (court && court.players) {
-                const j = court.players.indexOf(playerId);
-                if (j > -1) return { location: 'court', matchIndex: i, slotIndex: j };
-            }
-        }
-        return { location: 'waiting' };
-    }, [scheduledMatches, inProgressCourts]);
     
-    const handleReturnToWaiting = useCallback(async (playerId) => {
-        const loc = findPlayerLocation(playerId);
-        if (loc.location === 'waiting') return;
+    const showError = (message) => {
+        setError(message);
+        setTimeout(() => setError(''), 3000);
+    };
 
-        const newState = {
-            scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)),
-            inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts))
-        };
-
-        if (loc.location === 'schedule') {
-            newState.scheduledMatches[loc.matchIndex][loc.slotIndex] = null;
-        } else if (loc.location === 'court') {
-            newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = null;
-            if (newState.inProgressCourts[loc.matchIndex].players.every(p => p === null)) {
-                newState.inProgressCourts[loc.matchIndex] = null;
-            }
-        }
-        await updateGameState(newState);
-    }, [findPlayerLocation, scheduledMatches, inProgressCourts, updateGameState]);
+    // 선수 카드 클릭 핸들러 (다중 선택)
+    const handlePlayerCardClick = (playerId) => {
+        setSelectedPlayers(prev => 
+            prev.includes(playerId) 
+                ? prev.filter(id => id !== playerId)
+                : [...prev, playerId]
+        );
+    };
     
-    const handleDeleteFromWaiting = useCallback((player) => {
-        setModal({
-            type: 'confirm',
-            data: {
-                title: '선수 내보내기',
-                body: `${player.name} 선수를 내보낼까요?`,
-                onConfirm: async () => {
-                    await deleteDoc(doc(playersRef, player.id));
-                    setModal({ type: null, data: null });
-                }
-            }
-        });
-    }, []);
-
-
-    const handleEnter = useCallback(async (formData) => {
-        const { name, level, gender } = formData;
-        if (!name) { alert('이름을 입력해주세요.'); return; }
-        
-        const id = generateId(name);
-        const playerDocRef = doc(playersRef, id);
-        let docSnap = await getDoc(playerDocRef);
-        let playerData;
-
-        if (!docSnap.exists()) {
-            playerData = { id, name, level, gender, gamesPlayed: 0, entryTime: new Date().toISOString() };
-            await setDoc(playerDocRef, playerData);
-        } else {
-            playerData = docSnap.data();
-        }
-
-        setCurrentUser(playerData);
-        sessionStorage.setItem('badminton-currentUser-id', id);
-    }, []);
-
-    const handleExit = useCallback(() => {
-        if (currentUser) {
-            setModal({
-                type: 'confirm',
-                data: {
-                    title: '나가기',
-                    body: '대기 명단에서 자신을 삭제하고 나가시겠습니까?',
-                    onConfirm: async () => {
-                        await deleteDoc(doc(playersRef, currentUser.id));
-                        sessionStorage.removeItem('badminton-currentUser-id');
-                        setCurrentUser(null);
-                        setModal({ type: null, data: null });
-                    }
-                }
-            });
-        }
-    }, [currentUser]);
-
-    const handleCardClick = useCallback((playerId) => {
-        if (!isAdmin) return;
-
-        if (selectedPlayerIds.includes(playerId)) {
-            setSelectedPlayerIds(ids => ids.filter(id => id !== playerId));
-        } else {
-            if (selectedPlayerIds.length === 0) {
-                setSelectedPlayerIds([playerId]);
-            } else {
-                const firstSelectedId = selectedPlayerIds[0];
-                const locA = findPlayerLocation(firstSelectedId);
-                const locB = findPlayerLocation(playerId);
-
-                if (locA.location === 'waiting' || locB.location === 'waiting') {
-                    setSelectedPlayerIds([]);
-                    return;
-                }
-                
-                const newState = { 
-                    scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)), 
-                    inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts)) 
-                };
-
-                const getValue = (loc) => loc.location === 'schedule' ? newState.scheduledMatches[loc.matchIndex][loc.slotIndex] : newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex];
-                const setValue = (loc, value) => {
-                    if (loc.location === 'schedule') newState.scheduledMatches[loc.matchIndex][loc.slotIndex] = value;
-                    else if(loc.location === 'court') newState.inProgressCourts[loc.matchIndex].players[loc.slotIndex] = value;
-                };
-
-                const valA = getValue(locA);
-                const valB = getValue(locB);
-                setValue(locA, valB);
-                setValue(locB, valA);
-
-                updateGameState(newState);
-                setSelectedPlayerIds([]);
-            }
-        }
-    }, [isAdmin, selectedPlayerIds, findPlayerLocation, scheduledMatches, inProgressCourts, updateGameState]);
-    
-    // [수정] 대기자 -> 경기진행 코트 이동 기능 추가
-    const handleSlotClick = useCallback(async (context) => {
-        if (!isAdmin || selectedPlayerIds.length === 0) return;
-
-        const playerToMoveId = selectedPlayerIds[0];
-        const originalLoc = findPlayerLocation(playerToMoveId);
-
-        const newState = {
-            scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)),
-            inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts))
-        };
-
-        if (context.location === 'schedule') {
-            if (originalLoc.location === 'court') {
-                setSelectedPlayerIds([]);
-                return;
-            }
-
-            if (originalLoc.location === 'schedule') {
-                newState.scheduledMatches[originalLoc.matchIndex][originalLoc.slotIndex] = null;
-            }
-
-            const { matchIndex, slotIndex } = context;
-            if (!newState.scheduledMatches[matchIndex][slotIndex]) {
-                newState.scheduledMatches[matchIndex][slotIndex] = playerToMoveId;
-            } else {
-                setSelectedPlayerIds([]);
-                return;
-            }
-        } else if (context.location === 'court') {
-            if (originalLoc.location !== 'waiting') {
-                setSelectedPlayerIds([]);
-                return;
-            }
-
-            const { courtIndex, slotIndex } = context;
-            
-            if (!newState.inProgressCourts[courtIndex]) {
-                newState.inProgressCourts[courtIndex] = { players: Array(4).fill(null), startTime: new Date().toISOString() };
-            }
-
-            if (!newState.inProgressCourts[courtIndex].players[slotIndex]) {
-                newState.inProgressCourts[courtIndex].players[slotIndex] = playerToMoveId;
-                
-                const playerRef = doc(playersRef, playerToMoveId);
-                await updateDoc(playerRef, { gamesPlayed: players[playerToMoveId].gamesPlayed + 1 });
-                
-            } else {
-                setSelectedPlayerIds([]);
-                return;
-            }
-        }
-
-        setSelectedPlayerIds([]);
-        await updateGameState(newState);
-    }, [isAdmin, selectedPlayerIds, players, scheduledMatches, inProgressCourts, findPlayerLocation, updateGameState]);
-    
-    // [수정] 코트 선택 모달 기능 복원
-    const handleStartMatch = useCallback((matchIndex) => {
-        const match = scheduledMatches[matchIndex] || [];
-        if (match.filter(p => p).length !== 4) return;
-
-        const emptyCourts = inProgressCourts.map((c, i) => c ? -1 : i).filter(i => i !== -1);
-        if (emptyCourts.length === 0) {
-            alert("빈 코트가 없습니다.");
+    // '경기 예정' 테이블로 일괄 이동
+    const handleMoveToScheduled = async () => {
+        if (selectedPlayers.length === 0) {
+            showError("이동할 선수를 먼저 선택해주세요.");
             return;
         }
 
-        const start = async (courtIndex) => {
-            const playersToMove = scheduledMatches[matchIndex].filter(p => p);
+        const scheduledPlayersCount = players.filter(p => p.status === 'scheduled').length;
+        // 예시: 경기 예정 테이블의 최대 인원을 8명으로 가정
+        const availableSlots = 8 - scheduledPlayersCount; 
 
+        if (selectedPlayers.length > availableSlots) {
+            showError(`선택한 선수의 수(${selectedPlayers.length}명)가 빈자리(${availableSlots}개)보다 많습니다.`);
+            return;
+        }
+
+        // 낙관적 UI 업데이트 (선택 사항, 실시간 DB에서는 즉시 반영되므로 큰 효과 없을 수 있음)
+        // const updatedPlayers = players.map(p => 
+        //     selectedPlayers.includes(p.id) ? { ...p, status: 'scheduled' } : p
+        // );
+        // setPlayers(updatedPlayers);
+
+        try {
             const batch = writeBatch(db);
-            playersToMove.forEach(playerId => {
-                const player = players[playerId];
-                if (player) {
-                    const playerRef = doc(playersRef, playerId);
-                    batch.update(playerRef, { gamesPlayed: player.gamesPlayed + 1 });
-                }
+            selectedPlayers.forEach(playerId => {
+                const playerRef = doc(db, "players", playerId);
+                batch.update(playerRef, { status: 'scheduled' });
             });
             await batch.commit();
-
-            const newState = {
-                scheduledMatches: JSON.parse(JSON.stringify(scheduledMatches)),
-                inProgressCourts: JSON.parse(JSON.stringify(inProgressCourts))
-            };
-            newState.inProgressCourts[courtIndex] = { players: playersToMove, startTime: new Date().toISOString() };
-            newState.scheduledMatches.splice(matchIndex, 1);
-            newState.scheduledMatches.push(Array(4).fill(null));
-
-            await updateGameState(newState);
-            setModal({ type: null, data: null });
-        };
-
-        if (emptyCourts.length === 1) {
-            start(emptyCourts[0]);
-        } else {
-            setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } });
+            setSelectedPlayers([]); // 성공 시 선택 해제
+        } catch (err) {
+            console.error("일괄 이동 실패:", err);
+            showError("다른 관리자가 변경하여 작업에 실패했습니다. 다시 시도해주세요.");
+            // 낙관적 UI 업데이트를 했다면 여기서 원래 상태로 롤백
+            // setPlayers(players); 
         }
-    }, [scheduledMatches, inProgressCourts, players, updateGameState]);
+    };
+    
+    // 경기 진행 중 선수 길게 누르기 핸들러
+    const handlePlayerLongPress = (player) => {
+        setMovePlayerInfo(player);
+    };
 
+    // 코트 이동/교체 실행
+    const handleCourtChange = async (targetCourtIndex) => {
+        if (!movePlayerInfo) return;
 
-    const handleEndMatch = useCallback(async (courtIndex) => {
-        const newState = { ...JSON.parse(JSON.stringify({ scheduledMatches, inProgressCourts })) };
-        newState.inProgressCourts[courtIndex] = null;
-        await updateGameState(newState);
-    }, [scheduledMatches, inProgressCourts, updateGameState]);
+        const sourcePlayer = movePlayerInfo;
+        const sourceCourtIndex = courts.findIndex(c => c && c.players.some(p => p.id === sourcePlayer.id));
+        const sourceCourt = courts[sourceCourtIndex];
+        const targetCourt = courts[targetCourtIndex];
 
-    if (!currentUser) {
-        return <EntryPage onEnter={handleEnter} />;
-    }
+        try {
+            await runTransaction(db, async (transaction) => {
+                const sourceCourtRef = doc(db, "courts", sourceCourt.id);
+                
+                if (!targetCourt) { // 시나리오 A: 빈 코트로 이동
+                    const newCourtRef = doc(collection(db, "courts"));
+                    transaction.set(newCourtRef, {
+                        ...sourceCourt,
+                        courtIndex: targetCourtIndex,
+                        id: newCourtRef.id // 문서 ID도 저장
+                    });
+                    transaction.delete(sourceCourtRef);
+                } else { // 시나리오 B: 코트 교체
+                    const targetCourtRef = doc(db, "courts", targetCourt.id);
+                    // Firestore 트랜잭션 내에서는 읽기 후 쓰기를 수행해야 함
+                    const sourceCourtDoc = await transaction.get(sourceCourtRef);
+                    const targetCourtDoc = await transaction.get(targetCourtRef);
 
-    const waitingPlayers = Object.values(players)
-        .filter(p => !findPlayerLocation(p.id) || findPlayerLocation(p.id).location === 'waiting')
-        .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
+                    if (!sourceCourtDoc.exists() || !targetCourtDoc.exists()) {
+                        throw "코트 정보를 찾을 수 없습니다.";
+                    }
+
+                    const sourceCourtData = sourceCourtDoc.data();
+                    const targetCourtData = targetCourtDoc.data();
+
+                    // Swap
+                    transaction.update(sourceCourtRef, { ...targetCourtData, courtIndex: sourceCourtIndex });
+                    transaction.update(targetCourtRef, { ...sourceCourtData, courtIndex: targetCourtIndex });
+                }
+            });
+        } catch (err) {
+            console.error("코트 이동/교체 실패:", err);
+            showError("코트 이동/교체에 실패했습니다. 다시 시도해주세요.");
+        } finally {
+            setMovePlayerInfo(null); // 모달 닫기
+        }
+    };
+
+    // 선수 리스트 필터링
+    const waitingPlayers = players.filter(p => p.status === 'waiting');
+    const scheduledPlayers = players.filter(p => p.status === 'scheduled');
+    const playingPlayers = players.filter(p => p.status === 'playing');
 
     return (
-        <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ minWidth: '360px' }}>
-            {modal.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
-            {modal.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
-            {modal.type === 'editGames' && <EditGamesModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} onSave={async (newCount) => { await updateDoc(doc(playersRef, modal.data.player.id), { gamesPlayed: newCount }); setModal({ type: null, data: null }); }} />}
+        <div className="manager-container">
+            {error && <div className="error-toast">{error}</div>}
+            
+            {movePlayerInfo && (
+                <CourtMoveModal
+                    player={movePlayerInfo}
+                    courts={courts}
+                    onSelectCourt={handleCourtChange}
+                    onClose={() => setMovePlayerInfo(null)}
+                />
+            )}
 
-            <header className="flex-shrink-0 p-2 flex justify-between items-center bg-gray-900 sticky top-0 z-10">
-                <h1 className="text-lg font-bold text-yellow-400">Cockslighting</h1>
-                <div className="text-right">
-                    <span className="text-xs">{isAdmin ? '👑' : ''} {currentUser.name}</span>
-                    <button onClick={handleExit} className="ml-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">나가기</button>
-                </div>
-            </header>
-
-            <main className="flex-grow flex flex-col gap-2 p-2">
-                <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
-                    <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
-                    <div id="waiting-list" className="grid grid-cols-5 gap-2">
+            <div className="player-sections">
+                <section className="player-list-section">
+                    <h2>선수 대기 ({waitingPlayers.length})</h2>
+                    <div className="player-list">
                         {waitingPlayers.map(player => (
                             <PlayerCard 
                                 key={player.id} 
                                 player={player} 
-                                context={{ location: null, selected: selectedPlayerIds.includes(player.id) }}
-                                isAdmin={isAdmin}
-                                onCardClick={handleCardClick}
-                                onAction={handleDeleteFromWaiting}
-                                onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
+                                isSelected={selectedPlayers.includes(player.id)}
+                                onClick={() => handlePlayerCardClick(player.id)}
                             />
                         ))}
                     </div>
                 </section>
 
-                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
-                    <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
-                    <div id="scheduled-matches" className="grid grid-cols-2 gap-2">
-                        {scheduledMatches.map((match, matchIndex) => (
-                            <div key={matchIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
-                                <h3 className="font-bold text-center text-xs mb-1 text-white">경기 예정 {matchIndex + 1}</h3>
-                                <div className="grid grid-cols-2 gap-1 flex-grow">
-                                    {Array(4).fill(null).map((_, slotIndex) => {
-                                        const playerId = match[slotIndex];
-                                        const player = players[playerId];
-                                        const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                        return player ? (
-                                            <PlayerCard 
-                                                key={playerId} player={player} 
-                                                context={context}
-                                                isAdmin={isAdmin} onCardClick={handleCardClick}
-                                                onAction={(p) => handleReturnToWaiting(p.id)}
-                                                onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
-                                            />
-                                        ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
-                                    })}
-                                </div>
-                                <button 
-                                    className={`w-full mt-1 py-1 px-2 rounded-md font-semibold transition duration-300 flex-shrink-0 text-xs ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
-                                    disabled={match.filter(p=>p).length !== 4 || !isAdmin}
-                                    onClick={() => handleStartMatch(matchIndex)}
-                                >
-                                    경기 시작
-                                </button>
-                            </div>
+                <section className="player-list-section">
+                    <h2>경기 예정 ({scheduledPlayers.length})</h2>
+                    <div className="player-list scheduled-box" onClick={handleMoveToScheduled}>
+                        {scheduledPlayers.map(player => (
+                            <PlayerCard key={player.id} player={player} />
                         ))}
+                        {scheduledPlayers.length === 0 && <div className="placeholder-text">선택한 선수를 여기로 옮기세요</div>}
                     </div>
                 </section>
-
-                <section className="bg-gray-800/50 rounded-lg p-2 flex flex-col">
-                    <h2 className="flex-shrink-0 text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
-                    <div id="in-progress-courts" className="grid grid-cols-2 gap-2">
-                       {inProgressCourts.map((court, courtIndex) => (
-                           <div key={courtIndex} className="bg-gray-800 rounded-md p-1 flex flex-col">
-                               <h3 className="font-bold text-center text-xs mb-1 text-white">{courtIndex + 1}번 코트</h3>
-                               <div className="grid grid-cols-2 gap-1 flex-grow">
-                                    {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
-                                        const player = players[playerId];
-                                        const context = { location: 'court', selected: selectedPlayerIds.includes(playerId) };
-                                        return player ? (
-                                            <PlayerCard 
-                                                key={playerId || slotIndex} player={player} 
-                                                context={context}
-                                                isAdmin={isAdmin} onCardClick={handleCardClick}
-                                                onAction={(p) => handleReturnToWaiting(p.id)}
-                                                onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}
-                                            />
-                                        ) : (
-                                            <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} />
-                                        )
-                                    })}
-                               </div>
-                               <CourtTimer court={court} />
-                               <button 
-                                   className={`w-full py-1 px-2 rounded-md font-semibold transition duration-300 flex-shrink-0 text-xs ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
-                                   disabled={!court || !isAdmin}
-                                   onClick={() => handleEndMatch(courtIndex)}
-                               >
-                                   경기 종료
-                               </button>
-                           </div>
-                       ))}
-                    </div>
-                </section>
-            </main>
-        </div>
-    );
-}
-
-// ===================================================================================
-// 진입 페이지 컴포넌트
-// ===================================================================================
-function EntryPage({ onEnter }) {
-    const [formData, setFormData] = useState({ name: '', level: 'A조', gender: '남' });
-
-    useEffect(() => {
-        const savedUserId = sessionStorage.getItem('badminton-currentUser-id');
-        if (savedUserId) {
-             getDoc(doc(playersRef, savedUserId)).then(docSnap => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setFormData({ name: data.name, level: data.level, gender: data.gender });
-                }
-            });
-        }
-    }, []);
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onEnter(formData);
-    };
-
-    return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
-            <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
-                <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center">Cockslighting</h1>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
-                    <select name="level" value={formData.level} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400">
-                        <option>A조</option>
-                        <option>B조</option>
-                        <option>C조</option>
-                        <option>D조</option>
-                    </select>
-                    <div className="flex justify-around text-lg">
-                        <label className="flex items-center"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자</label>
-                        <label className="flex items-center"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자</label>
-                    </div>
-                    <button type="submit" className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition duration-300">입장하기</button>
-                </form>
             </div>
-        </div>
-    );
-}
 
-// ===================================================================================
-// 모달 컴포넌트들
-// ===================================================================================
-function ConfirmationModal({ title, body, onConfirm, onCancel }) {
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
-                <h3 className="text-xl font-bold text-white mb-4">{title}</h3>
-                <p className="text-gray-300 mb-6">{body}</p>
-                <div className="flex gap-4">
-                    <button onClick={onCancel} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button>
-                    <button onClick={onConfirm} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// [추가] 코트 선택 모달
-function CourtSelectionModal({ courts, onSelect, onCancel }) {
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4">코트 선택</h3>
-                <p className="text-gray-300 mb-6">경기를 시작할 코트를 선택해주세요.</p>
-                <div className="flex flex-col gap-3">
-                    {courts.map(courtIdx => (
-                        <button key={courtIdx} onClick={() => onSelect(courtIdx)} className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">
-                            {courtIdx + 1}번 코트에서 시작
-                        </button>
+            <section className="court-section">
+                <h2>경기 진행</h2>
+                <div className="court-grid">
+                    {courts.map((court, index) => (
+                        <div key={index} className="court">
+                            <h3>{index + 1}번 코트</h3>
+                            <div className="court-players">
+                                {court ? (
+                                    court.players.map(player => (
+                                       <PlayerCard 
+                                         key={player.id}
+                                         player={players.find(p => p.id === player.id)}
+                                         isLongPressable={true}
+                                         onLongPress={handlePlayerLongPress}
+                                       />
+                                    ))
+                                ) : (
+                                    <div className="placeholder-text">빈 코트</div>
+                                )}
+                            </div>
+                        </div>
                     ))}
                 </div>
-                <button onClick={onCancel} className="mt-6 w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button>
-            </div>
+            </section>
         </div>
     );
 }
 
-function EditGamesModal({ player, onSave, onCancel }) {
-    const [count, setCount] = useState(player.gamesPlayed);
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+//  재사용 가능한 PlayerCard 컴포넌트
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+
+function PlayerCard({ player, isSelected, onClick, isLongPressable, onLongPress }) {
+    const longPressTimer = useRef();
+
+    const handleContextMenu = (e) => {
+        // 모바일 길게 누르기 기본 동작(컨텍스트 메뉴) 방지
+        e.preventDefault();
+    };
+
+    const handleMouseDown = () => {
+        if (!isLongPressable) return;
+        longPressTimer.current = setTimeout(() => {
+            onLongPress(player);
+        }, 700); // 700ms 이상 누르면 롱 프레스로 간주
+    };
+
+    const handleMouseUp = () => {
+        clearTimeout(longPressTimer.current);
+    };
+
+    const handleTouchStart = () => handleMouseDown();
+    const handleTouchEnd = () => handleMouseUp();
+    
+    if (!player) return null;
 
     return (
-         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-xs text-center shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4">{player.name} 경기 수 수정</h3>
-                <div className="flex items-center justify-center gap-4 my-6">
-                    <button onClick={() => setCount(c => Math.max(0, c - 1))} className="px-4 py-2 bg-gray-600 rounded-full text-2xl w-14 h-14 flex items-center justify-center">-</button>
-                    <span className="text-4xl font-bold w-16 text-center text-white">{count}</span>
-                    <button onClick={() => setCount(c => c + 1)} className="px-4 py-2 bg-gray-600 rounded-full text-2xl w-14 h-14 flex items-center justify-center">+</button>
+        <div
+            className={`player-card ${isSelected ? 'selected' : ''}`}
+            onClick={onClick}
+            onContextMenu={handleContextMenu}
+            onMouseDown={handleMouseDown}
+            onMouseUp={handleMouseUp}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+        >
+            <span className="player-name">{player.name}</span>
+            <span className="player-matches">({player.matchCount || 0}회)</span>
+        </div>
+    );
+}
+
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+//  코트 이동/교체 모달 컴포넌트
+// =_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=_=
+
+function CourtMoveModal({ player, courts, onSelectCourt, onClose }) {
+    const currentCourtIndex = courts.findIndex(c => c && c.players.some(p => p.id === player.id));
+
+    return (
+        <div className="modal-backdrop" onClick={onClose}>
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <h3>"{player.name}" 선수 이동</h3>
+                <p>몇 번 코트로 이동/교체할까요?</p>
+                <div className="court-selection-buttons">
+                    {Array.from({ length: COURT_COUNT }).map((_, index) => {
+                        if (index === currentCourtIndex) return null;
+                        return (
+                            <button 
+                                key={index} 
+                                onClick={() => onSelectCourt(index)}
+                                className="court-select-button"
+                            >
+                                {index + 1}번 코트
+                                {courts[index] ? ' (교체)' : ' (이동)'}
+                            </button>
+                        );
+                    })}
                 </div>
-                <div className="flex gap-4">
-                    <button onClick={onCancel} className="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button>
-                    <button onClick={() => onSave(count)} className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">저장</button>
-                </div>
+                <button onClick={onClose} className="modal-close-button">취소</button>
             </div>
         </div>
     );
 }
+
+
+export default App;
 
