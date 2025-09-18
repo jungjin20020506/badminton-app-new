@@ -37,9 +37,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const handleMouseUp = () => { clearTimeout(pressTimer); };
     const handleContextMenu = (e) => { e.preventDefault(); };
     
-    // [기능 추가] 성별 구분을 위한 스타일
     const genderStyle = {
-        boxShadow: `inset 3px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}` // 남자: blue-500, 여자: pink-500
+        boxShadow: `inset 3px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}`
     };
 
     const adminIcon = ADMIN_NAMES.includes(player.name) ? '👑' : '';
@@ -54,7 +53,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             className={`player-card bg-gray-700 p-1 rounded-md cursor-pointer border-2 relative flex flex-col justify-center text-center h-14`}
             style={{
                 borderColor: context.selected ? '#FBBF24' : 'transparent',
-                ...genderStyle // 성별 스타일 적용
+                ...genderStyle
             }}
             onClick={() => onCardClick(player.id)}
             onMouseDown={isAdmin ? handleMouseDown : null}
@@ -360,13 +359,13 @@ export default function App() {
 
     if (!currentUser) { return <EntryPage onEnter={handleEnter} />; }
 
-    // [기능 추가] 대기자 명단을 성별로 분리
-    const waitingPlayers = useMemo(() => Object.values(players)
+    // [오류 수정] useMemo를 남용하면 오류가 발생할 수 있으므로, 간단한 필터링은 일반 상수로 변경
+    const waitingPlayers = Object.values(players)
         .filter(p => playerLocations[p.id]?.location === 'waiting')
-        .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime)), [players, playerLocations]);
+        .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
     
-    const maleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '남'), [waitingPlayers]);
-    const femaleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '여'), [waitingPlayers]);
+    const maleWaitingPlayers = waitingPlayers.filter(p => p.gender === '남');
+    const femaleWaitingPlayers = waitingPlayers.filter(p => p.gender === '여');
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ minWidth: '320px' }}>
@@ -387,22 +386,19 @@ export default function App() {
             <main className="flex-grow flex flex-col gap-4 p-1">
                 <section className="flex-shrink-0 bg-gray-800/50 rounded-lg p-2">
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">대기자 명단 ({waitingPlayers.length})</h2>
-                    {/* 남자 대기자 */}
-                    {maleWaitingPlayers.length > 0 &&
+                    {maleWaitingPlayers.length > 0 && (
                         <div id="male-waiting-list" className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
                             {maleWaitingPlayers.map(player => ( <PlayerCard key={player.id} player={player} context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleDeleteFromWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ))}
                         </div>
-                    }
-                    {/* 구분선 */}
-                    {maleWaitingPlayers.length > 0 && femaleWaitingPlayers.length > 0 &&
+                    )}
+                    {maleWaitingPlayers.length > 0 && femaleWaitingPlayers.length > 0 && (
                         <div className="my-2 border-t-2 border-dashed border-gray-600"></div>
-                    }
-                    {/* 여자 대기자 */}
-                    {femaleWaitingPlayers.length > 0 &&
+                    )}
+                    {femaleWaitingPlayers.length > 0 && (
                         <div id="female-waiting-list" className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
                             {femaleWaitingPlayers.map(player => ( <PlayerCard key={player.id} player={player} context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleDeleteFromWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ))}
                         </div>
-                    }
+                    )}
                 </section>
                 
                 <section>
@@ -443,7 +439,7 @@ export default function App() {
                                     {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
                                         const player = players[playerId];
                                         const context = { location: 'court', matchIndex: courtIndex, selected: selectedPlayerIds.includes(playerId) };
-                                        return player ? ( <PlayerCard key={playerId || slotIndex} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={() => setModal({type: 'moveCourt', data: { sourceCourtIndex: courtIndex }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} /> )
+                                        return player ? ( <PlayerCard key={playerId || `court-empty-${courtIndex}-${slotIndex}`} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={() => setModal({type: 'moveCourt', data: { sourceCourtIndex: courtIndex }})}/> ) : ( <EmptySlot key={`court-empty-${courtIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} /> )
                                     })}
                                </div>
                                 <div className="flex-shrink-0 w-14 text-center">
