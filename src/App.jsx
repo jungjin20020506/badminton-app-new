@@ -196,7 +196,16 @@ export default function App() {
     
     const handleDeleteFromWaiting = useCallback((player) => {
         setModal({ type: 'confirm', data: { title: '선수 내보내기', body: `${player.name} 선수를 내보낼까요?`,
-            onConfirm: async () => { await deleteDoc(doc(playersRef, player.id)); setModal({ type: null, data: null }); }
+            onConfirm: async () => { 
+                try {
+                    await deleteDoc(doc(playersRef, player.id)); 
+                } catch (error) {
+                    console.error("Error deleting player: ", error);
+                    setModal({ type: 'alert', data: { title: '오류', body: '선수 삭제에 실패했습니다.' }});
+                } finally {
+                    setModal({ type: null, data: null });
+                }
+            }
         }});
     }, []);
 
@@ -204,23 +213,60 @@ export default function App() {
         const { name, level, gender } = formData;
         if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' } }); return; }
         const id = generateId(name);
-        const playerDocRef = doc(playersRef, id);
-        let docSnap = await getDoc(playerDocRef);
-        let playerData = docSnap.exists() ? docSnap.data() : { id, name, level, gender, gamesPlayed: 0, entryTime: new Date().toISOString() };
-        if (!docSnap.exists()) await setDoc(playerDocRef, playerData);
-        setCurrentUser(playerData);
-        localStorage.setItem('badminton-currentUser-id', id);
+        try {
+            const playerDocRef = doc(playersRef, id);
+            let docSnap = await getDoc(playerDocRef);
+            let playerData = docSnap.exists() ? docSnap.data() : { id, name, level, gender, gamesPlayed: 0, entryTime: new Date().toISOString() };
+            if (!docSnap.exists()) await setDoc(playerDocRef, playerData);
+            setCurrentUser(playerData);
+            localStorage.setItem('badminton-currentUser-id', id);
+        } catch (error) {
+            console.error("Error entering: ", error);
+            setModal({ type: 'alert', data: { title: '오류', body: '입장 처리 중 문제가 발생했습니다.' }});
+        }
     }, []);
 
     const handleLogout = useCallback(() => {
-        setModal({ type: 'confirm', data: { title: '로그아웃', body: '로그아웃하고 이름 입력 화면으로 돌아가시겠습니까?',
-            onConfirm: () => {
-                localStorage.removeItem('badminton-currentUser-id');
-                setCurrentUser(null);
-                setModal({ type: null, data: null });
+        if (!currentUser) return;
+        setModal({ type: 'confirm', data: { 
+            title: '나가기', 
+            body: '나가시면 대기 명단과 경기에서 완전히 제외됩니다. 정말 나가시겠습니까?',
+            onConfirm: async () => {
+                try {
+                    // 1. 경기 상태에서 선수 제거 (트랜잭션)
+                    await updateGameState(currentState => {
+                        const newState = JSON.parse(JSON.stringify(currentState));
+                        const playerId = currentUser.id;
+                        Object.keys(newState.scheduledMatches).forEach(matchKey => {
+                            const match = newState.scheduledMatches[matchKey];
+                            const playerIndex = match.indexOf(playerId);
+                            if (playerIndex > -1) match[playerIndex] = null;
+                        });
+                        newState.inProgressCourts.forEach((court, courtIndex) => {
+                            if (court?.players) {
+                                const playerIndex = court.players.indexOf(playerId);
+                                if (playerIndex > -1) court.players[playerIndex] = null;
+                                if (court.players.every(p => p === null)) newState.inProgressCourts[courtIndex] = null;
+                            }
+                        });
+                        return newState;
+                    });
+
+                    // 2. 선수 정보 자체를 삭제
+                    await deleteDoc(doc(playersRef, currentUser.id));
+
+                    // 3. 로컬 상태 초기화
+                    localStorage.removeItem('badminton-currentUser-id');
+                    setCurrentUser(null);
+                    setModal({ type: null, data: null });
+
+                } catch (error) {
+                    console.error("Error logging out: ", error);
+                    setModal({ type: 'alert', data: { title: '오류', body: '나가는 도중 문제가 발생했습니다.' }});
+                }
             }
         }});
-    }, []);
+    }, [currentUser, updateGameState]);
     
     const handleCardClick = useCallback((playerId) => {
         if (!isAdmin) return;
@@ -359,7 +405,6 @@ export default function App() {
 
     if (!currentUser) { return <EntryPage onEnter={handleEnter} />; }
 
-    // [오류 수정] useMemo를 남용하면 오류가 발생할 수 있으므로, 간단한 필터링은 일반 상수로 변경
     const waitingPlayers = Object.values(players)
         .filter(p => playerLocations[p.id]?.location === 'waiting')
         .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
@@ -379,7 +424,7 @@ export default function App() {
                 <h1 className="text-lg font-bold text-yellow-400">Cockslighting</h1>
                 <div className="text-right">
                     <span className="text-xs">{isAdmin ? '👑' : ''} {currentUser.name}</span>
-                    <button onClick={handleLogout} className="ml-2 bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-2 rounded-md text-xs">로그아웃</button>
+                    <button onClick={handleLogout} className="ml-2 bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs">나가기</button>
                 </div>
             </header>
 
@@ -405,7 +450,7 @@ export default function App() {
                     <h2 className="text-sm font-bold mb-2 text-yellow-400 px-1">경기 예정</h2>
                     <div id="scheduled-matches" className="flex flex-col gap-2">
                         {scheduledMatchesArray.map((match, matchIndex) => (
-                            <div key={matchIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-1 gap-1">
+                            <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800 rounded-lg p-1 gap-1">
                                 <div className="flex-shrink-0 w-12 text-center">
                                     <p className="font-semibold text-[10px] text-gray-400">예정</p>
                                     <p className="font-bold text-base text-white">{matchIndex + 1}</p>
@@ -415,7 +460,7 @@ export default function App() {
                                         const playerId = match[slotIndex];
                                         const player = players[playerId];
                                         const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                        return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                        return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                     })}
                                 </div>
                                 <div className="flex-shrink-0 w-14 text-center">
@@ -430,7 +475,7 @@ export default function App() {
                     <h2 className="text-sm font-bold mb-2 text-yellow-400 px-1">경기 진행 코트</h2>
                     <div id="in-progress-courts" className="flex flex-col gap-2">
                        {inProgressCourts.map((court, courtIndex) => (
-                           <div key={courtIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-1 gap-1">
+                           <div key={`court-${courtIndex}`} className="flex items-center w-full bg-gray-800 rounded-lg p-1 gap-1">
                                 <div className="flex-shrink-0 w-12 text-center">
                                     <p className="font-bold text-base text-white">{courtIndex + 1}</p>
                                     <p className="font-semibold text-[10px] text-gray-400">코트</p>
@@ -439,7 +484,7 @@ export default function App() {
                                     {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
                                         const player = players[playerId];
                                         const context = { location: 'court', matchIndex: courtIndex, selected: selectedPlayerIds.includes(playerId) };
-                                        return player ? ( <PlayerCard key={playerId || `court-empty-${courtIndex}-${slotIndex}`} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={() => setModal({type: 'moveCourt', data: { sourceCourtIndex: courtIndex }})}/> ) : ( <EmptySlot key={`court-empty-${courtIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} /> )
+                                        return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={() => setModal({type: 'moveCourt', data: { sourceCourtIndex: courtIndex }})}/> ) : ( <EmptySlot key={`court-empty-${courtIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} /> )
                                     })}
                                </div>
                                 <div className="flex-shrink-0 w-14 text-center">
