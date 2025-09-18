@@ -41,12 +41,13 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const isWaiting = !context.location;
     const buttonHoverColor = isWaiting ? 'hover:text-red-500' : 'hover:text-yellow-400';
     const buttonIcon = "fas fa-times-circle fa-xs";
-    const playerNameClass = `player-name text-white text-[10px] font-bold whitespace-nowrap leading-tight pr-4`;
+    const playerNameClass = `player-name text-white text-[11px] font-bold whitespace-nowrap leading-tight`;
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
 
     return (
         <div 
-            className={`player-card bg-gray-700 p-1 rounded-md cursor-pointer border-2 relative flex flex-col justify-center text-center min-h-[56px] ${context.selected ? 'border-yellow-400 shadow-yellow' : 'border-transparent'}`}
+            className={`player-card bg-gray-700 p-1 rounded-md cursor-pointer border-2 relative flex flex-col justify-center text-center h-14`}
+            style={{borderColor: context.selected ? '#FBBF24' : 'transparent'}}
             onClick={() => onCardClick(player.id)}
             onMouseDown={isAdmin ? handleMouseDown : null}
             onMouseUp={isAdmin ? handleMouseUp : null}
@@ -72,7 +73,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     );
 });
 
-const EmptySlot = ({ onSlotClick }) => ( <div className="player-slot min-h-[56px] bg-gray-900/50 rounded-md flex items-center justify-center text-gray-500 border-2 border-dashed border-gray-600 cursor-pointer" onClick={onSlotClick}><span className="text-lg">+</span></div> );
+const EmptySlot = ({ onSlotClick }) => ( <div className="player-slot h-14 bg-gray-900/50 rounded-md flex items-center justify-center text-gray-500 border-2 border-dashed border-gray-600 cursor-pointer" onClick={onSlotClick}><span className="text-lg">+</span></div> );
 
 const CourtTimer = ({ court }) => {
     const [time, setTime] = useState('00:00');
@@ -89,7 +90,7 @@ const CourtTimer = ({ court }) => {
             return () => clearInterval(timerId);
         } else { setTime('00:00'); }
     }, [court]);
-    return <div className="text-center text-lg font-mono my-1 text-white">{time}</div>;
+    return <div className="text-center text-sm font-mono text-white mt-1">{time}</div>;
 };
 
 // ===================================================================================
@@ -158,26 +159,16 @@ export default function App() {
         Object.keys(players).forEach(pId => locations[pId] = { location: 'waiting' });
         for (let i = 0; i < 4; i++) {
             const match = scheduledMatches[String(i)];
-            if (match) {
-                match.forEach((playerId, j) => {
-                    if (playerId) locations[playerId] = { location: 'schedule', matchIndex: i, slotIndex: j };
-                });
-            }
+            if (match) { match.forEach((playerId, j) => { if (playerId) locations[playerId] = { location: 'schedule', matchIndex: i, slotIndex: j }; }); }
         }
         for (let i = 0; i < 4; i++) {
             const court = inProgressCourts[i];
-            if (court && court.players) {
-                court.players.forEach((playerId, j) => {
-                    if (playerId) locations[playerId] = { location: 'court', matchIndex: i, slotIndex: j };
-                });
-            }
+            if (court && court.players) { court.players.forEach((playerId, j) => { if (playerId) locations[playerId] = { location: 'court', matchIndex: i, slotIndex: j }; });}
         }
         return locations;
     }, [players, scheduledMatches, inProgressCourts]);
 
-    const findPlayerLocation = useCallback((playerId) => {
-        return playerLocations[playerId] || { location: 'waiting' };
-    }, [playerLocations]);
+    const findPlayerLocation = useCallback((playerId) => playerLocations[playerId] || { location: 'waiting' }, [playerLocations]);
     
     const handleReturnToWaiting = useCallback(async (player) => {
         const loc = findPlayerLocation(player.id);
@@ -198,10 +189,7 @@ export default function App() {
     
     const handleDeleteFromWaiting = useCallback((player) => {
         setModal({ type: 'confirm', data: { title: '선수 내보내기', body: `${player.name} 선수를 내보낼까요?`,
-            onConfirm: async () => {
-                await deleteDoc(doc(playersRef, player.id));
-                setModal({ type: null, data: null });
-            }
+            onConfirm: async () => { await deleteDoc(doc(playersRef, player.id)); setModal({ type: null, data: null }); }
         }});
     }, []);
 
@@ -270,9 +258,7 @@ export default function App() {
                 const availableSlots = targetMatch.filter(p => p === null).length;
                 if (selectedPlayerIds.length > availableSlots) { console.warn("Not enough slots!"); return currentState; }
                 const playersToMove = [...selectedPlayerIds];
-                for (let i = 0; i < 4 && playersToMove.length > 0; i++) {
-                    if (targetMatch[i] === null) { targetMatch[i] = playersToMove.shift(); }
-                }
+                for (let i = 0; i < 4 && playersToMove.length > 0; i++) { if (targetMatch[i] === null) { targetMatch[i] = playersToMove.shift(); } }
                 return newState;
             });
         } else if (selectedPlayerIds.length === 1) {
@@ -283,9 +269,7 @@ export default function App() {
             if (context.location === 'court' && originalLoc.location === 'waiting') {
                 const playerRef = doc(playersRef, playerToMoveId);
                 const player = players[playerToMoveId];
-                if (player) {
-                    await updateDoc(playerRef, { gamesPlayed: player.gamesPlayed + 1 });
-                }
+                if (player) { await updateDoc(playerRef, { gamesPlayed: player.gamesPlayed + 1 }); }
             }
             
             await updateGameState(currentState => {
@@ -299,17 +283,13 @@ export default function App() {
                 if (context.location === 'schedule') {
                     const { matchIndex, slotIndex } = context;
                     newState.scheduledMatches[String(matchIndex)] = newState.scheduledMatches[String(matchIndex)] || Array(4).fill(null);
-                    if (!newState.scheduledMatches[String(matchIndex)][slotIndex]) {
-                        newState.scheduledMatches[String(matchIndex)][slotIndex] = playerToMoveId;
-                    } else { return currentState; }
+                    if (!newState.scheduledMatches[String(matchIndex)][slotIndex]) { newState.scheduledMatches[String(matchIndex)][slotIndex] = playerToMoveId; } 
+                    else { return currentState; }
                 } else if (context.location === 'court') {
                     const { courtIndex, slotIndex } = context;
-                    if (!newState.inProgressCourts[courtIndex]) {
-                        newState.inProgressCourts[courtIndex] = { players: Array(4).fill(null), startTime: new Date().toISOString() };
-                    }
-                    if (!newState.inProgressCourts[courtIndex].players[slotIndex]) {
-                        newState.inProgressCourts[courtIndex].players[slotIndex] = playerToMoveId;
-                    } else { return currentState; }
+                    if (!newState.inProgressCourts[courtIndex]) { newState.inProgressCourts[courtIndex] = { players: Array(4).fill(null), startTime: new Date().toISOString() }; }
+                    if (!newState.inProgressCourts[courtIndex].players[slotIndex]) { newState.inProgressCourts[courtIndex].players[slotIndex] = playerToMoveId; } 
+                    else { return currentState; }
                 }
                 return newState;
             });
@@ -321,20 +301,14 @@ export default function App() {
         if (match.filter(p => p).length !== 4) return;
         
         const emptyCourts = inProgressCourts.map((c, i) => c ? -1 : i).filter(i => i !== -1);
-        if (emptyCourts.length === 0) {
-            setModal({type: 'alert', data: { title: "시작 불가", body: "빈 코트가 없습니다." } });
-            return;
-        }
+        if (emptyCourts.length === 0) { setModal({type: 'alert', data: { title: "시작 불가", body: "빈 코트가 없습니다." } }); return; }
 
         const start = async (courtIndex) => {
             const playersToMove = scheduledMatches[String(matchIndex)].filter(p => p);
             const batch = writeBatch(db);
             playersToMove.forEach(playerId => {
                 const player = players[playerId];
-                if (player) {
-                    const playerRef = doc(playersRef, playerId);
-                    batch.update(playerRef, { gamesPlayed: player.gamesPlayed + 1 });
-                }
+                if (player) { const playerRef = doc(playersRef, playerId); batch.update(playerRef, { gamesPlayed: player.gamesPlayed + 1 }); }
             });
             await batch.commit();
 
@@ -345,22 +319,15 @@ export default function App() {
                 currentScheduledArray.splice(matchIndex, 1);
                 currentScheduledArray.push(null);
                 const updatedScheduledMatches = {};
-                currentScheduledArray.forEach((match, i) => {
-                    if (match && match.some(p => p !== null)) {
-                        updatedScheduledMatches[String(i)] = match;
-                    }
-                });
+                currentScheduledArray.forEach((match, i) => { if (match && match.some(p => p !== null)) { updatedScheduledMatches[String(i)] = match; }});
                 newState.scheduledMatches = updatedScheduledMatches;
                 return newState;
             });
             setModal({type:null, data:null});
         };
 
-        if (emptyCourts.length === 1) {
-            start(emptyCourts[0]);
-        } else {
-            setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } });
-        }
+        if (emptyCourts.length === 1) { start(emptyCourts[0]); } 
+        else { setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } }); }
     }, [scheduledMatchesArray, inProgressCourts, players, updateGameState, scheduledMatches]);
 
     const handleEndMatch = useCallback(async (courtIndex) => {
@@ -413,16 +380,16 @@ export default function App() {
                     </div>
                 </section>
                 
-                {/* [UI 변경] 경기 예정: 리스트 뷰 */}
                 <section>
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">경기 예정</h2>
                     <div id="scheduled-matches" className="flex flex-col gap-2">
                         {scheduledMatchesArray.map((match, matchIndex) => (
-                            <div key={matchIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-2 md:gap-4">
-                                <div className="w-20 md:w-28 text-center">
-                                    <h3 className="font-bold text-xs md:text-sm text-white">경기 예정 {matchIndex + 1}</h3>
+                            <div key={matchIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-3">
+                                <div className="flex-shrink-0 w-16 text-center">
+                                    <p className="font-semibold text-xs text-gray-400">경기 예정</p>
+                                    <p className="font-bold text-xl text-white">{matchIndex + 1}</p>
                                 </div>
-                                <div className="grid grid-cols-4 gap-2 flex-1">
+                                <div className="grid grid-cols-4 gap-2 flex-1 min-w-0">
                                     {Array(4).fill(null).map((_, slotIndex) => {
                                         const playerId = match[slotIndex];
                                         const player = players[playerId];
@@ -430,10 +397,7 @@ export default function App() {
                                         return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'editGames', data: { player: p }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                     })}
                                 </div>
-                                <div className="w-16 md:w-24 text-center">
-                                    <div className="text-center text-lg font-mono my-1 text-gray-500">--:--</div>
-                                </div>
-                                <div className="w-20 md:w-28 text-center">
+                                <div className="flex-shrink-0 w-20 text-center">
                                      <button className={`w-full py-2 px-2 rounded-md font-semibold transition duration-300 text-xs ${match.filter(p=>p).length === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={match.filter(p=>p).length !== 4 || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>경기 시작</button>
                                 </div>
                             </div>
@@ -441,27 +405,24 @@ export default function App() {
                     </div>
                 </section>
 
-                {/* [UI 변경] 경기 진행 코트: 리스트 뷰 */}
                 <section>
                     <h2 className="text-sm font-bold mb-2 text-yellow-400">경기 진행 코트</h2>
                     <div id="in-progress-courts" className="flex flex-col gap-2">
                        {inProgressCourts.map((court, courtIndex) => (
-                           <div key={courtIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-2 md:gap-4">
-                                <div className="w-20 md:w-28 text-center">
-                                    <h3 className="font-bold text-xs md:text-sm text-white">{courtIndex + 1}번 코트</h3>
+                           <div key={courtIndex} className="flex items-center w-full bg-gray-800 rounded-lg p-2 gap-3">
+                                <div className="flex-shrink-0 w-16 text-center">
+                                    <p className="font-semibold text-xs text-gray-400">{courtIndex + 1}번 코트</p>
                                 </div>
-                               <div className="grid grid-cols-4 gap-2 flex-1">
+                               <div className="grid grid-cols-4 gap-2 flex-1 min-w-0">
                                     {(court?.players || Array(4).fill(null)).map((playerId, slotIndex) => {
                                         const player = players[playerId];
                                         const context = { location: 'court', matchIndex: courtIndex, selected: selectedPlayerIds.includes(playerId) };
                                         return player ? ( <PlayerCard key={playerId || slotIndex} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={() => setModal({type: 'moveCourt', data: { sourceCourtIndex: courtIndex }})}/> ) : ( <EmptySlot key={slotIndex} onSlotClick={() => handleSlotClick({ location: 'court', courtIndex, slotIndex })} /> )
                                     })}
                                </div>
-                                <div className="w-16 md:w-24 text-center">
-                                    <CourtTimer court={court} />
-                                </div>
-                               <div className="w-20 md:w-28 text-center">
+                                <div className="flex-shrink-0 w-20 text-center">
                                     <button className={`w-full py-2 px-2 rounded-md font-semibold transition duration-300 text-xs ${court && isAdmin ? 'bg-white hover:bg-gray-200 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={() => handleEndMatch(courtIndex)}>경기 종료</button>
+                                    <CourtTimer court={court} />
                                </div>
                            </div>
                        ))}
@@ -513,3 +474,4 @@ function EditGamesModal({ player, onSave, onCancel }) {
 }
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 function MoveCourtModal({ sourceCourtIndex, courts, onSelect, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{sourceCourtIndex + 1}번 코트 경기 이동</h3><p className="text-gray-300 mb-6">어느 코트로 이동/교체할까요?</p><div className="flex flex-col gap-3">{courts.map((court, idx) => { if (idx === sourceCourtIndex) return null; return ( <button key={idx} onClick={() => onSelect(sourceCourtIndex, idx)} className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 rounded-lg transition-colors">{idx + 1}번 코트</button> )})}</div><button onClick={onCancel} className="mt-6 w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button></div></div> ); }
+
