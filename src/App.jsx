@@ -26,7 +26,7 @@ const playersRef = collection(db, "players");
 const gameStateRef = doc(db, "gameState", "live");
 const configRef = doc(db, "config", "season");
 const monthlyRankingsRef = collection(db, "monthlyRankings");
-const notificationsRef = collection(db, "notifications"); // [NEW] 알림 컬렉션 참조
+const notificationsRef = collection(db, "notifications");
 
 // --- 2. Service 로직 ---
 let allPlayersData = {};
@@ -60,7 +60,8 @@ onSnapshot(gameStateRef, (doc) => {
         numInProgressCourts: 4,
     };
   }
-  if(resolveGameState) { resolveGameState = null; }
+  // [FIXED] 로딩 완료 신호를 보내는 함수 호출()을 추가했습니다.
+  if(resolveGameState) { resolveGameState(); resolveGameState = null; }
   notifySubscribers();
 });
 
@@ -74,7 +75,8 @@ onSnapshot(configRef, (doc) => {
             pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP"
         };
     }
-    if(resolveSeasonConfig) { resolveSeasonConfig = null; }
+    // [FIXED] 로딩 완료 신호를 보내는 함수 호출()을 추가했습니다.
+    if(resolveSeasonConfig) { resolveSeasonConfig(); resolveSeasonConfig = null; }
     notifySubscribers();
 });
 
@@ -128,7 +130,7 @@ const calculateLocations = (gameState, players) => {
             const match = gameState.scheduledMatches[matchKey];
             if (match) {
                 match.forEach((playerId, slotIndex) => {
-                    if (playerId) locations[playerId] = { location: 'schedule', matchIndex: parseInt(matchKey), slotIndex: slotIndex };
+                    if (playerId) locations[playerId] = { location: 'schedule', matchIndex: parseInt(matchKey, 10), slotIndex: slotIndex };
                 });
             }
         });
@@ -444,8 +446,6 @@ export default function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState('main');
     const [courtMove, setCourtMove] = useState({ sourceIndex: null });
-    
-    // [NEW] 월간 랭킹 초기화 알림 상태
     const [resetNotification, setResetNotification] = useState(null);
 
     const activePlayers = useMemo(() => {
@@ -460,17 +460,16 @@ export default function App() {
         return ADMIN_NAMES.includes(currentUser.name);
     }, [currentUser]);
 
-    // [NEW] 랭킹 초기화 알림을 감지하는 로직
     useEffect(() => {
         if (!currentUser || !isAdmin) return;
         
-        const adminId = generateId(currentUser.name);
+        const adminId = generateId("정형진");
         const notifDocRef = doc(notificationsRef, adminId);
 
         const unsubscribe = onSnapshot(notifDocRef, (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
-                if (data.status === 'pending') {
+                if (data.status === 'pending' || data.status === 'error') {
                     setResetNotification({ id: doc.id, ...data });
                 } else {
                     setResetNotification(null);
@@ -837,24 +836,16 @@ export default function App() {
         });
     }, [gameState, allPlayers, processMatchResult]);
     
-    // [NEW] 모든 랭킹 데이터를 초기화하는 함수
     const handleResetAllRankings = useCallback(async () => {
         try {
-            const allPlayersSnapshot = await getDocs(playersRef);
+            const allPlayersSnapshot = await getDocs(query(playersRef, where("isGuest", "==", false)));
             const batch = writeBatch(db);
             
             allPlayersSnapshot.forEach(playerDoc => {
-                // 게스트가 아닌 모든 플레이어의 누적 랭킹 정보만 초기화
-                if (!playerDoc.data().isGuest) {
-                    batch.update(playerDoc.ref, {
-                        wins: 0,
-                        losses: 0,
-                        rp: 0,
-                        attendanceCount: 0,
-                        winStreak: 0,
-                        recentGames: []
-                    });
-                }
+                batch.update(playerDoc.ref, {
+                    wins: 0, losses: 0, rp: 0,
+                    attendanceCount: 0, winStreak: 0, recentGames: []
+                });
             });
             
             await batch.commit();
@@ -951,13 +942,14 @@ export default function App() {
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-            {/* [NEW] 랭킹 초기화 알림 모달 */}
             {resetNotification && (
                 <ConfirmationModal 
-                    title="🏆 시즌 마감"
+                    title={resetNotification.status === 'error' ? "⚠️ 저장 오류" : "🏆 시즌 마감"}
                     body={resetNotification.message}
                     onConfirm={async () => {
-                        await handleResetAllRankings();
+                        if (resetNotification.status === 'pending') {
+                            await handleResetAllRankings();
+                        }
                         await updateDoc(doc(notificationsRef, resetNotification.id), { status: 'acknowledged' });
                         setResetNotification(null);
                     }}
@@ -1066,10 +1058,12 @@ export default function App() {
                         players={allPlayers} 
                         currentUser={currentUser} 
                         isAdmin={isAdmin}
-                        onProfileClick={(player) => {
+                        onProfileClick={(player, rankingPeriod) => {
                             if(isAdmin) {
-                                // 현황판/오늘랭킹에서 수정 시 'simple' 모드로 오늘의 기록만 수정
-                                setModal({ type: 'adminEditPlayer', data: { player, mode: 'simple' }})
+                                setModal({ 
+                                    type: 'adminEditPlayer', 
+                                    data: { player, mode: rankingPeriod === 'monthly' ? 'detailed' : 'simple' }
+                                })
                             } else {
                                 setModal({ type: 'profile', data: { player } })
                             }
@@ -1245,7 +1239,7 @@ function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClic
                     return (
                         <div key={p.id} 
                             className={`p-3 rounded-lg flex items-center gap-4 border ${style.container} ${currentUserHighlight} transition-all duration-300 transform hover:scale-105 cursor-pointer`}
-                            onClick={() => onProfileClick(p)}
+                            onClick={() => onProfileClick(p, rankingPeriod)}
                         >
                             <span className={`text-xl font-bold w-12 text-center arcade-font ${style.rankText}`}>{style.medal || p.rank}</span>
                             <div className="flex-1 min-w-0">
@@ -1409,36 +1403,40 @@ function PointSystemModal({ content, onClose }) {
 }
 
 function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
-    const [todayStats, setTodayStats] = useState({
+    const isDetailedMode = mode === 'detailed';
+    const [stats, setStats] = useState({
         todayWins: player.todayWins || 0,
         todayLosses: player.todayLosses || 0,
+        wins: player.wins || 0, // 상세 모드용
+        losses: player.losses || 0 // 상세 모드용
     });
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setTodayStats(prev => ({...prev, [name]: Number(value) }));
+        setStats(prev => ({...prev, [name]: Number(value) }));
     };
 
     const handleSave = async () => {
-        const finalStats = { 
-            todayWins: todayStats.todayWins,
-            todayLosses: todayStats.todayLosses,
-        };
+        let finalStats = {};
+        if (isDetailedMode) {
+            // 상세 모드에서는 누적 기록과 오늘의 기록 모두 저장 가능
+            finalStats = {
+                wins: stats.wins,
+                losses: stats.losses,
+                todayWins: stats.todayWins,
+                todayLosses: stats.todayLosses
+            };
+        } else {
+            // 심플 모드에서는 오늘의 기록만 저장
+            finalStats = {
+                todayWins: stats.todayWins,
+                todayLosses: stats.todayLosses
+            };
+        }
         await updateDoc(doc(playersRef, player.id), finalStats);
         onClose();
     };
     
-    const handleDeleteAllData = () => {
-        setModal({ type: 'confirm', data: { title: '선수 데이터 초기화', body: `${player.name} 선수의 모든 **누적** 랭킹 데이터를 초기화하시겠습니까? (오늘의 기록은 유지됩니다)`,
-            onConfirm: async () => { 
-                await updateDoc(doc(playersRef, player.id), {
-                    rp: 0, wins: 0, losses: 0, winStreak: 0, recentGames: [], achievements: [], attendanceCount: 0,
-                });
-                onClose();
-            }
-        }});
-    };
-
     const handleDeletePermanently = () => {
         setModal({ type: 'confirm', data: { title: '선수 영구 삭제', body: `[경고] ${player.name} 선수를 랭킹에서 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`,
             onConfirm: async () => { 
@@ -1451,20 +1449,32 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">{player.name} 오늘의 기록 수정</h3>
+                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">{player.name} 기록 수정</h3>
                  <div className="space-y-4">
+                    {isDetailedMode && (
+                        <>
+                            <div className="flex items-center justify-between">
+                                <label className="font-semibold text-cyan-400">이번달 승</label>
+                                <input type="number" name="wins" value={stats.wins} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 text-right"/>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <label className="font-semibold text-cyan-400">이번달 패</label>
+                                <input type="number" name="losses" value={stats.losses} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 text-right"/>
+                            </div>
+                            <hr className="border-gray-600"/>
+                        </>
+                    )}
                     <div className="flex items-center justify-between">
                         <label className="font-semibold">오늘의 승</label>
-                        <input type="number" name="todayWins" value={todayStats.todayWins} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
+                        <input type="number" name="todayWins" value={stats.todayWins} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
                     </div>
                     <div className="flex items-center justify-between">
                         <label className="font-semibold">오늘의 패</label>
-                        <input type="number" name="todayLosses" value={todayStats.todayLosses} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
+                        <input type="number" name="todayLosses" value={stats.todayLosses} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
                     </div>
                 </div>
-                {mode === 'detailed' && (
+                {isDetailedMode && (
                     <div className="mt-4 flex flex-col gap-2">
-                        <button onClick={handleDeleteAllData} className="w-full arcade-button bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded-lg">전체 누적 데이터 초기화</button>
                         <button onClick={handleDeletePermanently} className="w-full arcade-button bg-red-700 hover:bg-red-800 text-white font-bold py-2 rounded-lg">랭킹에서 영구 삭제</button>
                     </div>
                 )}
