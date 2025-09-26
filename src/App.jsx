@@ -5,7 +5,6 @@ import {
     collection, deleteDoc, updateDoc, writeBatch, runTransaction,
     query, getDocs, where
 } from 'firebase/firestore';
-// [NEW] Cloud Functions를 호출하기 위한 import 추가
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 // ===================================================================================
@@ -24,7 +23,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-// [NEW] Functions 서비스 초기화
 const functions = getFunctions(app);
 
 const playersRef = collection(db, "players"); 
@@ -458,14 +456,13 @@ export default function App() {
         }, {});
     }, [allPlayers]);
 
-    const isAdmin = useMemo(() => {
-        if (!currentUser) return false;
-        return ADMIN_NAMES.includes(currentUser.name);
-    }, [currentUser]);
-
+    // [FIX] 알림 리스너 로직 개선
     useEffect(() => {
-        if (!currentUser || !isAdmin) return;
-        
+        if (!currentUser || currentUser.name !== '정형진') {
+            if (resetNotification) setResetNotification(null);
+            return;
+        }
+    
         const adminId = generateId("정형진");
         const notifDocRef = doc(notificationsRef, adminId);
 
@@ -484,7 +481,7 @@ export default function App() {
 
         return () => unsubscribe();
 
-    }, [currentUser, isAdmin]);
+    }, [currentUser]); // currentUser가 변경될 때마다 리스너를 재설정
 
     useEffect(() => {
         const initializeApp = async () => {
@@ -666,6 +663,7 @@ export default function App() {
     }, [currentUser, updateGameState]);
     
     const handleCardClick = useCallback(async (playerId) => {
+        const isAdmin = ADMIN_NAMES.includes(currentUser.name);
         if (!isAdmin) return;
         if (courtMove.sourceIndex !== null) {
             setCourtMove({ sourceIndex: null });
@@ -703,9 +701,10 @@ export default function App() {
                 setSelectedPlayerIds([]);
             } else { setSelectedPlayerIds([playerId]); }
         }
-    }, [isAdmin, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove]);
+    }, [currentUser, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove]);
     
     const handleSlotClick = useCallback(async (context) => {
+        const isAdmin = ADMIN_NAMES.includes(currentUser.name);
         if (!isAdmin || selectedPlayerIds.length === 0) return;
         
         const updateFunction = (currentState) => {
@@ -748,7 +747,7 @@ export default function App() {
 
         await updateGameState(updateFunction, '선수를 경기에 배정하는 데 실패했습니다.');
         setSelectedPlayerIds([]);
-    }, [isAdmin, selectedPlayerIds, activePlayers, updateGameState]);
+    }, [currentUser, selectedPlayerIds, activePlayers, updateGameState]);
     
     const handleStartMatch = useCallback(async (matchIndex) => {
         if (!gameState) return;
@@ -839,15 +838,21 @@ export default function App() {
         });
     }, [gameState, allPlayers, processMatchResult]);
     
+    // [FIX] 랭킹 초기화 기능 구현
     const handleResetAllRankings = useCallback(async () => {
+        setModal({ type: 'alert', data: { title: '처리 중...', body: '랭킹 초기화 작업을 진행하고 있습니다.' } });
         try {
             const allPlayersSnapshot = await getDocs(query(playersRef, where("isGuest", "==", false)));
             const batch = writeBatch(db);
             
             allPlayersSnapshot.forEach(playerDoc => {
                 batch.update(playerDoc.ref, {
-                    wins: 0, losses: 0, rp: 0,
-                    attendanceCount: 0, winStreak: 0, recentGames: []
+                    wins: 0,
+                    losses: 0,
+                    rp: 0,
+                    attendanceCount: 0,
+                    winStreak: 0,
+                    recentGames: []
                 });
             });
             
@@ -942,6 +947,8 @@ export default function App() {
     if (!currentUser) {
         return <EntryPage onEnter={handleEnter} />;
     }
+
+    const isAdmin = ADMIN_NAMES.includes(currentUser.name);
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -1423,7 +1430,6 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
     const handleSave = async () => {
         let finalStats = {};
         if (isDetailedMode) {
-            // 상세 모드에서는 누적 기록과 오늘의 기록 모두 저장 가능
             finalStats = {
                 wins: stats.wins,
                 losses: stats.losses,
@@ -1431,7 +1437,6 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
                 todayLosses: stats.todayLosses
             };
         } else {
-            // 심플 모드에서는 오늘의 기록만 저장
             finalStats = {
                 todayWins: stats.todayWins,
                 todayLosses: stats.todayLosses
@@ -1504,7 +1509,6 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
         onSave({ scheduled, courts, announcement, pointSystemInfo });
     };
     
-    // [NEW] 월간 랭킹 저장 테스트 함수
     const handleTestMonthlyArchive = () => {
         setModal({ type: 'confirm', data: { 
             title: '월간 랭킹 저장 테스트', 
@@ -1519,7 +1523,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
                         title: '테스트 완료', 
                         body: result.data.message
                     }});
-                } catch (error) { // [FIXED] Javascript syntax error
+                } catch (error) {
                     console.error("Test function call failed:", error);
                     setModal({ type: 'alert', data: { 
                         title: '테스트 실패', 
@@ -1561,7 +1565,6 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
                         <label className="font-semibold mb-2 block">점수 획득 설명</label>
                         <textarea value={pointSystemInfo} onChange={(e) => setPointSystemInfo(e.target.value)} rows="5" className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
                     </div>
-                    {/* [NEW] 테스트 버튼 추가 */}
                     <div className="bg-gray-700 p-3 rounded-lg">
                         <label className="font-semibold mb-2 block">고급 기능 테스트</label>
                         <button onClick={handleTestMonthlyArchive} disabled={isTesting} className="w-full arcade-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
