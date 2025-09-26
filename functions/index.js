@@ -1,5 +1,4 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-// [NEW] 수동으로 호출 가능한 onCall 함수를 import합니다.
 const { onCall } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
@@ -8,6 +7,8 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 initializeApp();
 
 const RP_CONFIG = { WIN: 30, LOSS: 10, ATTENDANCE: 20, WIN_STREAK_BONUS: 20 };
+// [FIX] ID 생성 시 공백을 제거해야 하므로, Cloud Function 내에서도 동일한 로직을 사용하도록 수정합니다.
+// 하지만 여기서는 간단하게 공백 없는 이름을 사용합니다.
 const ADMIN_ID = "정형진"; 
 
 /**
@@ -38,11 +39,11 @@ exports.dailyBatchUpdate = onSchedule({
       const todayWins = player.todayWins || 0;
       const todayLosses = player.todayLosses || 0;
       
-      if (player.status === 'active' || todayWins > 0 || todayLosses > 0) {
+      // 오늘 활동한 선수만 업데이트
+      if (todayWins > 0 || todayLosses > 0) {
         const updatedData = {
           todayWins: 0,
           todayLosses: 0,
-          status: 'inactive',
         };
 
         if (!player.isGuest) {
@@ -57,6 +58,9 @@ exports.dailyBatchUpdate = onSchedule({
           }
         }
         batch.update(playerRef, updatedData);
+      } else if (player.status === 'active') {
+        // 게임은 안했지만 접속해있던 유저 상태 변경
+        batch.update(playerRef, { status: 'inactive' });
       }
     });
 
@@ -97,15 +101,16 @@ async function archiveMonthlyRanking(db, isTest = false) {
   const playersRef = db.collection("players");
   
   const today = new Date();
-  if (!isTest) {
-    today.setHours(today.getHours() + 9); // KST
-  }
-  const previousMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  // KST (UTC+9) 기준으로 날짜 계산
+  const kstOffset = 9 * 60 * 60 * 1000;
+  const kstToday = new Date(today.getTime() + kstOffset);
+  
+  const previousMonth = new Date(kstToday.getFullYear(), kstToday.getMonth() - 1, 1);
   const year = previousMonth.getFullYear();
   const month = String(previousMonth.getMonth() + 1).padStart(2, '0');
   const docId = isTest ? `${year}-${month}-TEST` : `${year}-${month}`;
 
-  const snapshot = await playersRef.get();
+  const snapshot = await playersRef.where("isGuest", "==", false).get();
   if (snapshot.empty) {
     logger.log("랭킹을 만들 선수가 없어 함수를 종료합니다.");
     return "랭킹을 만들 선수가 없습니다.";
@@ -113,7 +118,6 @@ async function archiveMonthlyRanking(db, isTest = false) {
 
   const rankedPlayers = snapshot.docs
     .map(doc => doc.data())
-    .filter(p => !p.isGuest)
     .sort((a, b) => (b.rp || 0) - (a.rp || 0))
     .map((p, index) => ({
       id: p.id, name: p.name, rank: index + 1,
@@ -165,7 +169,7 @@ exports.monthlyRankingArchive = onSchedule({
 
 
 /**
- * [NEW] 웹사이트에서 수동으로 호출하여 월간 랭킹 보관 기능을 테스트하는 함수
+ * 웹사이트에서 수동으로 호출하여 월간 랭킹 보관 기능을 테스트하는 함수
  */
 exports.testMonthlyArchive = onCall(async (request) => {
     logger.log("월간 랭킹 보관 '테스트'를 시작합니다.");
@@ -175,7 +179,6 @@ exports.testMonthlyArchive = onCall(async (request) => {
         return { success: true, message: message };
     } catch (error) {
         logger.error("월간 랭킹 '테스트' 중 오류 발생:", error);
-        // 클라이언트에게 오류를 반환합니다.
         throw new functions.https.HttpsError('internal', '테스트 함수 실행 중 서버에서 오류가 발생했습니다.');
     }
 });
