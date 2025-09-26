@@ -456,14 +456,13 @@ export default function App() {
         }, {});
     }, [allPlayers]);
 
-    // [FIX] 알림 리스너 로직 개선
     useEffect(() => {
         if (!currentUser || currentUser.name !== '정형진') {
             if (resetNotification) setResetNotification(null);
             return;
         }
     
-        const adminId = generateId("정형진");
+        const adminId = "정형진";
         const notifDocRef = doc(notificationsRef, adminId);
 
         const unsubscribe = onSnapshot(notifDocRef, (doc) => {
@@ -481,7 +480,7 @@ export default function App() {
 
         return () => unsubscribe();
 
-    }, [currentUser]); // currentUser가 변경될 때마다 리스너를 재설정
+    }, [currentUser, resetNotification]);
 
     useEffect(() => {
         const initializeApp = async () => {
@@ -838,7 +837,6 @@ export default function App() {
         });
     }, [gameState, allPlayers, processMatchResult]);
     
-    // [FIX] 랭킹 초기화 기능 구현
     const handleResetAllRankings = useCallback(async () => {
         setModal({ type: 'alert', data: { title: '처리 중...', body: '랭킹 초기화 작업을 진행하고 있습니다.' } });
         try {
@@ -1191,7 +1189,10 @@ function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClic
                 .filter(p => p.todayTotalGames > 0)
                 .sort((a, b) => b.todayRp - a.todayRp);
         } else {
-            playersToRank.sort((a, b) => (b.rp || 0) - (a.rp || 0));
+            // [FIX] '이번달' 랭킹에서 전적이 있는 선수만 표시하도록 필터링 추가
+            playersToRank = playersToRank
+                .filter(p => (p.wins || 0) > 0 || (p.losses || 0) > 0)
+                .sort((a, b) => (b.rp || 0) - (a.rp || 0));
         }
 
         return playersToRank.map((p, index) => ({ ...p, rank: index + 1 }));
