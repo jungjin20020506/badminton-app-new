@@ -5,6 +5,8 @@ import {
     collection, deleteDoc, updateDoc, writeBatch, runTransaction,
     query, getDocs, where
 } from 'firebase/firestore';
+// [NEW] Cloud Functions를 호출하기 위한 import 추가
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 // ===================================================================================
 // Firebase & Service Logic (하나의 파일로 통합)
@@ -22,6 +24,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+// [NEW] Functions 서비스 초기화
+const functions = getFunctions(app);
+
 const playersRef = collection(db, "players"); 
 const gameStateRef = doc(db, "gameState", "live");
 const configRef = doc(db, "config", "season");
@@ -60,7 +65,6 @@ onSnapshot(gameStateRef, (doc) => {
         numInProgressCourts: 4,
     };
   }
-  // [FIXED] 로딩 완료 신호를 보내는 함수 호출()을 추가했습니다.
   if(resolveGameState) { resolveGameState(); resolveGameState = null; }
   notifySubscribers();
 });
@@ -75,7 +79,6 @@ onSnapshot(configRef, (doc) => {
             pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP"
         };
     }
-    // [FIXED] 로딩 완료 신호를 보내는 함수 호출()을 추가했습니다.
     if(resolveSeasonConfig) { resolveSeasonConfig(); resolveSeasonConfig = null; }
     notifySubscribers();
 });
@@ -977,6 +980,7 @@ export default function App() {
                 seasonConfig={seasonConfig}
                 onSave={handleSettingsUpdate}
                 onCancel={() => setIsSettingsOpen(false)} 
+                setModal={setModal}
             />}
             
             <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
@@ -1487,16 +1491,45 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
     );
 }
 
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSave, onCancel }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSave, onCancel, setModal }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
     const [pointSystemInfo, setPointSystemInfo] = useState(seasonConfig.pointSystemInfo);
+    const [isTesting, setIsTesting] = useState(false);
 
     if (!isAdmin) return null;
 
     const handleSave = () => {
         onSave({ scheduled, courts, announcement, pointSystemInfo });
+    };
+    
+    // [NEW] 월간 랭킹 저장 테스트 함수
+    const handleTestMonthlyArchive = () => {
+        setModal({ type: 'confirm', data: { 
+            title: '월간 랭킹 저장 테스트', 
+            body: '현재 랭킹을 기준으로 "지난달" 랭킹 저장 및 알림 기능을 테스트합니다. 실제 데이터가 생성됩니다. 실행하시겠습니까?',
+            onConfirm: async () => {
+                setIsTesting(true);
+                setModal({ type: null, data: null });
+                try {
+                    const testArchive = httpsCallable(functions, 'testMonthlyArchive');
+                    const result = await testArchive();
+                    setModal({ type: 'alert', data: { 
+                        title: '테스트 완료', 
+                        body: result.data.message
+                    }});
+                } catch (error) { // [FIXED] Javascript syntax error
+                    console.error("Test function call failed:", error);
+                    setModal({ type: 'alert', data: { 
+                        title: '테스트 실패', 
+                        body: 'Cloud Function 호출에 실패했습니다. 콘솔 로그를 확인해주세요.'
+                    }});
+                } finally {
+                    setIsTesting(false);
+                }
+            }
+        }});
     };
 
     return (
@@ -1527,6 +1560,13 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
                      <div className="bg-gray-700 p-3 rounded-lg">
                         <label className="font-semibold mb-2 block">점수 획득 설명</label>
                         <textarea value={pointSystemInfo} onChange={(e) => setPointSystemInfo(e.target.value)} rows="5" className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
+                    </div>
+                    {/* [NEW] 테스트 버튼 추가 */}
+                    <div className="bg-gray-700 p-3 rounded-lg">
+                        <label className="font-semibold mb-2 block">고급 기능 테스트</label>
+                        <button onClick={handleTestMonthlyArchive} disabled={isTesting} className="w-full arcade-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
+                            {isTesting ? '테스트 중...' : '월간 랭킹 저장 테스트'}
+                        </button>
                     </div>
                 </div>
                 <div className="mt-6 flex gap-4">
