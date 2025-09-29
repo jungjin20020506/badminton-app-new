@@ -7,8 +7,6 @@ const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 initializeApp();
 
 const RP_CONFIG = { WIN: 30, LOSS: 10, ATTENDANCE: 20, WIN_STREAK_BONUS: 20 };
-// [FIX] ID 생성 시 공백을 제거해야 하므로, Cloud Function 내에서도 동일한 로직을 사용하도록 수정합니다.
-// 하지만 여기서는 간단하게 공백 없는 이름을 사용합니다.
 const ADMIN_ID = "정형진"; 
 
 /**
@@ -24,9 +22,9 @@ exports.dailyBatchUpdate = onSchedule({
   const playersRef = db.collection("players");
   
   try {
-    const snapshot = await playersRef.get();
+    const snapshot = await playersRef.where("status", "==", "active").get();
     if (snapshot.empty) {
-      logger.log("정산할 선수가 없어 함수를 종료합니다.");
+      logger.log("정산할 활성(active) 선수가 없어 함수를 종료합니다.");
       return null;
     }
 
@@ -38,48 +36,44 @@ exports.dailyBatchUpdate = onSchedule({
 
       const todayWins = player.todayWins || 0;
       const todayLosses = player.todayLosses || 0;
+      const todayWinStreakCount = player.todayWinStreakCount || 0;
       
-      // 오늘 활동한 선수만 업데이트
-      if (todayWins > 0 || todayLosses > 0) {
-        const updatedData = {
-          todayWins: 0,
-          todayLosses: 0,
-        };
+      const updatedData = {
+        todayWins: 0,
+        todayLosses: 0,
+        todayWinStreakCount: 0,
+        todayRecentGames: [],
+      };
 
-        if (!player.isGuest) {
-          const prevTotalGames = (player.wins || 0) + (player.losses || 0);
-          const newTotalGames = prevTotalGames + todayWins + todayLosses;
-          
-          updatedData.wins = FieldValue.increment(todayWins);
-          updatedData.losses = FieldValue.increment(todayLosses);
-          
-          if (prevTotalGames < 3 && newTotalGames >= 3) {
-            updatedData.attendanceCount = FieldValue.increment(1);
-          }
+      if (!player.isGuest) {
+        if (todayWins > 0 || todayLosses > 0) {
+            updatedData.wins = FieldValue.increment(todayWins);
+            updatedData.losses = FieldValue.increment(todayLosses);
+            updatedData.winStreakCount = FieldValue.increment(todayWinStreakCount);
+            
+            const todayTotalGames = todayWins + todayLosses;
+            if (todayTotalGames >= 3) {
+              updatedData.attendanceCount = FieldValue.increment(1);
+            }
         }
-        batch.update(playerRef, updatedData);
-      } else if (player.status === 'active') {
-        // 게임은 안했지만 접속해있던 유저 상태 변경
-        batch.update(playerRef, { status: 'inactive' });
       }
+      
+      batch.update(playerRef, updatedData);
     });
 
     await batch.commit();
     logger.log(`1단계: 오늘의 기록 합산 및 초기화 완료.`);
     
-    // RP 재계산
-    const finalSnapshot = await playersRef.get();
+    const allPlayersSnapshot = await playersRef.where("isGuest", "==", false).get();
     const rpBatch = db.batch();
-    finalSnapshot.forEach(doc => {
+    allPlayersSnapshot.forEach(doc => {
         const player = doc.data();
-        if (!player.isGuest) {
-            const newRP = 
-                (player.wins || 0) * RP_CONFIG.WIN +
-                (player.losses || 0) * RP_CONFIG.LOSS +
-                (player.attendanceCount || 0) * RP_CONFIG.ATTENDANCE +
-                (Math.floor((player.winStreak || 0) / 3) * RP_CONFIG.WIN_STREAK_BONUS);
-            rpBatch.update(doc.ref, { rp: newRP });
-        }
+        const newRP = 
+            (player.wins || 0) * RP_CONFIG.WIN +
+            (player.losses || 0) * RP_CONFIG.LOSS +
+            (player.attendanceCount || 0) * RP_CONFIG.ATTENDANCE +
+            ((player.winStreakCount || 0) * RP_CONFIG.WIN_STREAK_BONUS);
+        rpBatch.update(doc.ref, { rp: newRP });
     });
     
     await rpBatch.commit();
@@ -93,15 +87,11 @@ exports.dailyBatchUpdate = onSchedule({
 
 /**
  * 월간 랭킹 보관 로직을 수행하는 재사용 가능한 함수
- * @param {Firestore} db - Firestore 인스턴스
- * @param {boolean} isTest - 테스트 실행 여부
- * @returns {Promise<string>} - 작업 결과 메시지
  */
 async function archiveMonthlyRanking(db, isTest = false) {
   const playersRef = db.collection("players");
   
   const today = new Date();
-  // KST (UTC+9) 기준으로 날짜 계산
   const kstOffset = 9 * 60 * 60 * 1000;
   const kstToday = new Date(today.getTime() + kstOffset);
   
@@ -122,6 +112,7 @@ async function archiveMonthlyRanking(db, isTest = false) {
     .map((p, index) => ({
       id: p.id, name: p.name, rank: index + 1,
       rp: p.rp || 0, wins: p.wins || 0, losses: p.losses || 0,
+      winStreakCount: p.winStreakCount || 0, attendanceCount: p.attendanceCount || 0,
     }));
 
   if (rankedPlayers.length > 0) {
