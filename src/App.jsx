@@ -8,10 +8,10 @@ import {
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 // ===================================================================================
-// Firebase & Service Logic (하나의 파일로 통합)
+// Firebase & Service Logic (Integrated into one file)
 // ===================================================================================
 
-// --- 1. Firebase 설정 ---
+// --- 1. Firebase Configuration ---
 const firebaseConfig = {
   apiKey: "AIzaSyCKT1JZ8MkA5WhBdL3XXxtm_0wLbnOBi5I",
   authDomain: "project-104956788310687609.firebaseapp.com",
@@ -31,7 +31,7 @@ const configRef = doc(db, "config", "season");
 const monthlyRankingsRef = collection(db, "monthlyRankings");
 const notificationsRef = collection(db, "notifications");
 
-// --- 2. Service 로직 ---
+// --- 2. Service Logic ---
 let allPlayersData = {};
 let gameStateData = null;
 let seasonConfigData = null; 
@@ -43,14 +43,53 @@ const gameStatePromise = new Promise(resolve => { resolveGameState = resolve; })
 const seasonConfigPromise = new Promise(resolve => { resolveSeasonConfig = resolve; });
 const readyPromise = Promise.all([allPlayersPromise, gameStatePromise, seasonConfigPromise]);
 
-// --- 3. Firestore 리스너 설정 ---
-onSnapshot(playersRef, (snapshot) => {
-  const players = {};
-  snapshot.forEach(doc => players[doc.id] = doc.data());
-  allPlayersData = players;
-  if(resolveAllPlayers) { resolveAllPlayers(); resolveAllPlayers = null; }
-  notifySubscribers();
+// --- 3. Firestore Listeners Setup (Optimized) ---
+
+// [OPTIMIZATION] Step 1: Fetch ALL players ONCE at startup.
+// This gives us a complete list for the ranking page, including inactive players.
+(async () => {
+    try {
+        const querySnapshot = await getDocs(playersRef);
+        const initialPlayers = {};
+        querySnapshot.forEach(doc => {
+            initialPlayers[doc.id] = doc.data();
+        });
+        allPlayersData = initialPlayers;
+        if(resolveAllPlayers) { resolveAllPlayers(); resolveAllPlayers = null; }
+        notifySubscribers();
+    } catch (error) {
+        console.error("Error fetching all players initially:", error);
+    }
+})();
+
+// [OPTIMIZATION] Step 2: Set up a real-time listener ONLY for ACTIVE players.
+const activePlayersQuery = query(playersRef, where("status", "==", "active"));
+onSnapshot(activePlayersQuery, (snapshot) => {
+    const currentActivePlayers = {};
+    snapshot.forEach(doc => {
+        currentActivePlayers[doc.id] = doc.data();
+    });
+
+    // Step 3: Intelligently merge the data to reduce reads.
+    // Identify players who are no longer active by comparing with our master list.
+    Object.keys(allPlayersData).forEach(playerId => {
+        const player = allPlayersData[playerId];
+        // If a player was previously active but is NOT in the new active snapshot...
+        if (player && player.status === 'active' && !currentActivePlayers[playerId]) {
+            // ...update their status locally to 'inactive' without a new read.
+            allPlayersData[playerId].status = 'inactive';
+        }
+    });
+
+    // Now, merge the fresh data for all currently active players into our master list.
+    Object.assign(allPlayersData, currentActivePlayers);
+
+    // Notify the UI to re-render with the updated data.
+    notifySubscribers();
+}, (error) => {
+    console.error("Error with active players listener:", error);
 });
+
 
 onSnapshot(gameStateRef, (doc) => {
   if (doc.exists()) {
@@ -74,7 +113,7 @@ onSnapshot(configRef, (doc) => {
         seasonConfigData = { 
             announcement: "랭킹전 시즌에 오신 것을 환영합니다! 공지사항은 관리자 설정에서 변경할 수 있습니다.", 
             seasonId: "default-season",
-            pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP"
+            pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 연승 횟수 1회당: +20 RP"
         };
     }
     if(resolveSeasonConfig) { resolveSeasonConfig(); resolveSeasonConfig = null; }
@@ -85,7 +124,7 @@ function notifySubscribers() {
   subscribers.forEach(callback => callback());
 }
 
-// --- 4. Service 객체 ---
+// --- 4. Service Object ---
 const firebaseService = {
   getAllPlayers: () => allPlayersData,
   getGameState: () => gameStateData,
@@ -97,7 +136,7 @@ const firebaseService = {
 };
 
 // ===================================================================================
-// 상수 및 Helper 함수
+// Constants & Helper Functions
 // ===================================================================================
 const ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "신영은", "오미리"];
 const PLAYERS_PER_MATCH = 4;
@@ -105,7 +144,7 @@ const RP_CONFIG = {
     ATTENDANCE: 20,
     WIN: 30,
     LOSS: 10,
-    WIN_STREAK_BONUS: 20,
+    WIN_STREAK_BONUS: 20, // 연승 '횟수' 1회당 보너스 점수
 };
 
 const generateId = (name) => name.replace(/\s+/g, '_');
@@ -150,7 +189,7 @@ const calculateLocations = (gameState, players) => {
 };
 
 // ===================================================================================
-// 자식 컴포넌트들
+// Child Components
 // ===================================================================================
 const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false }) => {
     const pressTimerRef = useRef(null);
@@ -485,18 +524,18 @@ export default function App() {
     useEffect(() => {
         const initializeApp = async () => {
             await readyPromise;
-            const playersFromDB = firebaseService.getAllPlayers();
-            setAllPlayers(playersFromDB); 
+            setAllPlayers(firebaseService.getAllPlayers()); 
+            setGameState(firebaseService.getGameState());
+            setSeasonConfig(firebaseService.getSeasonConfig());
             
             const savedUserId = localStorage.getItem('badminton-currentUser-id');
+            const playersFromDB = firebaseService.getAllPlayers();
             if (savedUserId && playersFromDB[savedUserId] && playersFromDB[savedUserId].status === 'active') {
                 setCurrentUser(playersFromDB[savedUserId]);
             } else if (savedUserId) {
                 localStorage.removeItem('badminton-currentUser-id');
             }
             
-            setGameState(firebaseService.getGameState());
-            setSeasonConfig(firebaseService.getSeasonConfig());
             setIsLoading(false);
 
             const unsubscribe = firebaseService.subscribe(() => {
@@ -601,6 +640,8 @@ export default function App() {
                     status: 'active',
                     todayWins: 0,
                     todayLosses: 0,
+                    todayWinStreakCount: 0,
+                    todayRecentGames: [],
                 };
             } else {
                 playerData = { 
@@ -609,7 +650,8 @@ export default function App() {
                     status: 'active',
                     wins: 0, losses: 0, rp: 0, winStreak: 0,
                     attendanceCount: 0, recentGames: [], achievements: [],
-                    todayWins: 0, todayLosses: 0,
+                    todayWins: 0, todayLosses: 0, winStreakCount: 0,
+                    todayWinStreakCount: 0, todayRecentGames: [],
                 };
             }
             
@@ -767,10 +809,19 @@ export default function App() {
 
         const start = async (courtIndex) => {
             const playersToMove = gameState.scheduledMatches[String(matchIndex)].filter(Boolean);
+            
             const updateFunction = (currentState) => {
                 const newState = JSON.parse(JSON.stringify(currentState));
+                
                 newState.inProgressCourts[courtIndex] = { players: playersToMove, startTime: new Date().toISOString() };
                 newState.scheduledMatches[String(matchIndex)] = Array(PLAYERS_PER_MATCH).fill(null);
+
+                for (let i = matchIndex; i < newState.numScheduledMatches - 1; i++) {
+                    newState.scheduledMatches[String(i)] = newState.scheduledMatches[String(i + 1)] || Array(PLAYERS_PER_MATCH).fill(null);
+                }
+
+                newState.scheduledMatches[String(newState.numScheduledMatches - 1)] = Array(PLAYERS_PER_MATCH).fill(null);
+                
                 return { newState };
             };
 
@@ -787,37 +838,66 @@ export default function App() {
 
     const processMatchResult = useCallback(async (courtIndex, winningTeam) => {
         const court = gameState.inProgressCourts[courtIndex];
+        if (!court) return;
         const allMatchPlayers = court.players;
-
+    
         const batch = writeBatch(db);
-
+    
+        const winningPlayerNames = winningTeam.map(id => allPlayers[id].name);
+        const losingTeam = allMatchPlayers.filter(id => !winningTeam.includes(id));
+        const losingPlayerNames = losingTeam.map(id => allPlayers[id].name);
+    
         allMatchPlayers.forEach(pId => {
             const player = allPlayers[pId];
             const isWinner = winningTeam.includes(pId);
-            
+    
             const updatedData = {
                 todayWins: (player.todayWins || 0) + (isWinner ? 1 : 0),
                 todayLosses: (player.todayLosses || 0) + (isWinner ? 0 : 1),
             };
-            
+    
             if (!player.isGuest) {
-                 updatedData.winStreak = isWinner ? ((player.winStreak || 0) + 1) : 0;
+                const currentWinStreak = player.winStreak || 0;
+                if (isWinner) {
+                    const newWinStreak = currentWinStreak + 1;
+                    updatedData.winStreak = newWinStreak;
+                    if (newWinStreak >= 3) {
+                        updatedData.todayWinStreakCount = (player.todayWinStreakCount || 0) + 1;
+                    }
+                } else {
+                    updatedData.winStreak = 0;
+                }
+    
+                const gameRecord = {
+                    teammates: (isWinner ? winningPlayerNames.filter(name => name !== player.name) : losingPlayerNames.filter(name => name !== player.name)),
+                    opponents: isWinner ? losingPlayerNames : winningPlayerNames,
+                    result: isWinner ? '승' : '패',
+                    timestamp: new Date().toISOString()
+                };
+    
+                let recentGames = player.todayRecentGames || [];
+                recentGames.unshift(gameRecord);
+                if (recentGames.length > 10) {
+                    recentGames = recentGames.slice(0, 10);
+                }
+                updatedData.todayRecentGames = recentGames;
             }
-
+    
             batch.update(doc(playersRef, pId), updatedData);
         });
-        
+    
         const updateFunction = (currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
             newState.inProgressCourts[courtIndex] = null;
             return { newState };
         };
+    
         try {
             await batch.commit();
             await updateGameState(updateFunction);
-        } catch(e) {
+        } catch (e) {
             console.error(e);
-            setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
+            setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' } });
         }
         setModal({ type: null, data: null });
     }, [gameState, allPlayers, updateGameState]);
@@ -845,11 +925,8 @@ export default function App() {
             
             allPlayersSnapshot.forEach(playerDoc => {
                 batch.update(playerDoc.ref, {
-                    wins: 0,
-                    losses: 0,
-                    rp: 0,
-                    attendanceCount: 0,
-                    winStreak: 0,
+                    wins: 0, losses: 0, rp: 0,
+                    attendanceCount: 0, winStreak: 0, winStreakCount: 0,
                     recentGames: []
                 });
             });
@@ -977,6 +1054,7 @@ export default function App() {
             {modal?.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'rankingHistory' && <RankingHistoryModal onCancel={() => setModal({ type: null, data: null })} />}
+            {modal?.type === 'matchHistory' && <MatchHistoryModal player={modal.data.player} onClose={() => setModal({ type: null, data: null })} />}
             
             {isSettingsOpen && <SettingsModal 
                 isAdmin={isAdmin}
@@ -1068,13 +1146,12 @@ export default function App() {
                         currentUser={currentUser} 
                         isAdmin={isAdmin}
                         onProfileClick={(player, rankingPeriod) => {
-                            if(isAdmin) {
-                                setModal({ 
-                                    type: 'adminEditPlayer', 
-                                    data: { player, mode: rankingPeriod === 'monthly' ? 'detailed' : 'simple' }
-                                })
+                            if (rankingPeriod === 'today') {
+                                setModal({ type: 'matchHistory', data: { player }});
+                            } else if (isAdmin) {
+                                setModal({ type: 'adminEditPlayer', data: { player, mode: 'detailed' } });
                             } else {
-                                setModal({ type: 'profile', data: { player } })
+                                setModal({ type: 'profile', data: { player } });
                             }
                         }}
                         onInfoClick={() => setModal({type: 'pointSystemInfo', data: { content: seasonConfig.pointSystemInfo }})}
@@ -1114,7 +1191,7 @@ export default function App() {
 }
 
 // ===================================================================================
-// 신규 및 복구된 페이지/모달 컴포넌트들
+// New and Restored Page/Modal Components
 // ===================================================================================
 function EntryPage({ onEnter }) {
     const [formData, setFormData] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
@@ -1183,13 +1260,13 @@ function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClic
                 .map(p => {
                     const todayWins = p.todayWins || 0;
                     const todayLosses = p.todayLosses || 0;
-                    const todayRp = (todayWins * RP_CONFIG.WIN) + (todayLosses * RP_CONFIG.LOSS);
+                    const todayWinStreakRp = (p.todayWinStreakCount || 0) * RP_CONFIG.WIN_STREAK_BONUS;
+                    const todayRp = (todayWins * RP_CONFIG.WIN) + (todayLosses * RP_CONFIG.LOSS) + todayWinStreakRp;
                     return { ...p, todayRp, todayTotalGames: todayWins + todayLosses };
                 })
                 .filter(p => p.todayTotalGames > 0)
                 .sort((a, b) => b.todayRp - a.todayRp);
         } else {
-            // [FIX] '이번달' 랭킹에서 전적이 있는 선수만 표시하도록 필터링 추가
             playersToRank = playersToRank
                 .filter(p => (p.wins || 0) > 0 || (p.losses || 0) > 0)
                 .sort((a, b) => (b.rp || 0) - (a.rp || 0));
@@ -1239,7 +1316,7 @@ function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClic
                     const losses = isMonthly ? (p.losses || 0) : (p.todayLosses || 0);
                     const rp = isMonthly ? (p.rp || 0) : (p.todayRp || 0);
                     const attendanceCount = p.attendanceCount || 0;
-                    const winStreak = p.winStreak || 0;
+                    const winStreakCount = isMonthly ? (p.winStreakCount || 0) : (p.todayWinStreakCount || 0);
 
                     const totalGames = wins + losses;
                     const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(0) + '%' : '-';
@@ -1258,7 +1335,7 @@ function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClic
                                 <p className={`font-bold truncate ${style.nameText}`}>{p.name}</p>
                                 <p className={`text-xs ${style.infoText}`}>
                                     <span className={`font-bold ${p.rank > 3 && isMonthly ? 'text-green-400' : ''}`}>{rp} RP</span> | {wins}승 {losses}패 ({winRate})
-                                    {isMonthly && ` | ${attendanceCount}참 | ${winStreak}연승`}
+                                    {isMonthly && ` | ${attendanceCount}참`} | {winStreakCount}연승
                                 </p>
                             </div>
                         </div>
@@ -1302,8 +1379,8 @@ function ProfileModal({ player, onClose }) {
                         <p className="text-3xl font-bold arcade-font">{player.attendanceCount || 0}</p>
                     </div>
                     <div className="bg-gray-700/50 p-3 rounded-lg">
-                        <p className="text-sm text-gray-400">연승</p>
-                        <p className="text-3xl font-bold arcade-font">{player.winStreak || 0}</p>
+                        <p className="text-sm text-gray-400">연승횟수</p>
+                        <p className="text-3xl font-bold arcade-font">{player.winStreakCount || 0}</p>
                     </div>
                 </div>
 
@@ -1314,18 +1391,6 @@ function ProfileModal({ player, onClose }) {
                             <span key={ach} className="bg-gray-700 text-sm py-1 px-3 rounded-full">{getAchievementIcon(ach)} {ach}</span>
                         )) : <p className="text-sm text-gray-500">아직 달성한 업적이 없습니다.</p>}
                     </div>
-                </div>
-
-                <div>
-                    <h4 className="font-bold mb-2 text-yellow-400">최근 10경기</h4>
-                    <ul className="text-sm space-y-1 max-h-40 overflow-y-auto pr-2">
-                        {(player.recentGames && player.recentGames.length > 0) ? player.recentGames.map((game, i) => (
-                           <li key={i} className={`flex justify-between p-2 rounded ${game.result === '승' ? 'bg-blue-900/50' : 'bg-red-900/50'}`}>
-                                <span>vs {game.opponents.join(', ')}</span>
-                                <span className={`font-bold ${game.result === '승' ? 'text-blue-400' : 'text-red-400'}`}>{game.result}</span>
-                           </li>
-                        )) : <p className="text-sm text-gray-500">경기 기록이 없습니다.</p>}
-                    </ul>
                 </div>
             </div>
         </div>
@@ -1419,8 +1484,9 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
     const [stats, setStats] = useState({
         todayWins: player.todayWins || 0,
         todayLosses: player.todayLosses || 0,
-        wins: player.wins || 0, // 상세 모드용
-        losses: player.losses || 0 // 상세 모드용
+        wins: player.wins || 0,
+        losses: player.losses || 0,
+        winStreakCount: player.winStreakCount || 0
     });
 
     const handleChange = (e) => {
@@ -1431,11 +1497,17 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
     const handleSave = async () => {
         let finalStats = {};
         if (isDetailedMode) {
+            const newRP = 
+                (stats.wins * RP_CONFIG.WIN) +
+                (stats.losses * RP_CONFIG.LOSS) +
+                (player.attendanceCount || 0) * RP_CONFIG.ATTENDANCE +
+                (stats.winStreakCount * RP_CONFIG.WIN_STREAK_BONUS);
+
             finalStats = {
                 wins: stats.wins,
                 losses: stats.losses,
-                todayWins: stats.todayWins,
-                todayLosses: stats.todayLosses
+                winStreakCount: stats.winStreakCount,
+                rp: newRP
             };
         } else {
             finalStats = {
@@ -1461,7 +1533,7 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg">
                 <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">{player.name} 기록 수정</h3>
                  <div className="space-y-4">
-                    {isDetailedMode && (
+                    {isDetailedMode ? (
                         <>
                             <div className="flex items-center justify-between">
                                 <label className="font-semibold text-cyan-400">이번달 승</label>
@@ -1471,17 +1543,23 @@ function AdminEditPlayerModal({ player, mode, onClose, setModal }) {
                                 <label className="font-semibold text-cyan-400">이번달 패</label>
                                 <input type="number" name="losses" value={stats.losses} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 text-right"/>
                             </div>
-                            <hr className="border-gray-600"/>
+                            <div className="flex items-center justify-between">
+                                <label className="font-semibold text-cyan-400">연승 횟수</label>
+                                <input type="number" name="winStreakCount" value={stats.winStreakCount} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400 text-right"/>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className="flex items-center justify-between">
+                                <label className="font-semibold">오늘의 승</label>
+                                <input type="number" name="todayWins" value={stats.todayWins} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <label className="font-semibold">오늘의 패</label>
+                                <input type="number" name="todayLosses" value={stats.todayLosses} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
+                            </div>
                         </>
                     )}
-                    <div className="flex items-center justify-between">
-                        <label className="font-semibold">오늘의 승</label>
-                        <input type="number" name="todayWins" value={stats.todayWins} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
-                    </div>
-                    <div className="flex items-center justify-between">
-                        <label className="font-semibold">오늘의 패</label>
-                        <input type="number" name="todayLosses" value={stats.todayLosses} onChange={handleChange} className="w-2/3 bg-gray-700 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
-                    </div>
                 </div>
                 {isDetailedMode && (
                     <div className="mt-4 flex flex-col gap-2">
@@ -1668,6 +1746,46 @@ function RankingHistoryModal({ onCancel }) {
           </div>
         </div>
       </div>
+    );
+}
+
+function MatchHistoryModal({ player, onClose }) {
+    const games = player.todayRecentGames || [];
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg flex flex-col gap-4">
+                <div className="flex justify-between items-start">
+                    <h3 className="text-2xl font-bold text-yellow-400 arcade-font">{player.name} 전적</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white">&times;</button>
+                </div>
+                
+                <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                    {games.length > 0 ? games.map((game, index) => {
+                        const isWin = game.result === '승';
+                        const playerTeam = [player.name, ...game.teammates].join(', ');
+                        const opponentTeam = game.opponents.join(', ');
+
+                        return (
+                            <div key={index} className={`p-3 rounded-lg ${isWin ? 'bg-blue-900/50' : 'bg-red-900/50'}`}>
+                                <div className="flex justify-between items-center text-sm">
+                                    <div className="flex-1">
+                                        <p className={`font-bold ${isWin ? 'text-blue-300' : 'text-gray-300'}`}>{playerTeam}</p>
+                                        <p className="text-xs text-gray-400">vs</p>
+                                        <p className={`font-bold ${!isWin ? 'text-red-300' : 'text-gray-300'}`}>{opponentTeam}</p>
+                                    </div>
+                                    <div className={`text-lg font-extrabold arcade-font ${isWin ? 'text-blue-400' : 'text-red-400'}`}>
+                                        {isWin ? 'WIN' : 'LOSE'}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }) : (
+                        <p className="text-center text-gray-500">오늘 경기 기록이 없습니다.</p>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 }
 
