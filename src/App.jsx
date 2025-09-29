@@ -46,7 +46,6 @@ const readyPromise = Promise.all([allPlayersPromise, gameStatePromise, seasonCon
 // --- 3. Firestore Listeners Setup (Optimized) ---
 
 // [OPTIMIZATION] Step 1: Fetch ALL players ONCE at startup.
-// This gives us a complete list for the ranking page, including inactive players.
 (async () => {
     try {
         const querySnapshot = await getDocs(playersRef);
@@ -70,21 +69,14 @@ onSnapshot(activePlayersQuery, (snapshot) => {
         currentActivePlayers[doc.id] = doc.data();
     });
 
-    // Step 3: Intelligently merge the data to reduce reads.
-    // Identify players who are no longer active by comparing with our master list.
     Object.keys(allPlayersData).forEach(playerId => {
         const player = allPlayersData[playerId];
-        // If a player was previously active but is NOT in the new active snapshot...
         if (player && player.status === 'active' && !currentActivePlayers[playerId]) {
-            // ...update their status locally to 'inactive' without a new read.
             allPlayersData[playerId].status = 'inactive';
         }
     });
 
-    // Now, merge the fresh data for all currently active players into our master list.
     Object.assign(allPlayersData, currentActivePlayers);
-
-    // Notify the UI to re-render with the updated data.
     notifySubscribers();
 }, (error) => {
     console.error("Error with active players listener:", error);
@@ -144,7 +136,7 @@ const RP_CONFIG = {
     ATTENDANCE: 20,
     WIN: 30,
     LOSS: 10,
-    WIN_STREAK_BONUS: 20, // 연승 '횟수' 1회당 보너스 점수
+    WIN_STREAK_BONUS: 20,
 };
 
 const generateId = (name) => name.replace(/\s+/g, '_');
@@ -332,9 +324,14 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
     return (
         <section className="bg-gray-800/50 rounded-lg p-2">
             <h2 className="text-sm font-bold mb-2 text-yellow-400 arcade-font flicker-text">대기 명단 ({maleWaitingPlayers.length + femaleWaitingPlayers.length})</h2>
-            <div className="grid grid-cols-4 gap-1.5">
-                {maleWaitingPlayers.map(player => ( <PlayerCard key={player.id} player={player} context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleDeleteFromWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id}/> ))}
-                {femaleWaitingPlayers.map(player => ( <PlayerCard key={player.id} player={player} context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleDeleteFromWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id}/> ))}
+            <div className="grid grid-cols-5 gap-1">
+                {maleWaitingPlayers.map(player => ( <PlayerCard key={player.id} player={player} context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleDeleteFromWaiting} onLongPress={(p) => setModal({type: 'adminPlayerDetail', data: { player: p }})} isCurrentUser={currentUser && player.id === currentUser.id}/> ))}
+            </div>
+            {maleWaitingPlayers.length > 0 && femaleWaitingPlayers.length > 0 && (
+                <hr className="border-t-2 border-dashed border-gray-600 my-2" />
+            )}
+            <div className="grid grid-cols-5 gap-1">
+                {femaleWaitingPlayers.map(player => ( <PlayerCard key={player.id} player={player} context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleDeleteFromWaiting} onLongPress={(p) => setModal({type: 'adminPlayerDetail', data: { player: p }})} isCurrentUser={currentUser && player.id === currentUser.id}/> ))}
             </div>
         </section>
     );
@@ -358,7 +355,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                     const playerId = match[slotIndex];
                                     const player = players[playerId];
                                     const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminPlayerDetail', data: { player: p }})} isCurrentUser={currentUser && player.id === currentUser.id} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -1006,13 +1003,19 @@ export default function App() {
             setModal({ type: 'alert', data: { title: '오류', body: '휴식 상태 변경에 실패했습니다.' }});
         }
     }, [currentUser]);
-
-    const waitingPlayers = useMemo(() => Object.values(activePlayers)
-        .filter(p => playerLocations[p.id]?.location === 'waiting')
-        .sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime)), [activePlayers, playerLocations]);
     
-    const maleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '남'), [waitingPlayers]);
-    const femaleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '여'), [waitingPlayers]);
+    const levelSortOrder = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4 };
+    
+    const waitingPlayers = useMemo(() => Object.values(activePlayers)
+        .filter(p => playerLocations[p.id]?.location === 'waiting'), [activePlayers, playerLocations]);
+    
+    const maleWaitingPlayers = useMemo(() => waitingPlayers
+        .filter(p => p.gender === '남')
+        .sort((a, b) => (levelSortOrder[a.level] || 99) - (levelSortOrder[b.level] || 99)), [waitingPlayers]);
+
+    const femaleWaitingPlayers = useMemo(() => waitingPlayers
+        .filter(p => p.gender === '여')
+        .sort((a, b) => (levelSortOrder[a.level] || 99) - (levelSortOrder[b.level] || 99)), [waitingPlayers]);
 
 
     if (isLoading) {
@@ -1055,6 +1058,7 @@ export default function App() {
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'rankingHistory' && <RankingHistoryModal onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'matchHistory' && <MatchHistoryModal player={modal.data.player} onClose={() => setModal({ type: null, data: null })} />}
+            {modal?.type === 'adminPlayerDetail' && <AdminPlayerDetailModal player={modal.data.player} onClose={() => setModal({ type: null, data: null })} />}
             
             {isSettingsOpen && <SettingsModal 
                 isAdmin={isAdmin}
@@ -1147,7 +1151,11 @@ export default function App() {
                         isAdmin={isAdmin}
                         onProfileClick={(player, rankingPeriod) => {
                             if (rankingPeriod === 'today') {
-                                setModal({ type: 'matchHistory', data: { player }});
+                                if (isAdmin) {
+                                    setModal({ type: 'adminPlayerDetail', data: { player }});
+                                } else {
+                                    setModal({ type: 'matchHistory', data: { player }});
+                                }
                             } else if (isAdmin) {
                                 setModal({ type: 'adminEditPlayer', data: { player, mode: 'detailed' } });
                             } else {
@@ -1617,9 +1625,9 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg">
-                <h3 className="text-xl font-bold text-white mb-6 arcade-font">설정</h3>
-                <div className="space-y-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg flex flex-col max-h-[90vh]">
+                <h3 className="text-xl font-bold text-white mb-6 arcade-font flex-shrink-0">설정</h3>
+                <div className="space-y-4 flex-grow overflow-y-auto pr-2">
                     <div className="flex items-center justify-between bg-gray-700 p-3 rounded-lg">
                         <span className="font-semibold">경기 예정</span>
                         <div className="flex items-center gap-4">
@@ -1651,7 +1659,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
                         </button>
                     </div>
                 </div>
-                <div className="mt-6 flex gap-4">
+                <div className="mt-6 flex gap-4 flex-shrink-0">
                      <button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 font-bold py-2 rounded-lg">취소</button>
                     <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">저장</button>
                 </div>
@@ -1783,6 +1791,83 @@ function MatchHistoryModal({ player, onClose }) {
                     }) : (
                         <p className="text-center text-gray-500">오늘 경기 기록이 없습니다.</p>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function AdminPlayerDetailModal({ player, onClose }) {
+    const [stats, setStats] = useState({
+        todayWins: player.todayWins || 0,
+        todayLosses: player.todayLosses || 0,
+    });
+    const games = player.todayRecentGames || [];
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setStats(prev => ({...prev, [name]: Number(value) }));
+    };
+
+    const handleSave = async () => {
+        await updateDoc(doc(playersRef, player.id), {
+            todayWins: stats.todayWins,
+            todayLosses: stats.todayLosses,
+        });
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-start flex-shrink-0">
+                    <h3 className="text-2xl font-bold text-yellow-400 arcade-font">{player.name} 상세 정보</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white">&times;</button>
+                </div>
+
+                <div className="flex-grow overflow-y-auto mt-4 pr-2">
+                    {/* Stats Editor */}
+                    <div className="space-y-4 bg-gray-700/50 p-3 rounded-lg">
+                        <div className="flex items-center justify-between">
+                            <label className="font-semibold">오늘의 승</label>
+                            <input type="number" name="todayWins" value={stats.todayWins} onChange={handleChange} className="w-1/2 bg-gray-600 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <label className="font-semibold">오늘의 패</label>
+                            <input type="number" name="todayLosses" value={stats.todayLosses} onChange={handleChange} className="w-1/2 bg-gray-600 text-white p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400 text-right"/>
+                        </div>
+                    </div>
+
+                    {/* Match History */}
+                    <h4 className="text-lg font-bold text-yellow-400 arcade-font mt-4 mb-2">오늘의 전적</h4>
+                    <div className="space-y-2">
+                        {games.length > 0 ? games.map((game, index) => {
+                            const isWin = game.result === '승';
+                            const playerTeam = [player.name, ...game.teammates].join(', ');
+                            const opponentTeam = game.opponents.join(', ');
+                            return (
+                                <div key={index} className={`p-3 rounded-lg ${isWin ? 'bg-blue-900/50' : 'bg-red-900/50'}`}>
+                                    <div className="flex justify-between items-center text-sm">
+                                        <div className="flex-1">
+                                            <p className={`font-bold ${isWin ? 'text-blue-300' : 'text-gray-300'}`}>{playerTeam}</p>
+                                            <p className="text-xs text-gray-400">vs</p>
+                                            <p className={`font-bold ${!isWin ? 'text-red-300' : 'text-gray-300'}`}>{opponentTeam}</p>
+                                        </div>
+                                        <div className={`text-lg font-extrabold arcade-font ${isWin ? 'text-blue-400' : 'text-red-400'}`}>
+                                            {isWin ? 'WIN' : 'LOSE'}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        }) : (
+                            <p className="text-center text-gray-500">오늘 경기 기록이 없습니다.</p>
+                        )}
+                    </div>
+                </div>
+
+                <div className="mt-4 flex gap-4 flex-shrink-0">
+                    <button onClick={onClose} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg">취소</button>
+                    <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">저장</button>
                 </div>
             </div>
         </div>
