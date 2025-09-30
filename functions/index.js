@@ -10,80 +10,108 @@ const RP_CONFIG = { WIN: 30, LOSS: 10, ATTENDANCE: 20, WIN_STREAK_BONUS: 20 };
 const ADMIN_ID = "정형진"; 
 
 /**
- * 매일 밤 22시 10분(한국 시간)에 실행되어 오늘의 기록을 누적 기록에 합산하고 RP를 재계산합니다.
+ * [FIXED] 22시 10분 일일 정산 함수
+ * - 원인: 기존 로직이 활동 없는 active 유저를 inactive로 강제 변경하여 현황판에서 사라지는 문제 발생.
+ * - 해결: 선수의 status는 건드리지 않고, 모든 active 유저의 '오늘의 기록'만 초기화하도록 수정.
  */
-exports.dailyBatchUpdate = onSchedule({
-  schedule: "10 22 * * *",
-  timeZone: "Asia/Seoul",
-}, async (event) => {
+async function runDailyBatchUpdate() {
   logger.log("매일 선수 데이터 정산 작업을 시작합니다.");
 
   const db = getFirestore();
   const playersRef = db.collection("players");
   
-  try {
-    const snapshot = await playersRef.where("status", "==", "active").get();
-    if (snapshot.empty) {
-      logger.log("정산할 활성(active) 선수가 없어 함수를 종료합니다.");
-      return null;
-    }
+  // [FIX] 'active' 상태인 모든 선수를 대상으로 작업 수행
+  const snapshot = await playersRef.where("status", "==", "active").get();
+  if (snapshot.empty) {
+    logger.log("정산할 활성(active) 선수가 없어 함수를 종료합니다.");
+    return "정산할 활성 선수가 없습니다.";
+  }
 
-    const batch = db.batch();
+  const batch = db.batch();
+  
+  snapshot.forEach(doc => {
+    const player = doc.data();
+    const playerRef = playersRef.doc(doc.id);
+
+    const todayWins = player.todayWins || 0;
+    const todayLosses = player.todayLosses || 0;
+    const todayWinStreakCount = player.todayWinStreakCount || 0;
     
-    snapshot.forEach(doc => {
-      const player = doc.data();
-      const playerRef = playersRef.doc(doc.id);
+    // 초기화할 데이터 정의
+    const updatedData = {
+      todayWins: 0,
+      todayLosses: 0,
+      todayWinStreakCount: 0,
+      todayRecentGames: [],
+      // winStreak은 다음날로 이어져야 하므로 초기화하지 않음.
+    };
 
-      const todayWins = player.todayWins || 0;
-      const todayLosses = player.todayLosses || 0;
-      const todayWinStreakCount = player.todayWinStreakCount || 0;
-      
-      const updatedData = {
-        todayWins: 0,
-        todayLosses: 0,
-        todayWinStreakCount: 0,
-        todayRecentGames: [],
-      };
-
-      if (!player.isGuest) {
-        if (todayWins > 0 || todayLosses > 0) {
-            updatedData.wins = FieldValue.increment(todayWins);
-            updatedData.losses = FieldValue.increment(todayLosses);
-            updatedData.winStreakCount = FieldValue.increment(todayWinStreakCount);
-            
-            const todayTotalGames = todayWins + todayLosses;
-            if (todayTotalGames >= 3) {
-              updatedData.attendanceCount = FieldValue.increment(1);
-            }
-        }
+    // 게스트가 아닌 경우에만 누적 기록에 합산
+    if (!player.isGuest) {
+      if (todayWins > 0 || todayLosses > 0) {
+          updatedData.wins = FieldValue.increment(todayWins);
+          updatedData.losses = FieldValue.increment(todayLosses);
+          updatedData.winStreakCount = FieldValue.increment(todayWinStreakCount);
+          
+          const todayTotalGames = todayWins + todayLosses;
+          // 참석수는 하루에 3경기 이상 했을 경우에만 +1
+          if (todayTotalGames >= 3) {
+            updatedData.attendanceCount = FieldValue.increment(1);
+          }
       }
-      
-      batch.update(playerRef, updatedData);
-    });
-
-    await batch.commit();
-    logger.log(`1단계: 오늘의 기록 합산 및 초기화 완료.`);
+    }
     
-    const allPlayersSnapshot = await playersRef.where("isGuest", "==", false).get();
-    const rpBatch = db.batch();
-    allPlayersSnapshot.forEach(doc => {
-        const player = doc.data();
-        const newRP = 
-            (player.wins || 0) * RP_CONFIG.WIN +
-            (player.losses || 0) * RP_CONFIG.LOSS +
-            (player.attendanceCount || 0) * RP_CONFIG.ATTENDANCE +
-            ((player.winStreakCount || 0) * RP_CONFIG.WIN_STREAK_BONUS);
-        rpBatch.update(doc.ref, { rp: newRP });
-    });
-    
-    await rpBatch.commit();
-    logger.log(`2단계: RP 재계산 완료. 모든 정산 작업이 성공적으로 끝났습니다.`);
+    batch.update(playerRef, updatedData);
+  });
 
+  await batch.commit();
+  logger.log(`1단계: 오늘의 기록 합산 및 초기화 완료.`);
+  
+  // RP 재계산
+  const allPlayersSnapshot = await playersRef.where("isGuest", "==", false).get();
+  const rpBatch = db.batch();
+  allPlayersSnapshot.forEach(doc => {
+      const player = doc.data();
+      const newRP = 
+          (player.wins || 0) * RP_CONFIG.WIN +
+          (player.losses || 0) * RP_CONFIG.LOSS +
+          (player.attendanceCount || 0) * RP_CONFIG.ATTENDANCE +
+          ((player.winStreakCount || 0) * RP_CONFIG.WIN_STREAK_BONUS);
+      rpBatch.update(doc.ref, { rp: newRP });
+  });
+  
+  await rpBatch.commit();
+  logger.log(`2단계: RP 재계산 완료. 모든 정산 작업이 성공적으로 끝났습니다.`);
+  return "일일 정산 작업이 성공적으로 완료되었습니다.";
+}
+
+// 기존 스케쥴 함수는 내부 로직만 호출하도록 변경
+exports.dailyBatchUpdate = onSchedule({
+  schedule: "10 22 * * *",
+  timeZone: "Asia/Seoul",
+}, async (event) => {
+  try {
+    await runDailyBatchUpdate();
   } catch (error) {
-    logger.error("일일 정산 작업 중 오류 발생:", error);
+    logger.error("일일 정산 스케쥴 작업 중 오류 발생:", error);
   }
   return null;
 });
+
+/**
+ * [NEW] 웹사이트에서 수동으로 일일 정산을 테스트하는 함수
+ */
+exports.testDailyBatch = onCall(async (request) => {
+  logger.log("일일 정산 '테스트'를 시작합니다.");
+  try {
+      const message = await runDailyBatchUpdate();
+      return { success: true, message: message };
+  } catch (error) {
+      logger.error("일일 정산 '테스트' 중 오류 발생:", error);
+      throw new functions.https.HttpsError('internal', '테스트 함수 실행 중 서버에서 오류가 발생했습니다.');
+  }
+});
+
 
 /**
  * 월간 랭킹 보관 로직을 수행하는 재사용 가능한 함수
