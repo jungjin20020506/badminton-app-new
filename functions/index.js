@@ -1,4 +1,5 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+// [FIX] onCall 함수에 CORS 옵션을 설정하기 위해 import 구문을 수정합니다.
 const { onCall } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
@@ -9,18 +10,12 @@ initializeApp();
 const RP_CONFIG = { WIN: 30, LOSS: 10, ATTENDANCE: 20, WIN_STREAK_BONUS: 20 };
 const ADMIN_ID = "정형진"; 
 
-/**
- * [FIXED] 22시 10분 일일 정산 함수
- * - 원인: 기존 로직이 활동 없는 active 유저를 inactive로 강제 변경하여 현황판에서 사라지는 문제 발생.
- * - 해결: 선수의 status는 건드리지 않고, 모든 active 유저의 '오늘의 기록'만 초기화하도록 수정.
- */
 async function runDailyBatchUpdate() {
   logger.log("매일 선수 데이터 정산 작업을 시작합니다.");
 
   const db = getFirestore();
   const playersRef = db.collection("players");
   
-  // [FIX] 'active' 상태인 모든 선수를 대상으로 작업 수행
   const snapshot = await playersRef.where("status", "==", "active").get();
   if (snapshot.empty) {
     logger.log("정산할 활성(active) 선수가 없어 함수를 종료합니다.");
@@ -37,16 +32,13 @@ async function runDailyBatchUpdate() {
     const todayLosses = player.todayLosses || 0;
     const todayWinStreakCount = player.todayWinStreakCount || 0;
     
-    // 초기화할 데이터 정의
     const updatedData = {
       todayWins: 0,
       todayLosses: 0,
       todayWinStreakCount: 0,
       todayRecentGames: [],
-      // winStreak은 다음날로 이어져야 하므로 초기화하지 않음.
     };
 
-    // 게스트가 아닌 경우에만 누적 기록에 합산
     if (!player.isGuest) {
       if (todayWins > 0 || todayLosses > 0) {
           updatedData.wins = FieldValue.increment(todayWins);
@@ -54,7 +46,6 @@ async function runDailyBatchUpdate() {
           updatedData.winStreakCount = FieldValue.increment(todayWinStreakCount);
           
           const todayTotalGames = todayWins + todayLosses;
-          // 참석수는 하루에 3경기 이상 했을 경우에만 +1
           if (todayTotalGames >= 3) {
             updatedData.attendanceCount = FieldValue.increment(1);
           }
@@ -67,7 +58,6 @@ async function runDailyBatchUpdate() {
   await batch.commit();
   logger.log(`1단계: 오늘의 기록 합산 및 초기화 완료.`);
   
-  // RP 재계산
   const allPlayersSnapshot = await playersRef.where("isGuest", "==", false).get();
   const rpBatch = db.batch();
   allPlayersSnapshot.forEach(doc => {
@@ -85,7 +75,6 @@ async function runDailyBatchUpdate() {
   return "일일 정산 작업이 성공적으로 완료되었습니다.";
 }
 
-// 기존 스케쥴 함수는 내부 로직만 호출하도록 변경
 exports.dailyBatchUpdate = onSchedule({
   schedule: "10 22 * * *",
   timeZone: "Asia/Seoul",
@@ -99,9 +88,9 @@ exports.dailyBatchUpdate = onSchedule({
 });
 
 /**
- * [NEW] 웹사이트에서 수동으로 일일 정산을 테스트하는 함수
+ * [FIX] 웹사이트에서 함수를 호출할 수 있도록 CORS 옵션을 추가합니다.
  */
-exports.testDailyBatch = onCall(async (request) => {
+exports.testDailyBatch = onCall({ cors: true }, async (request) => {
   logger.log("일일 정산 '테스트'를 시작합니다.");
   try {
       const message = await runDailyBatchUpdate();
@@ -113,10 +102,8 @@ exports.testDailyBatch = onCall(async (request) => {
 });
 
 
-/**
- * 월간 랭킹 보관 로직을 수행하는 재사용 가능한 함수
- */
 async function archiveMonthlyRanking(db, isTest = false) {
+  // ... (내부 로직은 변경 없음)
   const playersRef = db.collection("players");
   
   const today = new Date();
@@ -164,9 +151,6 @@ async function archiveMonthlyRanking(db, isTest = false) {
   }
 }
 
-/**
- * 매월 1일 0시 5분(한국 시간)에 실행되어 지난달의 최종 랭킹을 저장합니다.
- */
 exports.monthlyRankingArchive = onSchedule({
   schedule: "5 0 1 * *",
   timeZone: "Asia/Seoul",
@@ -188,13 +172,13 @@ exports.monthlyRankingArchive = onSchedule({
 
 
 /**
- * 웹사이트에서 수동으로 호출하여 월간 랭킹 보관 기능을 테스트하는 함수
+ * [FIX] 웹사이트에서 함수를 호출할 수 있도록 CORS 옵션을 추가합니다.
  */
-exports.testMonthlyArchive = onCall(async (request) => {
+exports.testMonthlyArchive = onCall({ cors: true }, async (request) => {
     logger.log("월간 랭킹 보관 '테스트'를 시작합니다.");
     const db = getFirestore();
     try {
-        const message = await archiveMonthlyRanking(db, true); // isTest=true로 호출
+        const message = await archiveMonthlyRanking(db, true);
         return { success: true, message: message };
     } catch (error) {
         logger.error("월간 랭킹 '테스트' 중 오류 발생:", error);
