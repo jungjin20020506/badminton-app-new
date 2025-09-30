@@ -266,7 +266,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     return (
         <div 
             ref={cardRef}
-            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full`}
+            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick(player.id) : null}
             onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
@@ -1803,5 +1803,6 @@ function RankingHistoryModal({ onCancel }) {
       </div>
     );
 }
+
 
 
