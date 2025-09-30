@@ -18,7 +18,7 @@ const firebaseConfig = {
   projectId: "project-104956788310687609",
   storageBucket: "project-104956788310687609.firebasestorage.app",
   messagingSenderId: "384562806148",
-  appId: "1:384956788310687609:web:d8bfb83b28928c13e671d1"
+  appId: "1:384956788310687609:web:d8bfb28928c13e671d1"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -64,7 +64,6 @@ onSnapshot(activePlayersQuery, async (snapshot) => {
 
     allPlayersData = { ...allPlayersData, ...activePlayers };
     
-    // active가 아닌 선수가 active로 전환될 수 있으므로, snapshot에 없는 active 선수는 제거
     Object.keys(allPlayersData).forEach(playerId => {
         const player = allPlayersData[playerId];
         if(player.status === 'active' && !activePlayers[playerId]){
@@ -822,12 +821,18 @@ export default function App() {
 
         const start = async (courtIndex) => {
             const updateFunction = (currentState) => {
+                // [BUG FIX] 트랜잭션 시작 시점의 최신 scheduledMatches를 다시 가져와서 확인합니다.
+                const currentMatch = currentState.scheduledMatches[String(matchIndex)] || [];
+                if(currentMatch.filter(p=>p).length !== PLAYERS_PER_MATCH) {
+                    // 이 경기는 이미 다른 관리자에 의해 시작되었거나 변경되었습니다.
+                    throw new Error("경기를 시작할 수 없습니다. 다른 관리자가 먼저 시작했을 수 있습니다.");
+                }
+
                 const newState = JSON.parse(JSON.stringify(currentState));
                 const playersToMove = [...newState.scheduledMatches[String(matchIndex)]];
                 
                 newState.inProgressCourts[courtIndex] = { players: playersToMove, startTime: new Date().toISOString() };
                 
-                // 경기 시작 시 경기 예정 목록을 한 칸씩 당기는 로직
                 for (let i = matchIndex; i < newState.numScheduledMatches - 1; i++) {
                     newState.scheduledMatches[String(i)] = newState.scheduledMatches[String(i + 1)] || Array(PLAYERS_PER_MATCH).fill(null);
                 }
@@ -836,7 +841,7 @@ export default function App() {
                 return { newState };
             };
 
-            await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다.');
+            await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다. 다른 관리자가 먼저 시작했을 수 있습니다.');
             setModal({type:null, data:null});
         };
 
@@ -849,13 +854,11 @@ export default function App() {
 
     const processMatchResult = useCallback(async (courtIndex, winningTeam) => {
         const court = gameState.inProgressCourts[courtIndex];
+        if (!court) return; // 이미 처리된 경기일 수 있음
         const allMatchPlayerIds = court.players;
 
         const batch = writeBatch(db);
         const now = new Date().toISOString();
-
-        const team1 = allMatchPlayerIds.slice(0, 2);
-        const team2 = allMatchPlayerIds.slice(2, 4);
         
         const winners = winningTeam;
         const losers = allMatchPlayerIds.filter(pId => !winningTeam.includes(pId));
@@ -910,10 +913,9 @@ export default function App() {
         const court = gameState.inProgressCourts[courtIndex];
         if (!court || !court.players || court.players.some(p=>!p)) return;
         
-        // [BUG FIX] '유령 선수'가 있을 경우를 대비하여, 실제 데이터가 있는 선수만 필터링합니다.
         const matchPlayers = court.players
             .map(pid => allPlayers[pid])
-            .filter(Boolean); // 이 filter(Boolean)이 null이나 undefined를 제거해줍니다.
+            .filter(Boolean);
         
         if (matchPlayers.length !== PLAYERS_PER_MATCH) {
              setModal({
@@ -961,6 +963,23 @@ export default function App() {
             setModal({ type: 'alert', data: { title: '오류', body: '랭킹 초기화에 실패했습니다.' } });
         }
     }, []);
+
+    const handleSystemReset = useCallback(() => {
+        setModal({ type: 'confirm', data: {
+            title: '시스템 초기화',
+            body: '[경고] 모든 선수가 대기 명단으로 이동하고, 진행/예정 중인 경기가 모두 사라집니다. 선수 기록은 유지됩니다. 계속하시겠습니까?',
+            onConfirm: async () => {
+                const updateFunction = (currentState) => {
+                    const newState = JSON.parse(JSON.stringify(currentState));
+                    newState.scheduledMatches = {};
+                    newState.inProgressCourts = Array(newState.numInProgressCourts).fill(null);
+                    return { newState };
+                };
+                await updateGameState(updateFunction, '시스템 초기화에 실패했습니다.');
+                setModal({ type: 'alert', data: { title: '완료', body: '시스템이 초기화되었습니다.' }});
+            }
+        }});
+    }, [updateGameState]);
     
     const handleMoveOrSwapCourt = useCallback(async (sourceIndex, targetIndex) => {
         if (sourceIndex === targetIndex) return;
@@ -1091,6 +1110,7 @@ export default function App() {
                 onSave={handleSettingsUpdate}
                 onCancel={() => setIsSettingsOpen(false)} 
                 setModal={setModal}
+                onSystemReset={handleSystemReset}
             />}
             
             <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
@@ -1527,12 +1547,11 @@ function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
             finalStats.losses = stats.losses;
             finalStats.winStreakCount = stats.winStreakCount;
             finalStats.attendanceCount = stats.attendanceCount;
-            // 월간 RP는 개별 스탯 합산으로 자동 계산
             finalStats.rp = (stats.wins * RP_CONFIG.WIN) + 
                           (stats.losses * RP_CONFIG.LOSS) + 
                           (stats.winStreakCount * RP_CONFIG.WIN_STREAK_BONUS) + 
                           (stats.attendanceCount * RP_CONFIG.ATTENDANCE);
-        } else { // 'today' or 'simple' mode
+        } else {
             finalStats.todayWins = stats.todayWins;
             finalStats.todayLosses = stats.todayLosses;
             finalStats.todayWinStreakCount = stats.todayWinStreakCount;
@@ -1614,7 +1633,7 @@ function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
     );
 }
 
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSave, onCancel, setModal }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSave, onCancel, setModal, onSystemReset }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
@@ -1656,8 +1675,8 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg flex flex-col">
-                <h3 className="text-xl font-bold text-white mb-6 arcade-font text-center">설정</h3>
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg flex flex-col" style={{maxHeight: '90vh'}}>
+                <h3 className="text-xl font-bold text-white mb-6 arcade-font text-center flex-shrink-0">설정</h3>
                 <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                     <div className="bg-gray-700 p-3 rounded-lg">
                         <span className="font-semibold mb-2 block text-center">경기 예정 / 코트 수</span>
@@ -1689,7 +1708,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
                         <textarea value={pointSystemInfo} onChange={(e) => setPointSystemInfo(e.target.value)} rows="5" className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
                     </div>
                     <div className="bg-gray-700 p-3 rounded-lg space-y-2">
-                        <label className="font-semibold mb-2 block text-center">고급 기능 테스트</label>
+                        <label className="font-semibold mb-2 block text-center">고급 기능</label>
                         <button 
                             onClick={() => handleTest('testDailyBatch', '일일 정산 테스트', '현재 선수들의 "오늘" 기록을 "이번달" 기록에 합산하고 초기화하는 일일 정산 작업을 테스트합니다. 실행하시겠습니까?')}
                             disabled={isTesting} 
@@ -1704,6 +1723,13 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
                         >
                             {isTesting ? '테스트 중...' : '월간 랭킹 저장 테스트'}
                         </button>
+                         <button
+                            onClick={onSystemReset}
+                            disabled={isTesting}
+                            className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+                        >
+                            시스템 초기화
+                        </button>
                     </div>
                 </div>
                 <div className="mt-6 flex gap-4 flex-shrink-0">
@@ -1716,7 +1742,42 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
 }
 
 function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
-function CourtSelectionModal({ courts, onSelect, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">코트 선택</h3><p className="text-gray-300 mb-6">경기를 시작할 코트를 선택해주세요.</p><div className="flex flex-col gap-3">{courts.map(courtIdx => ( <button key={courtIdx} onClick={() => onSelect(courtIdx)} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">{courtIdx + 1}번 코트</button> ))}</div><button onClick={onCancel} className="mt-6 w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button></div></div> ); }
+
+function CourtSelectionModal({ courts, onSelect, onCancel }) {
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    return ( 
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
+                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">코트 선택</h3>
+                <p className="text-gray-300 mb-6">경기를 시작할 코트를 선택해주세요.</p>
+                <div className="flex flex-col gap-3">
+                    {courts.map(courtIdx => ( 
+                        <button 
+                            key={courtIdx} 
+                            onClick={() => {
+                                setIsProcessing(true);
+                                onSelect(courtIdx);
+                            }} 
+                            className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
+                            disabled={isProcessing}
+                        >
+                            {isProcessing ? '처리 중...' : `${courtIdx + 1}번 코트`}
+                        </button> 
+                    ))}
+                </div>
+                <button 
+                    onClick={onCancel} 
+                    className="mt-6 w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors"
+                    disabled={isProcessing}
+                >
+                    취소
+                </button>
+            </div>
+        </div> 
+    ); 
+}
+
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 
 function RankingHistoryModal({ onCancel }) {
@@ -1803,6 +1864,4 @@ function RankingHistoryModal({ onCancel }) {
       </div>
     );
 }
-
-
 
