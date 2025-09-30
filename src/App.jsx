@@ -1589,6 +1589,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
     const [pointSystemInfo, setPointSystemInfo] = useState(seasonConfig.pointSystemInfo);
     const [isTesting, setIsTesting] = useState(false);
+    const [isTestingDaily, setIsTestingDaily] = useState(false);
 
     if (!isAdmin) return null;
 
@@ -1596,6 +1597,33 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
         onSave({ scheduled, courts, announcement, pointSystemInfo });
     };
     
+    const handleTestDailyBatch = () => {
+        setModal({ type: 'confirm', data: { 
+            title: '일일 정산 테스트', 
+            body: '22시 10분에 실행되는 일일 정산 및 RP 재계산 기능을 지금 바로 실행합니다. 계속하시겠습니까?',
+            onConfirm: async () => {
+                setIsTestingDaily(true);
+                setModal({ type: null, data: null });
+                try {
+                    const testBatch = httpsCallable(functions, 'testDailyBatch');
+                    const result = await testBatch();
+                    setModal({ type: 'alert', data: { 
+                        title: '테스트 완료', 
+                        body: result.data.message
+                    }});
+                } catch (error) {
+                    console.error("Test function call failed:", error);
+                    setModal({ type: 'alert', data: { 
+                        title: '테스트 실패', 
+                        body: 'Cloud Function 호출에 실패했습니다. 콘솔 로그를 확인해주세요.'
+                    }});
+                } finally {
+                    setIsTestingDaily(false);
+                }
+            }
+        }});
+    };
+
     const handleTestMonthlyArchive = () => {
         setModal({ type: 'confirm', data: { 
             title: '월간 랭킹 저장 테스트', 
@@ -1654,9 +1682,14 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSa
                     </div>
                     <div className="bg-gray-700 p-3 rounded-lg">
                         <label className="font-semibold mb-2 block">고급 기능 테스트</label>
-                        <button onClick={handleTestMonthlyArchive} disabled={isTesting} className="w-full arcade-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
-                            {isTesting ? '테스트 중...' : '월간 랭킹 저장 테스트'}
-                        </button>
+                        <div className="flex flex-col gap-2">
+                            <button onClick={handleTestDailyBatch} disabled={isTestingDaily} className="w-full arcade-button bg-green-600 hover:bg-green-700 text-white font-bold py-2 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                {isTestingDaily ? '테스트 중...' : '일일 정산 테스트'}
+                            </button>
+                            <button onClick={handleTestMonthlyArchive} disabled={isTesting} className="w-full arcade-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed">
+                                {isTesting ? '테스트 중...' : '월간 랭킹 저장 테스트'}
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div className="mt-6 flex gap-4 flex-shrink-0">
