@@ -85,6 +85,7 @@ onSnapshot(gameStateRef, (doc) => {
     gameStateData = { 
         scheduledMatches: {}, 
         inProgressCourts: Array(4).fill(null),
+        autoMatches: {}, // 자동 매칭 데이터 추가
         numScheduledMatches: 4,
         numInProgressCourts: 4,
     };
@@ -267,7 +268,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             ref={cardRef}
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
             style={cardStyle}
-            onClick={isMovable && onCardClick ? () => onCardClick(player.id) : null}
+            onClick={isMovable && onCardClick ? () => onCardClick() : null}
             onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
             onMouseUp={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
             onMouseLeave={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
@@ -325,7 +326,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                     player={player} 
                     context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} 
                     isAdmin={isAdmin} 
-                    onCardClick={handleCardClick} 
+                    onCardClick={() => handleCardClick(player.id)} 
                     onAction={handleDeleteFromWaiting} 
                     onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} 
                     isCurrentUser={currentUser && player.id === currentUser.id}
@@ -394,7 +395,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                     const playerId = match[slotIndex];
                                     const player = players[playerId];
                                     const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={handleCardClick} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -408,8 +409,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
     );
 });
 
-// ✨ 자동 매칭 섹션 컴포넌트 (신규 추가) ✨
-const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleRemoveFromAutoMatch, handleClearAutoMatches, handleDeleteAutoMatch, currentUser }) => {
+const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleRemoveFromAutoMatch, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -451,9 +451,10 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                 {match.map((playerId, slotIndex) => {
                                     const player = players[playerId];
-                                    const cardKey = `${playerId}-${matchIndex}-${slotIndex}-${Math.random()}`;
+                                    const cardKey = `${playerId}-${matchIndex}-${slotIndex}`;
+                                    const isSelected = selectedAutoMatchSlot && selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex;
                                     return player ? 
-                                        (<PlayerCard key={cardKey} player={player} context={{}} isAdmin={isAdmin} onAction={() => handleRemoveFromAutoMatch(matchIndex, slotIndex)} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} />) : 
+                                        (<PlayerCard key={cardKey} player={player} context={{selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={() => handleRemoveFromAutoMatch(matchIndex, slotIndex)} isCurrentUser={currentUser && player.id === currentUser.id} />) : 
                                         (<div className="h-14"></div>)
                                 })}
                             </div>
@@ -583,7 +584,11 @@ export default function App() {
     const [currentPage, setCurrentPage] = useState('main');
     const [courtMove, setCourtMove] = useState({ sourceIndex: null });
     const [resetNotification, setResetNotification] = useState(null);
-    const [autoMatches, setAutoMatches] = useState({}); // ✨ 자동 매칭 목록 State 추가
+    const [selectedAutoMatchSlot, setSelectedAutoMatchSlot] = useState(null);
+
+    // ✨ isAdmin, autoMatches 선언 위치를 맨 위로 이동하여 참조 오류 해결
+    const isAdmin = currentUser && ADMIN_NAMES.includes(currentUser.name);
+    const autoMatches = gameState?.autoMatches || {};
 
     const activePlayers = useMemo(() => {
         return Object.values(allPlayers).filter(p => p.status === 'active').reduce((acc, p) => {
@@ -593,7 +598,7 @@ export default function App() {
     }, [allPlayers]);
 
     useEffect(() => {
-        if (!currentUser || !ADMIN_NAMES.includes(currentUser.name)) {
+        if (!currentUser || !isAdmin) {
             if (resetNotification) setResetNotification(null);
             return;
         }
@@ -616,7 +621,7 @@ export default function App() {
 
         return () => unsubscribe();
 
-    }, [currentUser, resetNotification]);
+    }, [currentUser, isAdmin, resetNotification]);
 
     useEffect(() => {
         const initializeApp = async () => {
@@ -674,12 +679,22 @@ export default function App() {
         try {
             await runTransaction(db, async (transaction) => {
                 const gameStateDoc = await transaction.get(gameStateRef);
-                if (!gameStateDoc.exists()) throw new Error("Game state document does not exist!");
-                
-                const currentState = gameStateDoc.data();
-                const { newState } = updateFunction(currentState);
-                
-                transaction.set(gameStateRef, newState);
+                if (!gameStateDoc.exists()) {
+                    // Initialize if not exists
+                    const initialState = {
+                        scheduledMatches: {},
+                        inProgressCourts: Array(4).fill(null),
+                        autoMatches: {},
+                        numScheduledMatches: 4,
+                        numInProgressCourts: 4,
+                    };
+                    const { newState } = updateFunction(initialState);
+                    transaction.set(gameStateRef, newState);
+                } else {
+                    const currentState = gameStateDoc.data();
+                    const { newState } = updateFunction(currentState);
+                    transaction.set(gameStateRef, newState);
+                }
             });
         } catch (err) {
             console.error("Transaction failed: ", err);
@@ -804,7 +819,6 @@ export default function App() {
     }, [currentUser, updateGameState]);
     
     const handleCardClick = useCallback(async (playerId) => {
-        const isAdmin = ADMIN_NAMES.includes(currentUser.name);
         if (!isAdmin) return;
         if (courtMove.sourceIndex !== null) {
             setCourtMove({ sourceIndex: null });
@@ -842,10 +856,9 @@ export default function App() {
                 setSelectedPlayerIds([]);
             } else { setSelectedPlayerIds([playerId]); }
         }
-    }, [currentUser, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove]);
+    }, [isAdmin, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove]);
     
     const handleSlotClick = useCallback(async (context) => {
-        const isAdmin = ADMIN_NAMES.includes(currentUser.name);
         if (!isAdmin || selectedPlayerIds.length === 0) return;
         
         const updateFunction = (currentState) => {
@@ -888,7 +901,7 @@ export default function App() {
 
         await updateGameState(updateFunction, '선수를 경기에 배정하는 데 실패했습니다.');
         setSelectedPlayerIds([]);
-    }, [currentUser, selectedPlayerIds, activePlayers, updateGameState]);
+    }, [isAdmin, selectedPlayerIds, activePlayers, updateGameState]);
     
     const handleStartMatch = useCallback(async (matchIndex) => {
         if (!gameState) return;
@@ -1024,7 +1037,6 @@ export default function App() {
         });
     }, [gameState, allPlayers, processMatchResult]);
     
-    // ✨ 자동 매칭 생성 함수 (신규 추가) ✨
     const handleAutoMatchGenerate = useCallback((targetGames) => {
         setModal({ type: 'alert', data: { title: '🤖', body: '자동 매칭을 생성하고 있습니다...' } });
     
@@ -1091,17 +1103,16 @@ export default function App() {
             return acc;
         }, {});
     
-        setAutoMatches(matchesObject);
+        updateGameState(currentState => {
+            const newState = { ...currentState, autoMatches: matchesObject };
+            return { newState };
+        });
         setModal({ type: null, data: null });
-    }, [activePlayers, playerLocations]);
+    }, [activePlayers, playerLocations, updateGameState]);
     
-    // ✨ 자동 매칭 관련 함수들 (신규 추가) ✨
     const handleStartAutoMatch = useCallback(async (matchIndex) => {
-        const match = autoMatches[String(matchIndex)];
-        if (!match || match.length !== 4) return;
-    
         const emptyCourts = [];
-        for (let i = 0; i < gameState.numInProgressCourts; i++) {
+        for (let i = 0; i < (gameState?.numInProgressCourts || 0); i++) {
             if (!gameState.inProgressCourts[i]) {
                 emptyCourts.push(i);
             }
@@ -1114,19 +1125,23 @@ export default function App() {
         const start = async (courtIndex) => {
             await updateGameState((currentState) => {
                 const newState = JSON.parse(JSON.stringify(currentState));
-                newState.inProgressCourts[courtIndex] = { players: match, startTime: new Date().toISOString() };
-                return { newState };
-            });
-    
-            setAutoMatches(currentMatches => {
-                const newMatches = { ...currentMatches };
-                delete newMatches[String(matchIndex)];
+                const matchToStart = newState.autoMatches ? newState.autoMatches[matchIndex] : null;
+
+                if (!matchToStart || matchToStart.length !== 4) {
+                     throw new Error("매칭 정보가 올바르지 않습니다.");
+                }
+
+                newState.inProgressCourts[courtIndex] = { players: matchToStart, startTime: new Date().toISOString() };
+                
+                delete newState.autoMatches[matchIndex];
                 const reindexedMatches = {};
-                Object.values(newMatches).forEach((m, i) => {
+                Object.values(newState.autoMatches).forEach((m, i) => {
                     reindexedMatches[String(i)] = m;
                 });
-                return reindexedMatches;
-            });
+                newState.autoMatches = reindexedMatches;
+
+                return { newState };
+            }, "자동 매칭 경기를 시작하지 못했습니다.");
             setModal({type:null, data:null});
         };
     
@@ -1135,50 +1150,81 @@ export default function App() {
         } else {
             setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } });
         }
-    }, [autoMatches, gameState, updateGameState]);
+    }, [gameState, updateGameState]);
 
     const handleRemoveFromAutoMatch = useCallback((matchIndex, slotIndex) => {
-        setAutoMatches(currentMatches => {
-            const newMatches = JSON.parse(JSON.stringify(currentMatches));
-            const match = newMatches[String(matchIndex)];
-            if (match) {
-                match[slotIndex] = null;
+        updateGameState(currentState => {
+            const newState = JSON.parse(JSON.stringify(currentState));
+            if (newState.autoMatches && newState.autoMatches[matchIndex]) {
+                newState.autoMatches[matchIndex][slotIndex] = null;
             }
-            return newMatches;
+            return { newState };
         });
-    }, []);
+    }, [updateGameState]);
     
     const handleClearAutoMatches = useCallback(() => {
         setModal({ type: 'confirm', data: { 
             title: '전체 삭제', 
             body: '자동 매칭 목록을 모두 삭제할까요?',
             onConfirm: () => {
-                setAutoMatches({});
+                updateGameState(currentState => ({ newState: { ...currentState, autoMatches: {} } }));
                 setModal({type:null, data:null});
             }
         }});
-    }, []);
+    }, [updateGameState]);
     
     const handleDeleteAutoMatch = useCallback((matchIndex) => {
         setModal({ type: 'confirm', data: { 
             title: '경기 삭제', 
             body: `${parseInt(matchIndex, 10) + 1}번 경기를 삭제할까요?`,
             onConfirm: () => {
-                 setAutoMatches(currentMatches => {
-                    const newMatches = { ...currentMatches };
-                    delete newMatches[String(matchIndex)];
+                updateGameState(currentState => {
+                    const newState = JSON.parse(JSON.stringify(currentState));
+                    delete newState.autoMatches[matchIndex];
                     const reindexedMatches = {};
-                    Object.values(newMatches).forEach((m, i) => {
+                    Object.values(newState.autoMatches).forEach((m, i) => {
                         reindexedMatches[String(i)] = m;
                     });
-                    return reindexedMatches;
+                    newState.autoMatches = reindexedMatches;
+                    return { newState };
                 });
                 setModal({type:null, data:null});
             }
         }});
-    }, []);
+    }, [updateGameState]);
+    
+    const handleAutoMatchCardClick = useCallback(async (matchIndex, slotIndex) => {
+        if (!isAdmin) return;
 
-    // ✨ 경기 예정 편의기능 함수 (신규 추가) ✨
+        if (!selectedAutoMatchSlot) {
+            setSelectedAutoMatchSlot({ matchIndex, slotIndex });
+        } else {
+            if (selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex) {
+                setSelectedAutoMatchSlot(null); // Deselect if same card is clicked
+                return;
+            }
+
+            await updateGameState(currentState => {
+                const newState = JSON.parse(JSON.stringify(currentState));
+                const { autoMatches } = newState;
+                
+                const source = selectedAutoMatchSlot;
+                const target = { matchIndex, slotIndex };
+
+                const playerA = autoMatches[source.matchIndex][source.slotIndex];
+                const playerB = autoMatches[target.matchIndex][target.slotIndex];
+
+                autoMatches[source.matchIndex][source.slotIndex] = playerB;
+                autoMatches[target.matchIndex][target.slotIndex] = playerA;
+
+                return { newState };
+            }, "선수 교체에 실패했습니다.");
+
+            setSelectedAutoMatchSlot(null); // Clear selection after swap
+        }
+    }, [isAdmin, selectedAutoMatchSlot, updateGameState]);
+
+
     const handleClearScheduledMatches = useCallback(() => {
         setModal({ type: 'confirm', data: { 
             title: '전체 삭제', 
@@ -1247,10 +1293,10 @@ export default function App() {
                     const newState = JSON.parse(JSON.stringify(currentState));
                     newState.scheduledMatches = {};
                     newState.inProgressCourts = Array(newState.numInProgressCourts).fill(null);
+                    newState.autoMatches = {}; // 자동 매칭 목록도 초기화
                     return { newState };
                 };
                 await updateGameState(updateFunction, '시스템 초기화에 실패했습니다.');
-                setAutoMatches({}); // 자동 매칭 목록도 초기화
                 setModal({ type: 'alert', data: { title: '완료', body: '시스템이 초기화되었습니다.' }});
             }
         }});
@@ -1345,8 +1391,6 @@ export default function App() {
         return <EntryPage onEnter={handleEnter} />;
     }
 
-    const isAdmin = ADMIN_NAMES.includes(currentUser.name);
-
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             {resetNotification && (
@@ -1408,7 +1452,6 @@ export default function App() {
                             <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white text-lg px-1">
                                 <i className="fas fa-cog"></i>
                             </button>
-                            {/* ✨ 자동 매칭 버튼 추가 ✨ */}
                             <button onClick={() => setModal({ type: 'autoMatchSetup' })} className="text-gray-400 hover:text-white text-lg px-1">
                                 <i className="fas fa-robot"></i>
                             </button>
@@ -1455,6 +1498,8 @@ export default function App() {
                                 handleClearAutoMatches={handleClearAutoMatches}
                                 handleDeleteAutoMatch={handleDeleteAutoMatch}
                                 currentUser={currentUser}
+                                handleAutoMatchCardClick={handleAutoMatchCardClick}
+                                selectedAutoMatchSlot={selectedAutoMatchSlot}
                             />
                         )}
 
@@ -2163,7 +2208,6 @@ function RankingHistoryModal({ onCancel }) {
     );
 }
 
-// ✨ 자동 매칭 설정 모달 (신규 추가) ✨
 function AutoMatchSetupModal({ onConfirm, onCancel }) {
     const [games, setGames] = useState(3);
 
@@ -2185,3 +2229,4 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
         </div>
     );
 }
+
