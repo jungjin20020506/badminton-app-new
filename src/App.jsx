@@ -1327,3 +1327,90 @@ function CourtSelectionModal({ courts, onSelect, onCancel }) { const [isProcessi
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">확인</button></div></div> ); }
 function RankingHistoryModal({ onCancel }) { const [months, setMonths] = useState([]); const [selectedMonth, setSelectedMonth] = useState(''); const [ranking, setRanking] = useState([]); const [loading, setLoading] = useState(true); useEffect(() => { const fetchMonths = async () => { const snap = await getDocs(query(monthlyRankingsRef)); setMonths(snap.docs.map(d => d.id).sort((a, b) => b.localeCompare(a))); setLoading(false); }; fetchMonths(); }, []); useEffect(() => { if (!selectedMonth) return; const fetchRanking = async () => { setLoading(true); const snap = await getDoc(doc(monthlyRankingsRef, selectedMonth)); setRanking(snap.exists() ? snap.data().ranking : []); setLoading(false); }; fetchRanking(); }, [selectedMonth]); return ( <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-bold text-yellow-400 arcade-font">랭킹 기록</h3><button onClick={onCancel} className="text-2xl text-gray-500 hover:text-white">&times;</button></div><div className="mb-4"><select value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full p-2 bg-gray-700 rounded-md arcade-button"><option value="">월 선택...</option>{months.map(m => <option key={m} value={m}>{m}</option>)}</select></div><div className="max-h-96 overflow-y-auto">{loading ? <p>로딩 중...</p> : ranking.length > 0 ? <table className="w-full text-sm text-left text-gray-300"><thead className="text-xs text-yellow-400 uppercase bg-gray-700/50 sticky top-0"><tr><th scope="col" className="px-4 py-3 text-center arcade-font">RANK</th><th scope="col" className="px-6 py-3 arcade-font">NAME</th><th scope="col" className="px-6 py-3 text-center arcade-font">RP</th><th scope="col" className="px-6 py-3 text-center arcade-font">W/L</th></tr></thead><tbody>{ranking.map(p => <tr key={p.id} className="border-b border-gray-700"><td className="px-4 py-3 font-bold text-center arcade-font">{p.rank}</td><td className="px-6 py-3 font-bold whitespace-nowrap">{p.name}</td><td className="px-6 py-3 text-center font-bold text-green-400">{p.rp || 0}</td><td className="px-6 py-3 text-center">{p.wins || 0}승 {p.losses || 0}패</td></tr>)}</tbody></table> : selectedMonth && <p>{selectedMonth}의 랭킹 데이터가 없습니다.</p>}</div></div></div> ); }
 
+// [FIX] 복구된 모달 컴포넌트들
+function SeasonModal({ announcement, seasonId, onClose }) {
+    const handleClose = () => {
+        localStorage.setItem(`seen-${seasonId}`, new Date().toDateString());
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
+                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font flicker-text">📢 시즌 공지</h3>
+                <p className="text-gray-300 mb-6 whitespace-pre-wrap">{announcement}</p>
+                <div className="flex flex-col gap-2">
+                    <button onClick={handleClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition-colors">확인</button>
+                    <button onClick={handleClose} className="w-full text-gray-500 text-xs mt-2 hover:text-white">오늘 하루 보지 않기</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function ProfileModal({ player, onClose }) {
+    const getAchievementIcon = (ach) => {
+        if (ach === '첫 승리') return '🏆';
+        if (ach === '10승 클럽') return '🔟';
+        if (ach === '불꽃 연승') return '🔥';
+        return '🌟';
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg flex flex-col gap-4">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h3 className="text-2xl font-bold text-yellow-400">{player.name}</h3>
+                        <p className="text-gray-400">{player.level} / {player.gender}</p>
+                    </div>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white">&times;</button>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                    <div className="bg-gray-700/50 p-3 rounded-lg">
+                        <p className="text-sm text-gray-400">랭킹</p>
+                        <p className="text-3xl font-bold arcade-font">{player.rank}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-3 rounded-lg">
+                        <p className="text-sm text-gray-400">RP</p>
+                        <p className="text-3xl font-bold arcade-font">{player.rp || 0}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-3 rounded-lg">
+                        <p className="text-sm text-gray-400">참석</p>
+                        <p className="text-3xl font-bold arcade-font">{player.attendanceCount || 0}</p>
+                    </div>
+                    <div className="bg-gray-700/50 p-3 rounded-lg">
+                        <p className="text-sm text-gray-400">연승횟수</p>
+                        <p className="text-3xl font-bold arcade-font">{player.winStreakCount || 0}</p>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 className="font-bold mb-2 text-yellow-400">업적</h4>
+                    <div className="flex flex-wrap gap-2">
+                        {(player.achievements && player.achievements.length > 0) ? player.achievements.map(ach => (
+                            <span key={ach} className="bg-gray-700 text-sm py-1 px-3 rounded-full">{getAchievementIcon(ach)} {ach}</span>
+                        )) : <p className="text-sm text-gray-500">아직 달성한 업적이 없습니다.</p>}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function PointSystemModal({ content, onClose }) {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-left shadow-lg">
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-yellow-400 arcade-font">점수 시스템</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white">&times;</button>
+                </div>
+                <p className="text-gray-300 mb-6 whitespace-pre-wrap">{content}</p>
+                <button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button>
+            </div>
+        </div>
+    );
+}
+
