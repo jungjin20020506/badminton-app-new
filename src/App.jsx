@@ -44,7 +44,7 @@ const seasonConfigPromise = new Promise(resolve => { resolveSeasonConfig = resol
 const readyPromise = Promise.all([allPlayersPromise, gameStatePromise, seasonConfigPromise]);
 
 // --- 3. Firestore 리스너 설정 ---
-const allPlayersQuery = query(playersRef); // Listen to all players now
+const allPlayersQuery = query(playersRef);
 onSnapshot(allPlayersQuery, (snapshot) => {
     snapshot.docChanges().forEach((change) => {
         if (change.type === "removed") {
@@ -111,7 +111,7 @@ const RP_CONFIG = {
     ATTENDANCE: 20,
     WIN: 30,
     LOSS: 10,
-    WIN_STREAK_BONUS: 20, // 3연승부터 1승마다 +20 RP
+    WIN_STREAK_BONUS: 20,
 };
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 
@@ -159,7 +159,6 @@ const calculateLocations = (gameState, players) => {
     return locations;
 };
 
-// [NEW] 자동 매칭 알고리즘
 const generateSchedule = (players, numGames) => {
     const malePlayers = players.filter(p => p.gender === '남').sort(() => Math.random() - 0.5);
     const femalePlayers = players.filter(p => p.gender === '여').sort(() => Math.random() - 0.5);
@@ -172,7 +171,6 @@ const generateSchedule = (players, numGames) => {
 
         for (let i = 0; i < gamesToCreate; i++) {
             if (playerQueue.length < 4) {
-                // 남은 선수로 부족하면, 전체 선수 목록에서 다시 충원 (경기 수가 적은 순으로)
                 const sortedAll = [...playerList].sort((a,b) => {
                     const countA = schedule.flat().filter(p => p === a.id).length;
                     const countB = schedule.flat().filter(p => p === b.id).length;
@@ -183,7 +181,6 @@ const generateSchedule = (players, numGames) => {
 
             const matchPlayers = playerQueue.splice(0, 4);
             
-            // 파트너 점수가 가장 낮은 조합 찾기
             const pairings = [
                 [[matchPlayers[0], matchPlayers[1]], [matchPlayers[2], matchPlayers[3]]],
                 [[matchPlayers[0], matchPlayers[2]], [matchPlayers[1], matchPlayers[3]]],
@@ -194,10 +191,8 @@ const generateSchedule = (players, numGames) => {
             let minScore = Infinity;
 
             pairings.forEach(pairing => {
-                const p1 = pairing[0][0];
-                const p2 = pairing[0][1];
-                const p3 = pairing[1][0];
-                const p4 = pairing[1][1];
+                const p1 = pairing[0][0]; const p2 = pairing[0][1];
+                const p3 = pairing[1][0]; const p4 = pairing[1][1];
                 const score1 = p1.partnerHistory?.[p2.id] || 0;
                 const score2 = p3.partnerHistory?.[p4.id] || 0;
                 const totalScore = score1 + score2;
@@ -216,7 +211,6 @@ const generateSchedule = (players, numGames) => {
     const maleSchedule = createMatches(malePlayers, numGames);
     const femaleSchedule = createMatches(femalePlayers, numGames);
     
-    // 남/여 경기를 번갈아가며 배치
     const finalSchedule = [];
     let m = 0, f = 0;
     while(m < maleSchedule.length || f < femaleSchedule.length){
@@ -275,7 +269,6 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     };
 
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
-    const isWaiting = !context.location;
     const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter`;
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
     
@@ -307,9 +300,6 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         cardStyle.borderColor = '#FBBF24';
         cardStyle.boxShadow = `${cardStyle.boxShadow}, 0 0 12px 4px rgba(251, 191, 36, 0.9)`;
     }
-
-    const isLongPressDisabled = context.location === 'court';
-    const actionLabel = isWaiting ? '선수 내보내기' : '대기자로 이동';
     
     const todayWins = player.todayWins || 0;
     const todayLosses = player.todayLosses || 0;
@@ -319,10 +309,10 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             ref={cardRef}
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
             style={cardStyle}
-            onClick={isMovable && onCardClick ? () => onCardClick(player.id) : null}
-            onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
-            onMouseUp={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
-            onMouseLeave={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
+            onClick={isMovable && onCardClick ? onCardClick : null}
+            onMouseDown={isAdmin && isMovable ? handlePressStart : null}
+            onMouseUp={isAdmin && isMovable ? handlePressEnd : null}
+            onMouseLeave={isAdmin && isMovable ? handlePressEnd : null}
             onContextMenu={handleContextMenu}
         >
             <div>
@@ -332,11 +322,10 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                     {`${todayWins}승 ${todayLosses}패`}
                 </div>
             </div>
-            {isAdmin && isMovable && (
+            {isAdmin && isMovable && context.location === 'schedule' && (
                 <button 
                     onClick={(e) => { e.stopPropagation(); onAction(player); }} 
                     className={`absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400`}
-                    aria-label={actionLabel}
                 ><i className={"fas fa-times-circle fa-xs"}></i></button>
             )}
         </div>
@@ -368,16 +357,16 @@ const CourtTimer = ({ court }) => {
     return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
 };
 
-const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser }) => {
+const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayer, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser }) => {
     const renderPlayerGrid = (players) => (
         <div className="grid grid-cols-5 gap-1">
             {players.map(player => (
                 <PlayerCard 
                     key={player.id} 
                     player={player} 
-                    context={{ location: null, selected: selectedPlayerIds.includes(player.id) }} 
+                    context={{ location: 'waiting', selected: selectedPlayer?.playerId === player.id }} 
                     isAdmin={isAdmin} 
-                    onCardClick={handleCardClick} 
+                    onCardClick={() => handleCardClick(player.id)} 
                     onAction={handleDeleteFromWaiting} 
                     onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} 
                     isCurrentUser={currentUser && player.id === currentUser.id}
@@ -401,27 +390,48 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
 });
 
 
-const ScheduledMatchesSection = React.memo(({ scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser }) => {
-    const scheduleEntries = Object.entries(scheduledMatches || {});
+const ScheduledMatchesSection = React.memo(({ gameState, players, selectedPlayer, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, onClearSchedule, onDeleteMatch }) => {
+    const scheduleEntries = Object.entries(gameState.scheduledMatches || {});
+    const pressTimerRef = useRef(null);
+    
+    // [FEATURE] 최소 슬롯 유지 로직
+    const minScheduledMatches = gameState.numScheduledMatches || 4;
+    const numToRender = Math.max(minScheduledMatches, scheduleEntries.length);
+    const renderKeys = Array.from({ length: numToRender }, (_, i) => String(i));
+
+    const handlePressStart = (matchKey) => {
+        if (!isAdmin) return;
+        pressTimerRef.current = setTimeout(() => {
+            onDeleteMatch(matchKey);
+        }, 1000);
+    };
+    
+    const handlePressEnd = () => {
+        if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+    };
+
     return (
         <section>
-            <h2 className="text-lg font-bold mb-2 text-cyan-400 px-1 arcade-font">경기 예정</h2>
+            <div className="flex justify-between items-center mb-2 px-1">
+                <h2 className="text-lg font-bold text-cyan-400 arcade-font">경기 예정</h2>
+                {isAdmin && <button onClick={onClearSchedule} className="text-xs text-red-400 hover:text-red-300">전체삭제</button>}
+            </div>
             <div id="scheduled-matches" className="flex flex-col gap-2">
-                {scheduleEntries.length === 0 && <p className="text-center text-gray-500 text-sm py-4">예정된 경기가 없습니다.</p>}
-                {scheduleEntries.map(([matchKey, match]) => {
-                    const matchIndex = parseInt(matchKey, 10);
+                {numToRender === 0 && <p className="text-center text-gray-500 text-sm py-4">예정된 경기가 없습니다.</p>}
+                {renderKeys.map((matchKey) => {
+                    const match = gameState.scheduledMatches?.[matchKey] || Array(PLAYERS_PER_MATCH).fill(null);
                     const playerCount = match.filter(p => p).length;
                     return (
                         <div key={`schedule-${matchKey}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
-                            <div className="flex-shrink-0 w-6 text-center">
-                                <p className="font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
+                            <div className="flex-shrink-0 w-6 text-center" onMouseDown={() => handlePressStart(matchKey)} onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd} onTouchStart={() => handlePressStart(matchKey)} onTouchEnd={handlePressEnd}>
+                                <p className="font-bold text-lg text-white arcade-font cursor-pointer">{parseInt(matchKey, 10) + 1}</p>
                             </div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
-                                {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
-                                    const playerId = match[slotIndex];
+                                {match.map((playerId, slotIndex) => {
                                     const player = players[playerId];
-                                    const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                    return player ? ( <PlayerCard key={`${playerId}-${matchKey}`} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId, matchKey, slotIndex)} onAction={() => handleReturnToWaiting(player, matchKey, slotIndex)} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} /> ) : ( <EmptySlot key={`schedule-empty-${matchKey}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchKey, slotIndex })} /> )
+                                    const isSelected = selectedPlayer?.playerId === playerId && selectedPlayer?.matchKey === matchKey && selectedPlayer?.slotIndex === slotIndex;
+                                    const context = {location: 'schedule', selected: isSelected};
+                                    return player ? ( <PlayerCard key={`${playerId}-${matchKey}-${slotIndex}`} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId, matchKey, slotIndex)} onAction={() => handleReturnToWaiting(player, matchKey, slotIndex)} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} /> ) : ( <EmptySlot key={`schedule-empty-${matchKey}-${slotIndex}`} onSlotClick={() => handleSlotClick({ matchKey, slotIndex })} /> )
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -436,6 +446,7 @@ const ScheduledMatchesSection = React.memo(({ scheduledMatches, players, selecte
 });
 
 const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
+    // ... no changes in this component
     const pressTimerRef = useRef(null);
     const courtRef = useRef(null);
 
@@ -512,6 +523,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
 
 
 const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
+    // ... no changes in this component
     return (
         <section>
             <h2 className="text-lg font-bold mb-2 text-red-500 px-1 arcade-font">경기 진행</h2>
@@ -543,7 +555,7 @@ export default function App() {
     const [gameState, setGameState] = useState(null);
     const [seasonConfig, setSeasonConfig] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
-    const [selectedPlayer, setSelectedPlayer] = useState(null); // [MODIFIED] ID array to single object
+    const [selectedPlayer, setSelectedPlayer] = useState(null);
     const [modal, setModal] = useState({ type: null, data: null });
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -563,41 +575,30 @@ export default function App() {
             if (resetNotification) setResetNotification(null);
             return;
         }
-    
         const adminId = currentUser.id;
         const notifDocRef = doc(notificationsRef, adminId);
-
         const unsubscribe = onSnapshot(notifDocRef, (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
                 if (data.status === 'pending' || data.status === 'error') {
                     setResetNotification({ id: doc.id, ...data });
-                } else {
-                    setResetNotification(null);
-                }
-            } else {
-                setResetNotification(null);
-            }
+                } else { setResetNotification(null); }
+            } else { setResetNotification(null); }
         });
-
         return () => unsubscribe();
-
     }, [currentUser, resetNotification]);
 
     useEffect(() => {
         const initializeApp = async () => {
             await readyPromise;
-            
             const playersFromDB = firebaseService.getAllPlayers();
             setAllPlayers(playersFromDB); 
-            
             const savedUserId = localStorage.getItem('badminton-currentUser-id');
             if (savedUserId && playersFromDB[savedUserId] && playersFromDB[savedUserId].status === 'active') {
                 setCurrentUser(playersFromDB[savedUserId]);
             } else if (savedUserId) {
                 localStorage.removeItem('badminton-currentUser-id');
             }
-            
             setGameState(firebaseService.getGameState());
             setSeasonConfig(firebaseService.getSeasonConfig());
             setIsLoading(false);
@@ -607,7 +608,6 @@ export default function App() {
                 setAllPlayers(updatedPlayers);
                 setGameState(firebaseService.getGameState());
                 setSeasonConfig(firebaseService.getSeasonConfig());
-
                 setCurrentUser(prevUser => {
                     if (!prevUser) return null;
                     const updatedUser = updatedPlayers[prevUser.id];
@@ -620,11 +620,8 @@ export default function App() {
             });
             return unsubscribe;
         };
-
         const unsubscribePromise = initializeApp();
-        return () => {
-            unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
-        };
+        return () => { unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe()); };
     }, []);
 
     useEffect(() => {
@@ -641,11 +638,9 @@ export default function App() {
             await runTransaction(db, async (transaction) => {
                 const gameStateDoc = await transaction.get(gameStateRef);
                 if (!gameStateDoc.exists()) throw new Error("Game state document does not exist!");
-                
                 const currentState = gameStateDoc.data();
                 const { newState, error } = updateFunction(currentState);
                 if(error) throw new Error(error);
-                
                 transaction.set(gameStateRef, newState);
             });
         } catch (err) {
@@ -662,11 +657,8 @@ export default function App() {
     const handleReturnToWaiting = useCallback(async (player, matchKey, slotIndex) => {
         const updateFunction = (currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
-            if (newState.scheduledMatches[matchKey]) {
-                const currentSlotPlayerId = newState.scheduledMatches[matchKey][slotIndex];
-                if (currentSlotPlayerId === player.id) {
-                     newState.scheduledMatches[matchKey][slotIndex] = null;
-                }
+            if (newState.scheduledMatches[matchKey] && newState.scheduledMatches[matchKey][slotIndex] === player.id) {
+                 newState.scheduledMatches[matchKey][slotIndex] = null;
             }
             return { newState };
         };
@@ -674,25 +666,20 @@ export default function App() {
     }, [updateGameState]);
     
     const handleDeleteFromWaiting = useCallback((player) => {
-        setModal({ type: 'confirm', data: { title: '선수 내보내기', body: `${player.name} 선수를 내보낼까요? (기록은 유지됩니다)`,
-            onConfirm: async () => { 
-                await updateDoc(doc(playersRef, player.id), { status: 'inactive' });
-                // [NEW] Remove from all scheduled matches as well
-                const updateFunction = (currentState) => {
-                    const newState = JSON.parse(JSON.stringify(currentState));
-                    Object.keys(newState.scheduledMatches).forEach(mKey => {
-                        const match = newState.scheduledMatches[mKey];
-                        const playerIndex = match.indexOf(player.id);
-                        if (playerIndex > -1) {
-                            match[playerIndex] = null;
-                        }
-                    });
-                    return { newState };
-                };
-                await updateGameState(updateFunction);
-                setModal({ type: null, data: null });
-            }
-        }});
+        setModal({ type: 'confirm', data: { title: '선수 내보내기', body: `${player.name} 선수를 내보낼까요?`, onConfirm: async () => { 
+            await updateDoc(doc(playersRef, player.id), { status: 'inactive' });
+            const updateFunction = (currentState) => {
+                const newState = JSON.parse(JSON.stringify(currentState));
+                Object.keys(newState.scheduledMatches).forEach(mKey => {
+                    const match = newState.scheduledMatches[mKey];
+                    const playerIndex = match.indexOf(player.id);
+                    if (playerIndex > -1) match[playerIndex] = null;
+                });
+                return { newState };
+            };
+            await updateGameState(updateFunction);
+            setModal(null);
+        }}});
     }, [updateGameState]);
 
     const handleEnter = useCallback(async (formData) => {
@@ -703,135 +690,112 @@ export default function App() {
             const playerDocRef = doc(playersRef, id);
             let docSnap = await getDoc(playerDocRef);
             let playerData;
-            
             if (docSnap.exists()) {
-                const existingData = docSnap.data();
-                playerData = { 
-                    ...existingData,
-                    level, 
-                    gender, 
-                    isGuest,
-                    status: 'active',
-                    todayWins: existingData.todayWins || 0,
-                    todayLosses: existingData.todayLosses || 0,
-                    todayWinStreak: existingData.todayWinStreak || 0,
-                    todayWinStreakCount: existingData.todayWinStreakCount || 0,
-                    todayRecentGames: existingData.todayRecentGames || [],
-                };
+                playerData = { ...docSnap.data(), level, gender, isGuest, status: 'active', todayWins: docSnap.data().todayWins || 0, todayLosses: docSnap.data().todayLosses || 0, todayWinStreak: docSnap.data().todayWinStreak || 0, todayWinStreakCount: docSnap.data().todayWinStreakCount || 0, todayRecentGames: docSnap.data().todayRecentGames || [], };
             } else {
-                playerData = { 
-                    id, name, level, gender, isGuest, 
-                    entryTime: new Date().toISOString(), isResting: false,
-                    status: 'active',
-                    wins: 0, losses: 0, rp: 0, winStreak: 0, winStreakCount: 0,
-                    attendanceCount: 0, achievements: [], partnerHistory: {},
-                    todayWins: 0, todayLosses: 0, todayWinStreak: 0, todayWinStreakCount: 0, todayRecentGames: [],
-                };
+                playerData = { id, name, level, gender, isGuest, entryTime: new Date().toISOString(), isResting: false, status: 'active', wins: 0, losses: 0, rp: 0, winStreak: 0, winStreakCount: 0, attendanceCount: 0, achievements: [], partnerHistory: {}, todayWins: 0, todayLosses: 0, todayWinStreak: 0, todayWinStreakCount: 0, todayRecentGames: [], };
             }
-            
             await setDoc(playerDocRef, playerData, { merge: true });
             setCurrentUser(playerData);
             localStorage.setItem('badminton-currentUser-id', id);
         } catch (error) {
-            console.error("Enter failed: ", error);
             setModal({ type: 'alert', data: { title: '오류', body: '입장 처리 중 문제가 발생했습니다.' }});
         }
     }, []);
 
     const handleLogout = useCallback(() => {
         if (!currentUser) return;
-        setModal({ type: 'confirm', data: { 
-            title: '나가기', 
-            body: '나가시면 현황판에서 제외됩니다. 정말 나가시겠습니까? (기록은 유지됩니다)',
-            onConfirm: async () => {
-                try {
-                    const updateFunction = (currentState) => {
-                        const newState = JSON.parse(JSON.stringify(currentState));
-                        const playerId = currentUser.id;
-                        // [MODIFIED] Remove from all scheduled matches
-                        Object.keys(newState.scheduledMatches).forEach(matchKey => {
-                            const match = newState.scheduledMatches[matchKey];
-                            if(match) {
-                                const playerIndex = match.indexOf(playerId);
-                                if (playerIndex > -1) match[playerIndex] = null;
-                            }
-                        });
-                        newState.inProgressCourts.forEach((court, courtIndex) => {
-                            if (court?.players) {
-                                const playerIndex = court.players.indexOf(playerId);
-                                if (playerIndex > -1) court.players[playerIndex] = null;
-                                if (court.players.every(p => p === null)) newState.inProgressCourts[courtIndex] = null;
-                            }
-                        });
-                        return { newState };
-                    };
-                    await updateGameState(updateFunction);
-
-                    await updateDoc(doc(playersRef, currentUser.id), { status: 'inactive' });
-                    
-                    localStorage.removeItem('badminton-currentUser-id');
-                    setCurrentUser(null);
-                    setModal({ type: null, data: null });
-                } catch (error) {
-                    setModal({ type: 'alert', data: { title: '오류', body: '나가는 도중 문제가 발생했습니다.' }});
-                }
+        setModal({ type: 'confirm', data: { title: '나가기', body: '정말 나가시겠습니까?', onConfirm: async () => {
+            try {
+                const updateFunction = (currentState) => {
+                    const newState = JSON.parse(JSON.stringify(currentState));
+                    const playerId = currentUser.id;
+                    Object.keys(newState.scheduledMatches).forEach(matchKey => {
+                        const match = newState.scheduledMatches[matchKey];
+                        if(match) {
+                            const playerIndex = match.indexOf(playerId);
+                            if (playerIndex > -1) match[playerIndex] = null;
+                        }
+                    });
+                    newState.inProgressCourts.forEach((court, courtIndex) => {
+                        if (court?.players) {
+                            const playerIndex = court.players.indexOf(playerId);
+                            if (playerIndex > -1) court.players[playerIndex] = null;
+                            if (court.players.every(p => p === null)) newState.inProgressCourts[courtIndex] = null;
+                        }
+                    });
+                    return { newState };
+                };
+                await updateGameState(updateFunction);
+                await updateDoc(doc(playersRef, currentUser.id), { status: 'inactive' });
+                localStorage.removeItem('badminton-currentUser-id');
+                setCurrentUser(null);
+                setModal(null);
+            } catch (error) {
+                setModal({ type: 'alert', data: { title: '오류', body: '나가는 도중 문제가 발생했습니다.' }});
             }
-        }});
+        }}});
     }, [currentUser, updateGameState]);
     
+    // [FIXED] 선수 카드 클릭 로직 (단일 선택 및 교체)
     const handleCardClick = useCallback(async (playerId, matchKey, slotIndex) => {
         const isAdmin = ADMIN_NAMES.includes(currentUser?.name);
         if (!isAdmin) return;
 
         const clickedLocation = { playerId, matchKey, slotIndex };
 
-        if (!selectedPlayer) { // 첫 번째 선수 선택
+        if (!selectedPlayer) {
             setSelectedPlayer(clickedLocation);
-        } else { // 두 번째 선수 선택 (교체 실행)
+        } else {
+            if (selectedPlayer.playerId === playerId && selectedPlayer.matchKey === matchKey && selectedPlayer.slotIndex === slotIndex) {
+                setSelectedPlayer(null); // 같은 카드 다시 누르면 선택 취소
+                return;
+            }
+            
             const updateFunction = (currentState) => {
                 const newState = JSON.parse(JSON.stringify(currentState));
                 const source = selectedPlayer;
                 const target = clickedLocation;
-
-                const valA = newState.scheduledMatches[source.matchKey][source.slotIndex];
-                const valB = newState.scheduledMatches[target.matchKey][target.slotIndex];
+                
+                const valA = source.matchKey ? newState.scheduledMatches[source.matchKey][source.slotIndex] : source.playerId;
+                const valB = target.matchKey ? newState.scheduledMatches[target.matchKey][target.slotIndex] : target.playerId;
 
                 // Swap
-                newState.scheduledMatches[source.matchKey][source.slotIndex] = valB;
-                newState.scheduledMatches[target.matchKey][target.slotIndex] = valA;
+                if(source.matchKey) newState.scheduledMatches[source.matchKey][source.slotIndex] = valB;
+                if(target.matchKey) newState.scheduledMatches[target.matchKey][target.slotIndex] = valA;
                 
                 return { newState };
             };
             await updateGameState(updateFunction, '선수 위치를 바꾸는 데 실패했습니다.');
-            setSelectedPlayer(null); // 선택 초기화
+            setSelectedPlayer(null);
         }
     }, [currentUser, selectedPlayer, updateGameState]);
     
+    // [FIXED] 빈 슬롯에 선수 추가 로직
     const handleSlotClick = useCallback(async (context) => {
         const isAdmin = ADMIN_NAMES.includes(currentUser?.name);
-        if (!isAdmin || !selectedPlayer || selectedPlayer.matchKey) return; // 대기중인 선수만 슬롯에 추가 가능
+        // 대기중인 선수(matchKey 없음)를 선택했을 때만 동작
+        if (!isAdmin || !selectedPlayer || selectedPlayer.matchKey) {
+            setSelectedPlayer(null); // 잘못된 선택 초기화
+            return;
+        }
         
         const { matchKey, slotIndex } = context;
 
         const updateFunction = (currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
-
-            // [NEW] 수동 추가 시 중복 방지
             const isAlreadyScheduled = Object.values(newState.scheduledMatches).some(match => match.includes(selectedPlayer.playerId));
-            if (isAlreadyScheduled) {
-                return { newState, error: '이미 다른 경기에 예정된 선수는 수동으로 추가할 수 없습니다.' };
+            if (isAlreadyScheduled) return { newState, error: '이미 다른 경기에 예정된 선수는 수동으로 추가할 수 없습니다.' };
+
+            if (!newState.scheduledMatches[matchKey]) {
+                newState.scheduledMatches[matchKey] = Array(PLAYERS_PER_MATCH).fill(null);
             }
 
-            // Move player from waiting to the slot
-            const targetSlotValue = newState.scheduledMatches[matchKey]?.[slotIndex];
-            if (targetSlotValue) { // If slot is not empty, it's a swap with waiting, which is not allowed. Clear selection.
-                 return { newState, error: '선택한 슬롯이 비어있지 않습니다.' };
-            }
+            if (newState.scheduledMatches[matchKey][slotIndex]) return { newState, error: '선택한 슬롯이 비어있지 않습니다.' };
             
             newState.scheduledMatches[matchKey][slotIndex] = selectedPlayer.playerId;
             return { newState };
         };
-
         await updateGameState(updateFunction, '선수를 경기에 배정하는 데 실패했습니다.');
         setSelectedPlayer(null);
     }, [currentUser, selectedPlayer, updateGameState]);
@@ -843,11 +807,8 @@ export default function App() {
         
         const emptyCourts = [];
         for (let i = 0; i < gameState.numInProgressCourts; i++) {
-            if (!gameState.inProgressCourts[i]) {
-                emptyCourts.push(i);
-            }
+            if (!gameState.inProgressCourts[i]) emptyCourts.push(i);
         }
-
         if (emptyCourts.length === 0) { 
             setModal({type: 'alert', data: { title: "시작 불가", body: "빈 코트가 없습니다." } }); 
             return; 
@@ -856,201 +817,136 @@ export default function App() {
         const start = async (courtIndex) => {
             const updateFunction = (currentState) => {
                 const currentMatch = currentState.scheduledMatches[matchKey] || [];
-                if(currentMatch.filter(p=>p).length !== PLAYERS_PER_MATCH) {
-                    throw new Error("경기를 시작할 수 없습니다. 다른 관리자가 먼저 시작했을 수 있습니다.");
-                }
+                if(currentMatch.filter(p=>p).length !== PLAYERS_PER_MATCH) throw new Error("경기를 시작할 수 없습니다.");
 
                 const newState = JSON.parse(JSON.stringify(currentState));
                 newState.inProgressCourts[courtIndex] = { players: [...currentMatch], startTime: new Date().toISOString() };
-                delete newState.scheduledMatches[matchKey]; // 경기를 예정 목록에서 삭제
-
+                delete newState.scheduledMatches[matchKey];
                 return { newState };
             };
             await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다.');
-            setModal({type:null, data:null});
+            setModal(null);
         };
 
-        if (emptyCourts.length === 1) { 
-            start(emptyCourts[0]); 
-        } else { 
-            setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } }); 
-        }
+        if (emptyCourts.length === 1) start(emptyCourts[0]); 
+        else setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } }); 
     }, [gameState, updateGameState]);
 
     const processMatchResult = useCallback(async (courtIndex, winningTeam) => {
         const court = gameState.inProgressCourts[courtIndex];
         if (!court) return;
         const allMatchPlayerIds = court.players;
-
         const batch = writeBatch(db);
-        const now = new Date().toISOString();
-        
         const winners = winningTeam;
         const losers = allMatchPlayerIds.filter(pId => !winningTeam.includes(pId));
 
         allMatchPlayerIds.forEach(pId => {
             const player = allPlayers[pId];
             if(!player) return;
-
             const isWinner = winningTeam.includes(pId);
             const updatedData = {
                 todayWins: increment(isWinner ? 1 : 0),
                 todayLosses: increment(isWinner ? 0 : 1),
                 todayWinStreak: isWinner ? (player.todayWinStreak || 0) + 1 : 0,
                 todayWinStreakCount: (isWinner && (player.todayWinStreak || 0) + 1 >= 3) ? increment(1) : player.todayWinStreakCount,
+                todayRecentGames: [ { result: isWinner ? '승' : '패', partners: (isWinner ? winners : losers).filter(id => id !== pId), opponents: isWinner ? losers : winners }, ...(player.todayRecentGames || [])].slice(0, 10),
             };
-
-            const gameRecord = {
-                result: isWinner ? '승' : '패', timestamp: now,
-                partners: (isWinner ? winners : losers).filter(id => id !== pId),
-                opponents: isWinner ? losers : winners
-            };
-            updatedData.todayRecentGames = [gameRecord, ...(player.todayRecentGames || [])].slice(0, 10);
             batch.update(doc(playersRef, pId), updatedData);
         });
         
-        // [NEW] Update partner history
-        const [p1, p2] = winners;
-        const [p3, p4] = losers;
-        if(p1 && p2){
-             batch.update(doc(playersRef, p1), { [`partnerHistory.${p2}`]: increment(1) });
-             batch.update(doc(playersRef, p2), { [`partnerHistory.${p1}`]: increment(1) });
-        }
-       if(p3 && p4){
-             batch.update(doc(playersRef, p3), { [`partnerHistory.${p4}`]: increment(1) });
-             batch.update(doc(playersRef, p4), { [`partnerHistory.${p3}`]: increment(1) });
-       }
+        const [p1, p2] = winners; const [p3, p4] = losers;
+        if(p1 && p2){ batch.update(doc(playersRef, p1), { [`partnerHistory.${p2}`]: increment(1) }); batch.update(doc(playersRef, p2), { [`partnerHistory.${p1}`]: increment(1) }); }
+        if(p3 && p4){ batch.update(doc(playersRef, p3), { [`partnerHistory.${p4}`]: increment(1) }); batch.update(doc(playersRef, p4), { [`partnerHistory.${p3}`]: increment(1) }); }
 
         const updateFunction = (currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
             newState.inProgressCourts[courtIndex] = null;
             return { newState };
         };
-        try {
-            await batch.commit();
-            await updateGameState(updateFunction);
-        } catch(e) {
-            console.error(e);
-            setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
-        }
-        setModal({ type: null, data: null });
+        try { await batch.commit(); await updateGameState(updateFunction); } 
+        catch(e) { setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }}); }
+        setModal(null);
     }, [gameState, allPlayers, updateGameState]);
 
     const handleEndMatch = useCallback(async (courtIndex) => {
         const court = gameState.inProgressCourts[courtIndex];
         if (!court || !court.players || court.players.some(p=>!p)) return;
-        
         const matchPlayers = court.players.map(pid => allPlayers[pid]).filter(Boolean);
-        if (matchPlayers.length !== PLAYERS_PER_MATCH) {
-             setModal({ type: 'alert', data: { title: '오류', body: '참여 선수 정보가 없습니다.' } });
-            return;
-        }
+        if (matchPlayers.length !== PLAYERS_PER_MATCH) { setModal({ type: 'alert', data: { title: '오류', body: '참여 선수 정보가 없습니다.' } }); return; }
         setModal({ type: 'resultInput', data: { courtIndex, players: matchPlayers, onResultSubmit: processMatchResult } });
     }, [gameState, allPlayers, processMatchResult]);
     
     const handleResetAllRankings = useCallback(async () => {
-        setModal({ type: 'alert', data: { title: '처리 중...', body: '랭킹 초기화 작업을 진행하고 있습니다.' } });
+        setModal({ type: 'alert', data: { title: '처리 중...', body: '랭킹 초기화 중...' } });
         try {
-            const allPlayersSnapshot = await getDocs(query(playersRef, where("isGuest", "==", false)));
+            const q = query(playersRef, where("isGuest", "==", false));
+            const snapshot = await getDocs(q);
             const batch = writeBatch(db);
-            
-            allPlayersSnapshot.forEach(playerDoc => {
-                batch.update(playerDoc.ref, {
-                    wins: 0, losses: 0, rp: 0, attendanceCount: 0, winStreak: 0, winStreakCount: 0, recentGames: [], partnerHistory: {}
-                });
+            snapshot.forEach(playerDoc => {
+                batch.update(playerDoc.ref, { wins: 0, losses: 0, rp: 0, attendanceCount: 0, winStreak: 0, winStreakCount: 0, recentGames: [], partnerHistory: {} });
             });
-            
             await batch.commit();
-            setModal({ type: 'alert', data: { title: '성공', body: '모든 누적 랭킹 정보가 성공적으로 초기화되었습니다.' } });
+            setModal({ type: 'alert', data: { title: '성공', body: '모든 누적 랭킹 정보가 초기화되었습니다.' } });
         } catch (error) {
             setModal({ type: 'alert', data: { title: '오류', body: '랭킹 초기화에 실패했습니다.' } });
         }
     }, []);
     
-    // [NEW] 자동 매칭 생성 핸들러
     const handleGenerateSchedule = useCallback(async (numGames) => {
         setModal({ type: 'alert', data: { title: '생성 중...', body: '자동으로 경기를 생성하고 있습니다...' } });
-
         const playersToMatch = Object.values(allPlayers).filter(p => p.status === 'active' && !p.isGuest);
         const newSchedule = generateSchedule(playersToMatch, numGames);
-
-        if (newSchedule.length === 0) {
-            setModal({ type: 'alert', data: { title: '생성 불가', body: '경기를 생성할 선수가 부족합니다.' } });
-            return;
-        }
-
+        if (newSchedule.length === 0) { setModal({ type: 'alert', data: { title: '생성 불가', body: '경기를 생성할 선수가 부족합니다.' } }); return; }
         const updateFunction = (currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
             const formattedSchedule = {};
-            newSchedule.forEach((match, index) => {
-                formattedSchedule[String(index)] = match.players;
-            });
+            newSchedule.forEach((match, index) => { formattedSchedule[String(index)] = match.players; });
             newState.scheduledMatches = formattedSchedule;
-            newState.numScheduledMatches = newSchedule.length;
             return { newState };
         };
-
         await updateGameState(updateFunction, '자동 경기 생성에 실패했습니다.');
         setModal({ type: 'alert', data: { title: '성공', body: `${newSchedule.length}개의 경기가 생성되었습니다.` } });
     }, [allPlayers, updateGameState]);
 
-
     const handleSystemReset = useCallback(() => {
-        setModal({ type: 'confirm', data: {
-            title: '시스템 초기화',
-            body: '[경고] 모든 선수가 대기 명단으로 이동하고, 진행/예정 중인 경기가 모두 사라집니다. 선수 기록은 유지됩니다. 계속하시겠습니까?',
-            onConfirm: async () => {
-                const updateFunction = (currentState) => {
-                    const newState = JSON.parse(JSON.stringify(currentState));
-                    newState.scheduledMatches = {};
-                    newState.inProgressCourts = Array(newState.numInProgressCourts).fill(null);
-                    return { newState };
-                };
-                await updateGameState(updateFunction, '시스템 초기화에 실패했습니다.');
-                setModal({ type: 'alert', data: { title: '완료', body: '시스템이 초기화되었습니다.' }});
-            }
-        }});
+        setModal({ type: 'confirm', data: { title: '시스템 초기화', body: '[경고] 진행/예정 경기가 모두 사라집니다.', onConfirm: async () => {
+            const updateFunction = (currentState) => {
+                const newState = JSON.parse(JSON.stringify(currentState));
+                newState.scheduledMatches = {};
+                newState.inProgressCourts = Array(newState.numInProgressCourts).fill(null);
+                return { newState };
+            };
+            await updateGameState(updateFunction, '시스템 초기화에 실패했습니다.');
+            setModal({ type: 'alert', data: { title: '완료', body: '시스템이 초기화되었습니다.' }});
+        }}});
     }, [updateGameState]);
     
     const handleMoveOrSwapCourt = useCallback(async (sourceIndex, targetIndex) => {
         if (sourceIndex === targetIndex) return;
-
         const updateFunction = (currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
-            const sourceCourtData = newState.inProgressCourts[sourceIndex] || null;
-            const targetCourtData = newState.inProgressCourts[targetIndex] || null;
-            newState.inProgressCourts[sourceIndex] = targetCourtData;
-            newState.inProgressCourts[targetIndex] = sourceCourtData;
+            [newState.inProgressCourts[sourceIndex], newState.inProgressCourts[targetIndex]] = [newState.inProgressCourts[targetIndex], newState.inProgressCourts[sourceIndex]];
             return { newState };
         };
-        
         await updateGameState(updateFunction, '코트 이동/교환에 실패했습니다.');
         setCourtMove({ sourceIndex: null });
     }, [updateGameState]);
 
     const handleSettingsUpdate = useCallback(async (settings) => {
         try {
-            const { courts, announcement, pointSystemInfo } = settings;
-            
+            const { scheduled, courts, announcement, pointSystemInfo } = settings;
             await runTransaction(db, async (transaction) => {
-                const currentGameStateDoc = await transaction.get(gameStateRef);
-                if (!currentGameStateDoc.exists()) throw new Error("GameState document does not exist!");
-                
-                const currentGameState = currentGameStateDoc.data();
-                const newGameState = { ...currentGameState, numInProgressCourts: courts };
-                
-                let currentCourts = newGameState.inProgressCourts || [];
-                if (currentCourts.length > courts) {
-                    newGameState.inProgressCourts = currentCourts.slice(0, courts);
-                } else {
-                    newGameState.inProgressCourts = [...currentCourts, ...Array(courts - currentCourts.length).fill(null)];
-                }
-                transaction.set(gameStateRef, newGameState);
+                const doc = await transaction.get(gameStateRef);
+                if (!doc.exists()) throw new Error("GameState not found!");
+                const current = doc.data();
+                const newState = { ...current, numScheduledMatches: scheduled, numInProgressCourts: courts };
+                let currentCourts = newState.inProgressCourts || [];
+                newState.inProgressCourts = [...currentCourts, ...Array(courts - currentCourts.length).fill(null)].slice(0, courts);
+                transaction.set(gameStateRef, newState);
                 transaction.set(configRef, { announcement, pointSystemInfo }, { merge: true });
             });
-            
             setIsSettingsOpen(false);
-            setModal({ type: 'alert', data: { title: '저장 완료', body: '설정이 성공적으로 저장되었습니다.' } });
+            setModal({ type: 'alert', data: { title: '저장 완료', body: '설정이 저장되었습니다.' } });
         } catch (error) {
             setModal({ type: 'alert', data: { title: '저장 실패', body: '설정 저장 중 오류가 발생했습니다.' } });
         }
@@ -1060,6 +956,29 @@ export default function App() {
         if (!currentUser) return;
         await updateDoc(doc(playersRef, currentUser.id), { isResting: !currentUser.isResting });
     }, [currentUser]);
+
+    // [NEW] 전체 경기 예정 삭제 핸들러
+    const handleClearSchedule = useCallback(() => {
+        setModal({ type: 'confirm', data: { title: '전체 삭제', body: '모든 예정 경기를 삭제하시겠습니까?', onConfirm: async () => {
+            const updateFunction = (currentState) => ({ newState: { ...currentState, scheduledMatches: {} } });
+            await updateGameState(updateFunction, '전체 삭제에 실패했습니다.');
+            setModal(null);
+        }}});
+    }, [updateGameState]);
+
+    // [NEW] 단일 경기 삭제 핸들러 (길게 누르기)
+    const handleDeleteMatch = useCallback((matchKey) => {
+        setModal({ type: 'confirm', data: { title: '경기 삭제', body: `${parseInt(matchKey, 10) + 1}번 경기를 삭제하시겠습니까?`, onConfirm: async () => {
+            const updateFunction = (currentState) => {
+                const newState = { ...currentState };
+                delete newState.scheduledMatches[matchKey];
+                return { newState };
+            };
+            await updateGameState(updateFunction, '경기 삭제에 실패했습니다.');
+            setModal(null);
+        }}});
+    }, [updateGameState]);
+
 
     const waitingPlayers = useMemo(() => Object.values(activePlayers)
         .filter(p => playerLocations[p.id]?.location === 'waiting')
@@ -1075,7 +994,7 @@ export default function App() {
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-            {resetNotification && <ConfirmationModal title={resetNotification.status === 'error' ? "⚠️ 저장 오류" : "🏆 시즌 마감"} body={resetNotification.message} onConfirm={async () => { if (resetNotification.status === 'pending') { await handleResetAllRankings(); } await updateDoc(doc(notificationsRef, resetNotification.id), { status: 'acknowledged' }); setResetNotification(null); }} onCancel={async () => { await updateDoc(doc(notificationsRef, resetNotification.id), { status: 'acknowledged' }); setResetNotification(null); }} />}
+            {resetNotification && <ConfirmationModal title={resetNotification.status === 'error' ? "⚠️ 저장 오류" : "🏆 시즌 마감"} body={resetNotification.message} onConfirm={async () => { if (resetNotification.status === 'pending') await handleResetAllRankings(); await updateDoc(doc(notificationsRef, resetNotification.id), { status: 'acknowledged' }); setResetNotification(null); }} onCancel={async () => { await updateDoc(doc(notificationsRef, resetNotification.id), { status: 'acknowledged' }); setResetNotification(null); }} />}
             {modal?.type === 'autoMatch' && <AutoMatchModal onGenerate={handleGenerateSchedule} onClose={() => setModal(null)} />}
             {modal?.type === 'season' && <SeasonModal {...modal.data} onClose={() => setModal(null)} />}
             {modal?.type === 'resultInput' && <ResultInputModal {...modal.data} onClose={() => setModal(null)} />}
@@ -1087,7 +1006,7 @@ export default function App() {
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal(null)} />}
             {modal?.type === 'rankingHistory' && <RankingHistoryModal onCancel={() => setModal(null)} />}
             
-            {isSettingsOpen && <SettingsModal isAdmin={isAdmin} courtCount={gameState.numInProgressCourts} seasonConfig={seasonConfig} onSave={handleSettingsUpdate} onCancel={() => setIsSettingsOpen(false)} setModal={setModal} onSystemReset={handleSystemReset} />}
+            {isSettingsOpen && <SettingsModal isAdmin={isAdmin} scheduledCount={gameState.numScheduledMatches} courtCount={gameState.numInProgressCourts} seasonConfig={seasonConfig} onSave={handleSettingsUpdate} onCancel={() => setIsSettingsOpen(false)} setModal={setModal} onSystemReset={handleSystemReset} />}
             
             <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
                 <div className="flex items-center justify-between gap-2">
@@ -1105,15 +1024,15 @@ export default function App() {
             <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto">
                 {currentPage === 'main' ? (
                     <>
-                        <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayer ? [selectedPlayer.playerId] : []} isAdmin={isAdmin} handleCardClick={(playerId) => setSelectedPlayer({ playerId })} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} />
-                        <ScheduledMatchesSection scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayer ? [selectedPlayer.playerId] : []} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} />
+                        <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayer={selectedPlayer} isAdmin={isAdmin} handleCardClick={(playerId) => setSelectedPlayer({ playerId })} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} />
+                        <ScheduledMatchesSection gameState={gameState} players={activePlayers} selectedPlayer={selectedPlayer} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} onClearSchedule={handleClearSchedule} onDeleteMatch={handleDeleteMatch} />
                         <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
                     </>
                 ) : (
                     <RankingPage players={allPlayers} currentUser={currentUser} isAdmin={isAdmin} onProfileClick={(player, rankingPeriod) => setModal({ type: 'adminEditPlayer', data: { player, mode: rankingPeriod }})} onInfoClick={() => setModal({type: 'pointSystemInfo', data: { content: seasonConfig.pointSystemInfo }})} onHistoryClick={() => setModal({ type: 'rankingHistory' })} setModal={setModal} />
                 )}
             </main>
-            <style>{`.arcade-font { font-family: 'Press Start 2P', cursive; } .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; } .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; } @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } } .flicker-text { animation: flicker 1.5s infinite; }`}</style>
+            <style>{`body, .player-card, div, button, span, h1, h2, h3, p { -webkit-user-select: none; user-select: none; } .arcade-font { font-family: 'Press Start 2P', cursive; } .arcade-button { position: relative; border: 2px solid #222; box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF; white-space: nowrap; } .arcade-button:active { transform: translateY(2px); box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF; } @keyframes flicker { 0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700; } 50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700; } } .flicker-text { animation: flicker 1.5s infinite; }`}</style>
         </div>
     );
 }
@@ -1122,6 +1041,7 @@ export default function App() {
 // 신규 및 복구된 페이지/모달 컴포넌트들
 // ===================================================================================
 function EntryPage({ onEnter }) {
+    // ... no changes in this component
     const [formData, setFormData] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
 
     useEffect(() => {
@@ -1163,6 +1083,7 @@ function EntryPage({ onEnter }) {
 }
 
 function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClick, onHistoryClick }) {
+    // ... no changes in this component
     const [rankingPeriod, setRankingPeriod] = useState('today');
 
     const rankedPlayers = useMemo(() => {
@@ -1210,6 +1131,7 @@ function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClic
 }
 
 function ResultInputModal({ courtIndex, players, onResultSubmit, onClose }) {
+    // ... no changes in this component
     const [winners, setWinners] = useState([]);
     const handlePlayerClick = (playerId) => setWinners(prev => prev.includes(playerId) ? prev.filter(id => id !== playerId) : (prev.length < 2 ? [...prev, playerId] : prev));
     useEffect(() => { if (winners.length === 2) { const timer = setTimeout(() => onResultSubmit(courtIndex, winners), 500); return () => clearTimeout(timer); } }, [winners, courtIndex, onResultSubmit]);
@@ -1226,6 +1148,7 @@ function ResultInputModal({ courtIndex, players, onResultSubmit, onClose }) {
 }
 
 function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
+    // ... no changes in this component
     const isMonthlyMode = mode === 'monthly';
     const [stats, setStats] = useState({ todayWins: player.todayWins || 0, todayLosses: player.todayLosses || 0, todayWinStreakCount: player.todayWinStreakCount || 0, wins: player.wins || 0, losses: player.losses || 0, winStreakCount: player.winStreakCount || 0, attendanceCount: player.attendanceCount || 0, });
     const handleChange = (e) => setStats(prev => ({...prev, [e.target.name]: Number(e.target.value) }));
@@ -1260,13 +1183,15 @@ function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
     );
 }
 
-function SettingsModal({ isAdmin, courtCount, seasonConfig, onSave, onCancel, setModal, onSystemReset }) {
+// [MODIFIED] SettingsModal to include numScheduledMatches
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, onSave, onCancel, setModal, onSystemReset }) {
+    const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
     const [pointSystemInfo, setPointSystemInfo] = useState(seasonConfig.pointSystemInfo);
     const [isTesting, setIsTesting] = useState(false);
     if (!isAdmin) return null;
-    const handleSave = () => onSave({ courts, announcement, pointSystemInfo });
+    const handleSave = () => onSave({ scheduled, courts, announcement, pointSystemInfo });
     const handleTest = async (functionName, confirmTitle, confirmBody) => {
         setModal({ type: 'confirm', data: { title: confirmTitle, body: confirmBody, onConfirm: async () => {
             setIsTesting(true);
@@ -1284,7 +1209,10 @@ function SettingsModal({ isAdmin, courtCount, seasonConfig, onSave, onCancel, se
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg flex flex-col" style={{maxHeight: '90vh'}}>
                 <h3 className="text-xl font-bold text-white mb-6 arcade-font text-center flex-shrink-0">설정</h3>
                 <div className="flex-grow overflow-y-auto pr-2 space-y-4">
-                    <div className="bg-gray-700 p-3 rounded-lg flex items-center justify-around"><label className="font-semibold">코트 수</label><div className="flex items-center gap-2 mt-1"><button onClick={() => setCourts(c => Math.max(1, c - 1))} className="w-8 h-8 bg-gray-600 rounded-full text-lg">-</button><span className="text-xl font-bold w-8 text-center">{courts}</span><button onClick={() => setCourts(c => c + 1)} className="w-8 h-8 bg-gray-600 rounded-full text-lg">+</button></div></div>
+                    <div className="bg-gray-700 p-3 rounded-lg"><span className="font-semibold mb-2 block text-center">경기 예정 / 코트 수</span><div className="flex items-center justify-around">
+                        <div className="text-center"><p>예정</p><div className="flex items-center gap-2 mt-1"><button onClick={() => setScheduled(c => Math.max(1, c - 1))} className="w-8 h-8 bg-gray-600 rounded-full text-lg">-</button><span className="text-xl font-bold w-8 text-center">{scheduled}</span><button onClick={() => setScheduled(c => c + 1)} className="w-8 h-8 bg-gray-600 rounded-full text-lg">+</button></div></div>
+                        <div className="text-center"><p>코트</p><div className="flex items-center gap-2 mt-1"><button onClick={() => setCourts(c => Math.max(1, c - 1))} className="w-8 h-8 bg-gray-600 rounded-full text-lg">-</button><span className="text-xl font-bold w-8 text-center">{courts}</span><button onClick={() => setCourts(c => c + 1)} className="w-8 h-8 bg-gray-600 rounded-full text-lg">+</button></div></div>
+                    </div></div>
                     <div className="bg-gray-700 p-3 rounded-lg"><label className="font-semibold mb-2 block">시즌 공지사항</label><textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" className="w-full bg-gray-600 text-white p-2 rounded-md"></textarea></div>
                     <div className="bg-gray-700 p-3 rounded-lg"><label className="font-semibold mb-2 block">점수 획득 설명</label><textarea value={pointSystemInfo} onChange={(e) => setPointSystemInfo(e.target.value)} rows="5" className="w-full bg-gray-600 text-white p-2 rounded-md"></textarea></div>
                     <div className="bg-gray-700 p-3 rounded-lg space-y-2"><label className="font-semibold mb-2 block text-center">고급 기능</label>
@@ -1299,8 +1227,8 @@ function SettingsModal({ isAdmin, courtCount, seasonConfig, onSave, onCancel, se
     );
 }
 
-// [NEW] 자동 매칭 모달
 function AutoMatchModal({ onGenerate, onClose }) {
+    // ... no changes in this component
     const [numGames, setNumGames] = useState(10);
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
