@@ -1294,7 +1294,8 @@ function EntryPage({ onEnter }) {
 }
 
 function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClick, onHistoryClick }) {
-    const [rankingPeriod, setRankingPeriod] = useState('monthly');
+    // [MODIFIED] '오늘' 랭킹이 기본으로 보이도록 'today'로 변경
+    const [rankingPeriod, setRankingPeriod] = useState('today');
 
     const rankedPlayers = useMemo(() => {
         let playersToRank = Object.values(players).filter(p => !p.isGuest);
@@ -1864,4 +1865,3 @@ function RankingHistoryModal({ onCancel }) {
       </div>
     );
 }
-
