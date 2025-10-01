@@ -1,5 +1,4 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-// [FIX] onCall 함수에 CORS 옵션을 설정하기 위해 import 구문을 수정합니다.
 const { onCall } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
@@ -10,23 +9,43 @@ initializeApp();
 const RP_CONFIG = { WIN: 30, LOSS: 10, ATTENDANCE: 20, WIN_STREAK_BONUS: 20 };
 const ADMIN_ID = "정형진"; 
 
+// [MODIFIED] 'runDailyBatchUpdate' 함수 로직 수정
 async function runDailyBatchUpdate() {
   logger.log("매일 선수 데이터 정산 작업을 시작합니다.");
 
   const db = getFirestore();
   const playersRef = db.collection("players");
   
-  const snapshot = await playersRef.where("status", "==", "active").get();
-  if (snapshot.empty) {
-    logger.log("정산할 활성(active) 선수가 없어 함수를 종료합니다.");
-    return "정산할 활성 선수가 없습니다.";
+  // 1. 'status'와 관계없이 모든 플레이어 문서를 가져옵니다.
+  const allPlayersSnapshot = await playersRef.get();
+  if (allPlayersSnapshot.empty) {
+    logger.log("등록된 선수가 없어 함수를 종료합니다.");
+    return "등록된 선수가 없습니다.";
+  }
+
+  // 2. 오늘 경기 기록(todayWins 또는 todayLosses)이 있는 선수만 필터링합니다.
+  const playersToUpdate = [];
+  allPlayersSnapshot.forEach(doc => {
+    const player = doc.data();
+    const todayWins = player.todayWins || 0;
+    const todayLosses = player.todayLosses || 0;
+    if (todayWins > 0 || todayLosses > 0) {
+      playersToUpdate.push({ ref: doc.ref, data: player });
+    }
+  });
+
+  // 3. 업데이트할 선수가 없으면 작업을 종료합니다.
+  if (playersToUpdate.length === 0) {
+    logger.log("오늘 경기 기록이 있는 선수가 없어 정산을 종료합니다.");
+    return "정산할 선수가 없습니다.";
   }
 
   const batch = db.batch();
   
-  snapshot.forEach(doc => {
-    const player = doc.data();
-    const playerRef = playersRef.doc(doc.id);
+  // 4. 필터링된 선수들에 대해서만 배치 업데이트를 실행합니다.
+  playersToUpdate.forEach(playerDoc => {
+    const player = playerDoc.data;
+    const playerRef = playerDoc.ref;
 
     const todayWins = player.todayWins || 0;
     const todayLosses = player.todayLosses || 0;
@@ -40,27 +59,27 @@ async function runDailyBatchUpdate() {
     };
 
     if (!player.isGuest) {
-      if (todayWins > 0 || todayLosses > 0) {
-          updatedData.wins = FieldValue.increment(todayWins);
-          updatedData.losses = FieldValue.increment(todayLosses);
-          updatedData.winStreakCount = FieldValue.increment(todayWinStreakCount);
-          
-          const todayTotalGames = todayWins + todayLosses;
-          if (todayTotalGames >= 3) {
-            updatedData.attendanceCount = FieldValue.increment(1);
-          }
-      }
+        if (todayWins > 0 || todayLosses > 0) {
+            updatedData.wins = FieldValue.increment(todayWins);
+            updatedData.losses = FieldValue.increment(todayLosses);
+            updatedData.winStreakCount = FieldValue.increment(todayWinStreakCount);
+            
+            const todayTotalGames = todayWins + todayLosses;
+            if (todayTotalGames >= 3) {
+              updatedData.attendanceCount = FieldValue.increment(1);
+            }
+        }
     }
     
     batch.update(playerRef, updatedData);
   });
 
   await batch.commit();
-  logger.log(`1단계: 오늘의 기록 합산 및 초기화 완료.`);
+  logger.log(`1단계: 오늘의 기록 합산 및 초기화 완료. (${playersToUpdate.length}명)`);
   
-  const allPlayersSnapshot = await playersRef.where("isGuest", "==", false).get();
+  const allPlayersSnapshotForRp = await playersRef.where("isGuest", "==", false).get();
   const rpBatch = db.batch();
-  allPlayersSnapshot.forEach(doc => {
+  allPlayersSnapshotForRp.forEach(doc => {
       const player = doc.data();
       const newRP = 
           (player.wins || 0) * RP_CONFIG.WIN +
@@ -72,8 +91,9 @@ async function runDailyBatchUpdate() {
   
   await rpBatch.commit();
   logger.log(`2단계: RP 재계산 완료. 모든 정산 작업이 성공적으로 끝났습니다.`);
-  return "일일 정산 작업이 성공적으로 완료되었습니다.";
+  return `일일 정산 작업이 성공적으로 완료되었습니다. (${playersToUpdate.length}명 처리)`;
 }
+
 
 exports.dailyBatchUpdate = onSchedule({
   schedule: "10 22 * * *",
@@ -87,9 +107,6 @@ exports.dailyBatchUpdate = onSchedule({
   return null;
 });
 
-/**
- * [FIX] 웹사이트에서 함수를 호출할 수 있도록 CORS 옵션을 추가합니다.
- */
 exports.testDailyBatch = onCall({ cors: true }, async (request) => {
   logger.log("일일 정산 '테스트'를 시작합니다.");
   try {
@@ -103,7 +120,6 @@ exports.testDailyBatch = onCall({ cors: true }, async (request) => {
 
 
 async function archiveMonthlyRanking(db, isTest = false) {
-  // ... (내부 로직은 변경 없음)
   const playersRef = db.collection("players");
   
   const today = new Date();
@@ -170,10 +186,6 @@ exports.monthlyRankingArchive = onSchedule({
   return null;
 });
 
-
-/**
- * [FIX] 웹사이트에서 함수를 호출할 수 있도록 CORS 옵션을 추가합니다.
- */
 exports.testMonthlyArchive = onCall({ cors: true }, async (request) => {
     logger.log("월간 랭킹 보관 '테스트'를 시작합니다.");
     const db = getFirestore();
@@ -185,4 +197,3 @@ exports.testMonthlyArchive = onCall({ cors: true }, async (request) => {
         throw new functions.https.HttpsError('internal', '테스트 함수 실행 중 서버에서 오류가 발생했습니다.');
     }
 });
-
