@@ -1569,7 +1569,7 @@ export default function App() {
                                     onClick={() => setActiveTab('matching')} 
                                     className={`py-2 px-4 font-bold ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
                                 >
-                                    매칭 관리
+                                    경기 예정
                                 </button>
                                 <button 
                                     onClick={() => setActiveTab('inProgress')}
