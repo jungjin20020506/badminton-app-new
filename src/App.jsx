@@ -180,7 +180,8 @@ const calculateLocations = (gameState, players) => {
 // ===================================================================================
 // 자식 컴포넌트들
 // ===================================================================================
-const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false }) => {
+// [개선 2] isPlaying prop을 추가하여 경기 중인 선수를 시각적으로 표시합니다.
+const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false }) => {
     const pressTimerRef = useRef(null);
     const cardRef = useRef(null);
 
@@ -244,6 +245,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         borderColor: 'transparent',
         transition: 'all 0.2s ease-in-out',
         backgroundColor: '#2d3748',
+        // [개선 2] 경기 중인 선수는 반투명하게 처리합니다.
+        opacity: isPlaying ? 0.6 : 1,
     };
 
     if (context.selected || isSelectedForWin) {
@@ -317,7 +320,8 @@ const CourtTimer = ({ court }) => {
     return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
 };
 
-const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser }) => {
+// [개선 2] inProgressPlayerIds prop을 추가로 전달받습니다.
+const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds }) => {
     const renderPlayerGrid = (players) => (
         <div className="grid grid-cols-5 gap-1">
             {players.map(player => (
@@ -330,6 +334,8 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                     onAction={handleDeleteFromWaiting} 
                     onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} 
                     isCurrentUser={currentUser && player.id === currentUser.id}
+                    // [개선 2] 현재 경기 중인지 여부를 PlayerCard에 전달합니다.
+                    isPlaying={inProgressPlayerIds.has(player.id)}
                 />
             ))}
         </div>
@@ -350,7 +356,8 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
 });
 
 
-const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch }) => {
+// [개선 2] inProgressPlayerIds prop을 추가로 전달받습니다.
+const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -395,7 +402,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                     const playerId = match[slotIndex];
                                     const player = players[playerId];
                                     const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -409,7 +416,8 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
     );
 });
 
-const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleRemoveFromAutoMatch, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot }) => {
+// [개선 2, 4] inProgressPlayerIds, handleAutoMatchSlotClick prop을 추가로 전달받습니다.
+const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleRemoveFromAutoMatch, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -451,11 +459,12 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                 {match.map((playerId, slotIndex) => {
                                     const player = players[playerId];
-                                    const cardKey = `${playerId}-${matchIndex}-${slotIndex}`;
+                                    const cardKey = playerId ? `${playerId}-${matchIndex}-${slotIndex}` : `auto-empty-${matchIndex}-${slotIndex}`;
                                     const isSelected = selectedAutoMatchSlot && selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex;
+                                    // [개선 4] 빈 슬롯일 경우 EmptySlot을 렌더링하고, 선수 복사를 위한 핸들러를 연결합니다.
                                     return player ? 
-                                        (<PlayerCard key={cardKey} player={player} context={{selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={() => handleRemoveFromAutoMatch(matchIndex, slotIndex)} isCurrentUser={currentUser && player.id === currentUser.id} />) : 
-                                        (<div className="h-14"></div>)
+                                        (<PlayerCard key={cardKey} player={player} context={{selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={() => handleRemoveFromAutoMatch(matchIndex, slotIndex, player)} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} />) : 
+                                        (<EmptySlot key={cardKey} onSlotClick={() => handleAutoMatchSlotClick(matchIndex, slotIndex)} />)
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -596,6 +605,19 @@ export default function App() {
             return acc;
         }, {});
     }, [allPlayers]);
+
+    // [개선 1, 2] 현재 경기(In-Progress)에 참여 중인 모든 선수의 ID를 Set으로 관리합니다.
+    // 이 Set은 선수 중복 참여 방지 및 카드 스타일링에 사용됩니다.
+    const inProgressPlayerIds = useMemo(() => {
+        if (!gameState?.inProgressCourts) return new Set();
+        return new Set(
+            gameState.inProgressCourts
+                .filter(court => court && court.players) // 유효한 코트만 필터링
+                .flatMap(court => court.players)       // 모든 선수를 하나의 배열로 만듦
+                .filter(playerId => playerId)             // null 값 제거
+        );
+    }, [gameState]);
+
 
     useEffect(() => {
         if (!currentUser || !isAdmin) {
@@ -903,11 +925,20 @@ export default function App() {
         setSelectedPlayerIds([]);
     }, [isAdmin, selectedPlayerIds, activePlayers, updateGameState]);
     
+    // [개선 1] 경기 시작 전, 참여 선수가 이미 다른 경기를 하고 있는지 확인합니다.
     const handleStartMatch = useCallback(async (matchIndex) => {
         if (!gameState) return;
         const match = gameState.scheduledMatches[String(matchIndex)] || [];
         if (match.filter(p => p).length !== PLAYERS_PER_MATCH) return;
         
+        // --- 시작: 중복 선수 확인 로직 ---
+        const isAnyPlayerBusy = match.some(playerId => inProgressPlayerIds.has(playerId));
+        if (isAnyPlayerBusy) {
+            setModal({ type: 'alert', data: { title: '시작 불가', body: '선수가 이미 경기중입니다.' } });
+            return;
+        }
+        // --- 종료: 중복 선수 확인 로직 ---
+
         const emptyCourts = [];
         for (let i = 0; i < gameState.numInProgressCourts; i++) {
             if (!gameState.inProgressCourts[i]) {
@@ -949,7 +980,7 @@ export default function App() {
         } else { 
             setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } }); 
         }
-    }, [gameState, updateGameState]);
+    }, [gameState, updateGameState, inProgressPlayerIds]); // 의존성 배열에 inProgressPlayerIds 추가
 
     const processMatchResult = useCallback(async (courtIndex, winningTeam) => {
         const court = gameState.inProgressCourts[courtIndex];
@@ -1037,6 +1068,7 @@ export default function App() {
         });
     }, [gameState, allPlayers, processMatchResult]);
     
+    // [개선 3b] 자동 매칭 생성 시, 기존 목록을 유지하고 뒤에 새로운 매칭을 추가합니다.
     const handleAutoMatchGenerate = useCallback((targetGames) => {
         setModal({ type: 'alert', data: { title: '🤖', body: '자동 매칭을 생성하고 있습니다...' } });
     
@@ -1098,19 +1130,36 @@ export default function App() {
         const femaleMatches = generateMatchesForGender(femalePlayers, targetGames);
         
         const allGeneratedMatches = [...maleMatches, ...femaleMatches];
-        const matchesObject = allGeneratedMatches.reduce((acc, match, index) => {
-            acc[String(index)] = match;
-            return acc;
-        }, {});
     
         updateGameState(currentState => {
-            const newState = { ...currentState, autoMatches: matchesObject };
+            // --- 시작: 기존 매치에 새로운 매치 추가 로직 ---
+            const existingMatches = currentState.autoMatches ? Object.values(currentState.autoMatches) : [];
+            const newTotalMatches = [...existingMatches, ...allGeneratedMatches];
+            const newMatchesObject = newTotalMatches.reduce((acc, match, index) => {
+                acc[String(index)] = match;
+                return acc;
+            }, {});
+            
+            const newState = { ...currentState, autoMatches: newMatchesObject };
+            // --- 종료: 기존 매치에 새로운 매치 추가 로직 ---
             return { newState };
         });
         setModal({ type: null, data: null });
     }, [activePlayers, playerLocations, updateGameState]);
     
+    // [개선 1] 자동 매칭 시작 전에도 중복 참여 여부를 확인합니다.
     const handleStartAutoMatch = useCallback(async (matchIndex) => {
+        const matchToStart = gameState?.autoMatches ? gameState.autoMatches[matchIndex] : null;
+        if (!matchToStart) return;
+        
+        // --- 시작: 중복 선수 확인 로직 ---
+        const isAnyPlayerBusy = matchToStart.some(playerId => inProgressPlayerIds.has(playerId));
+        if (isAnyPlayerBusy) {
+            setModal({ type: 'alert', data: { title: '시작 불가', body: '선수가 이미 경기중입니다.' } });
+            return;
+        }
+        // --- 종료: 중복 선수 확인 로직 ---
+
         const emptyCourts = [];
         for (let i = 0; i < (gameState?.numInProgressCourts || 0); i++) {
             if (!gameState.inProgressCourts[i]) {
@@ -1125,13 +1174,13 @@ export default function App() {
         const start = async (courtIndex) => {
             await updateGameState((currentState) => {
                 const newState = JSON.parse(JSON.stringify(currentState));
-                const matchToStart = newState.autoMatches ? newState.autoMatches[matchIndex] : null;
+                const currentMatchToStart = newState.autoMatches ? newState.autoMatches[matchIndex] : null;
 
-                if (!matchToStart || matchToStart.length !== 4) {
+                if (!currentMatchToStart || currentMatchToStart.length !== 4) {
                      throw new Error("매칭 정보가 올바르지 않습니다.");
                 }
 
-                newState.inProgressCourts[courtIndex] = { players: matchToStart, startTime: new Date().toISOString() };
+                newState.inProgressCourts[courtIndex] = { players: currentMatchToStart, startTime: new Date().toISOString() };
                 
                 delete newState.autoMatches[matchIndex];
                 const reindexedMatches = {};
@@ -1150,15 +1199,28 @@ export default function App() {
         } else {
             setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } });
         }
-    }, [gameState, updateGameState]);
+    }, [gameState, updateGameState, inProgressPlayerIds]); // 의존성 배열에 inProgressPlayerIds 추가
 
-    const handleRemoveFromAutoMatch = useCallback((matchIndex, slotIndex) => {
-        updateGameState(currentState => {
-            const newState = JSON.parse(JSON.stringify(currentState));
-            if (newState.autoMatches && newState.autoMatches[matchIndex]) {
-                newState.autoMatches[matchIndex][slotIndex] = null;
+    // [개선 3a] 자동 매칭에서 선수를 제외할 때 확인 창을 띄웁니다.
+    const handleRemoveFromAutoMatch = useCallback((matchIndex, slotIndex, player) => {
+        if (!player) return;
+
+        setModal({
+            type: 'confirm',
+            data: {
+                title: '선수 내보내기',
+                body: `${player.name} 선수를 자동 매칭에서 내보낼까요?`,
+                onConfirm: () => {
+                    updateGameState(currentState => {
+                        const newState = JSON.parse(JSON.stringify(currentState));
+                        if (newState.autoMatches && newState.autoMatches[matchIndex]) {
+                            newState.autoMatches[matchIndex][slotIndex] = null;
+                        }
+                        return { newState };
+                    });
+                    setModal({ type: null, data: null });
+                }
             }
-            return { newState };
         });
     }, [updateGameState]);
     
@@ -1223,6 +1285,36 @@ export default function App() {
             setSelectedAutoMatchSlot(null); // Clear selection after swap
         }
     }, [isAdmin, selectedAutoMatchSlot, updateGameState]);
+
+    // [개선 4] 대기 명단의 선수를 자동 매칭 빈 슬롯으로 '복사'하는 함수입니다.
+    const handleAutoMatchSlotClick = useCallback(async (matchIndex, slotIndex) => {
+        if (!isAdmin || selectedPlayerIds.length !== 1) return;
+
+        const playerId = selectedPlayerIds[0];
+        const playerLoc = findPlayerLocation(playerId);
+
+        // 대기 명단에 있는 선수만 추가할 수 있도록 제한합니다.
+        if (playerLoc.location !== 'waiting') {
+            setModal({ type: 'alert', data: { title: '오류', body: '대기 명단에 있는 선수만 추가할 수 있습니다.' } });
+            setSelectedPlayerIds([]); // 혼란을 방지하기 위해 선택 해제
+            return;
+        }
+
+        await updateGameState(currentState => {
+            const newState = JSON.parse(JSON.stringify(currentState));
+            if (newState.autoMatches && newState.autoMatches[String(matchIndex)]) {
+                // [오류 수정] Firestore 트랜잭션 내에서 슬롯이 이미 채워져 있을 경우,
+                // 오류를 발생시키는 대신 아무 작업도 하지 않도록 변경하여 동시성 충돌 오류를 방지합니다.
+                // UI는 onSnapshot 리스너를 통해 자동으로 최신 상태를 반영하게 됩니다.
+                if (newState.autoMatches[String(matchIndex)][slotIndex] === null) {
+                    newState.autoMatches[String(matchIndex)][slotIndex] = playerId;
+                }
+            }
+            return { newState };
+        }, '자동 매칭에 선수를 추가하지 못했습니다.');
+
+        setSelectedPlayerIds([]); // '복사' 후 선택을 해제합니다.
+    }, [isAdmin, selectedPlayerIds, findPlayerLocation, updateGameState]);
 
 
     const handleClearScheduledMatches = useCallback(() => {
@@ -1486,6 +1578,7 @@ export default function App() {
                             handleDeleteFromWaiting={handleDeleteFromWaiting}
                             setModal={setModal}
                             currentUser={currentUser}
+                            inProgressPlayerIds={inProgressPlayerIds}
                         />
 
                         {Object.keys(autoMatches).length > 0 && (
@@ -1500,6 +1593,8 @@ export default function App() {
                                 currentUser={currentUser}
                                 handleAutoMatchCardClick={handleAutoMatchCardClick}
                                 selectedAutoMatchSlot={selectedAutoMatchSlot}
+                                inProgressPlayerIds={inProgressPlayerIds}
+                                handleAutoMatchSlotClick={handleAutoMatchSlotClick}
                             />
                         )}
 
@@ -1517,6 +1612,7 @@ export default function App() {
                             currentUser={currentUser}
                             handleClearScheduledMatches={handleClearScheduledMatches}
                             handleDeleteScheduledMatch={handleDeleteScheduledMatch}
+                            inProgressPlayerIds={inProgressPlayerIds}
                         />
                         <InProgressCourtsSection
                             numInProgressCourts={gameState.numInProgressCourts}
