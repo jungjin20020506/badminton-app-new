@@ -1,5 +1,5 @@
-=// -----------------------------------------------------------------------------
-// app.jsx (청백전 이벤트 버전 - 선수 카드 공간 극대화)
+// -----------------------------------------------------------------------------
+// app.jsx (청백전 이벤트 버전 - 모바일 최적화 최종)
 // -----------------------------------------------------------------------------
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -218,20 +218,20 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     };
 
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
-    const isWaiting = !context.location;
 
-    // ▼▼▼▼▼ 폰트 크기를 가독성 좋게 살짝 키우고, 생략(truncate) 클래스 제거 ▼▼▼▼▼
+    // ▼▼▼▼▼ 모바일 화면에 맞춰 폰트 크기 및 줄 간격 미세 조정 ▼▼▼▼▼
     const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter`;
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
-    // ▲▲▲▲▲ 이제 공간이 넓어져서 폰트 크기를 키워도 안전합니다 ▲▲▲▲▲
     
     const levelColor = getLevelColor(player.level, player.isGuest);
     const levelStyle = {
         color: levelColor,
         fontWeight: 'bold',
-        fontSize: '14px',
+        fontSize: '12px', // 레벨 폰트 크기 조정
         textShadow: `0 0 5px ${levelColor}`
     };
+    // ▲▲▲▲▲ 모바일 가독성을 위한 최종 조정 ▲▲▲▲▲
+
     const cardStyle = {
         ...teamStyle,
         borderWidth: '1px',
@@ -320,9 +320,11 @@ const CourtTimer = ({ court }) => {
     return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
 };
 
+// ▼▼▼▼▼ 모바일 화면에 맞춰 대기 명단 그리드 레이아웃 변경 ▼▼▼▼▼
 const WaitingListSection = React.memo(({ blueWaitingPlayers, whiteWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds }) => {
     const renderPlayerGrid = (players) => (
-        <div className="grid grid-cols-5 gap-1">
+        // 모바일 화면에서 한 줄에 4명씩 보이도록 'grid-cols-4'로 변경
+        <div className="grid grid-cols-4 sm:grid-cols-5 gap-1">
             {players.map(player => (
                 <PlayerCard 
                     key={player.id} 
@@ -351,6 +353,8 @@ const WaitingListSection = React.memo(({ blueWaitingPlayers, whiteWaitingPlayers
         </section>
     );
 });
+// ▲▲▲▲▲ sm: 접두사를 사용하여 PC에서는 5열 유지 ▲▲▲▲▲
+
 
 const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds }) => {
     const pressTimerRef = useRef(null);
@@ -396,10 +400,13 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     const match = scheduledMatches[String(matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
                     const playerCount = match.filter(p => p).length;
                     return (
-                        // ▼▼▼▼▼ 전체 레이아웃 여백/간격 최소화 ▼▼▼▼▼
                         <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-px gap-px">
                             <div 
-                                className="flex-shrink-0 w-4 flex items-center justify-center" // 넘버링 영역 최소화
+                                className="flex-shrink-0 w-4 flex items-center justify-center"
+                                onMouseDown={() => handlePressStart(matchIndex)}
+                                onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
+                                onTouchStart={() => handlePressStart(matchIndex)}
+                                onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                             >
                                 <p className="font-bold text-sm text-white arcade-font">{matchIndex + 1}</p>
                             </div>
@@ -420,7 +427,6 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                 <button className={`arcade-button w-full py-1 rounded font-bold transition duration-300 text-[9px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
                             </div>
                         </div>
-                        // ▲▲▲▲▲ 모든 여백, 간격, 버튼 크기를 극단적으로 축소 ▲▲▲▲▲
                     );
                 })}
             </div>
@@ -542,7 +548,6 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
     }, [isAdmin, handlePressStart, handlePressEnd]);
     
     const isSource = courtMove.sourceIndex === courtIndex;
-    // ▼▼▼▼▼ 전체 레이아웃 여백/간격 최소화 ▼▼▼▼▼
     const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-px gap-px transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
 
     const renderTeamSlots = (team) => {
@@ -582,7 +587,6 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
                 <CourtTimer court={court} />
             </div>
         </div>
-        // ▲▲▲▲▲ 모든 여백, 간격, 버튼 크기를 극단적으로 축소 ▲▲▲▲▲
     );
 });
 
@@ -640,11 +644,9 @@ const TeamScoreboard = ({ scores }) => {
 
 
 // ===================================================================================
-// Main App Component
+// Main App Component (이 아래는 변경사항이 없습니다)
 // ===================================================================================
 export default function App() {
-    // ... (App 컴포넌트의 나머지 코드는 이전과 동일합니다) ...
-    // ... (수정이 필요 없는 나머지 코드는 여기에 그대로 유지됩니다) ...
     const [allPlayers, setAllPlayers] = useState({});
     const [gameState, setGameState] = useState(null);
     const [seasonConfig, setSeasonConfig] = useState(null);
