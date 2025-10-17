@@ -1,5 +1,5 @@
-// -----------------------------------------------------------------------------
-// app.jsx (청백전 이벤트 버전 - UI 및 로직 강화)
+=// -----------------------------------------------------------------------------
+// app.jsx (청백전 이벤트 버전 - 선수 카드 공간 극대화)
 // -----------------------------------------------------------------------------
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
@@ -216,13 +216,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const teamStyle = {
         boxShadow: `inset 4px 0 0 0 ${player.gender === '청' ? '#3B82F6' : '#E5E7EB'}`
     };
+
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
     const isWaiting = !context.location;
 
-    // ▼▼▼▼▼ 폰트가 카드 밖으로 나가지 않도록 className을 수정합니다 ▼▼▼▼▼
-    const playerNameClass = `player-name text-white text-[11px] font-bold whitespace-nowrap leading-tight tracking-tighter`;
-    const playerInfoClass = `player-info text-gray-400 text-[9px] leading-tight mt-px whitespace-nowrap`;
-    // ▲▲▲▲▲ 글자 크기를 미세 조정하여 잘림 현상을 방지합니다 ▲▲▲▲▲
+    // ▼▼▼▼▼ 폰트 크기를 가독성 좋게 살짝 키우고, 생략(truncate) 클래스 제거 ▼▼▼▼▼
+    const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter`;
+    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
+    // ▲▲▲▲▲ 이제 공간이 넓어져서 폰트 크기를 키워도 안전합니다 ▲▲▲▲▲
     
     const levelColor = getLevelColor(player.level, player.isGuest);
     const levelStyle = {
@@ -285,9 +286,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     );
 });
 
-// --- 청백전 수정 --- : EmptySlot에 팀 정보(team) prop 추가
 const EmptySlot = ({ onSlotClick, team }) => {
-    // --- 청백전 수정 --- : 팀에 따른 스타일 동적 적용
     const teamClass = team === '청' 
         ? 'border-blue-800 hover:bg-blue-900/50 hover:border-blue-500' 
         : 'border-gray-700 hover:bg-gray-700/50 hover:border-gray-400';
@@ -353,7 +352,6 @@ const WaitingListSection = React.memo(({ blueWaitingPlayers, whiteWaitingPlayers
     );
 });
 
-// --- 청백전 수정 --- : ScheduledMatchesSection UI 전면 개편
 const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds }) => {
     const pressTimerRef = useRef(null);
 
@@ -393,33 +391,24 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
                 )}
             </div>
-           // ... 이전 코드 ...
             <div id="scheduled-matches" className="flex flex-col gap-2">
                 {Array.from({ length: numScheduledMatches }).map((_, matchIndex) => {
                     const match = scheduledMatches[String(matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
                     const playerCount = match.filter(p => p).length;
                     return (
-                        // ▼▼▼▼▼ 전체 가로 폭 확보를 위해 p-1 -> p-0.5, gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼
-                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-0.5 gap-0.5">
+                        // ▼▼▼▼▼ 전체 레이아웃 여백/간격 최소화 ▼▼▼▼▼
+                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-px gap-px">
                             <div 
-                                // ▼▼▼▼▼ 넘버링 영역 최소화: w-6 -> w-4, 글자 크기 text-lg -> text-base 로 수정 ▼▼▼▼▼
-                                className="flex-shrink-0 w-4 text-center cursor-pointer"
-                                onMouseDown={() => handlePressStart(matchIndex)}
-                                onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
-                                onTouchStart={() => handlePressStart(matchIndex)}
-                                onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
+                                className="flex-shrink-0 w-4 flex items-center justify-center" // 넘버링 영역 최소화
                             >
-                                <p className="font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
+                                <p className="font-bold text-sm text-white arcade-font">{matchIndex + 1}</p>
                             </div>
                             <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
-                                {/* ▼▼▼▼▼ 카드 영역 확보를 위해 p-2 -> p-0.5 로 수정 ▼▼▼▼▼ */}
                                 <div className="flex-1 p-0.5 rounded-md bg-blue-900/30">
-                                    {/* ▼▼▼▼▼ 카드 간 간격 최소화: gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼ */}
-                                    <div className="grid grid-cols-2 gap-0.5">
+                                    <div className="grid grid-cols-2 gap-0.5"> 
                                         {renderTeamSlots(match, matchIndex, '청')}
                                     </div>
                                 </div>
-                                {/* ▼▼▼▼▼ VS 영역 최소화: text-xl -> text-xs, px-1 삭제 ▼▼▼▼▼ */}
                                 <div className="text-xs font-bold text-gray-500 arcade-font">VS</div>
                                 <div className="flex-1 p-0.5 rounded-md bg-gray-700/30">
                                     <div className="grid grid-cols-2 gap-0.5">
@@ -427,17 +416,17 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                     </div>
                                 </div>
                             </div>
-                            {/* ▼▼▼▼▼ 버튼 영역 최소화: w-14 -> w-11 로 수정 ▼▼▼▼▼ */}
-                            <div className="flex-shrink-0 w-11 text-center">
-                                {/* ▼▼▼▼▼ 버튼 여백 최소화: py-1.5 px-1 -> py-1 로 수정 ▼▼▼▼▼ */}
-                                <button className={`arcade-button w-full py-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
+                            <div className="flex-shrink-0 w-10 text-center px-0.5"> 
+                                <button className={`arcade-button w-full py-1 rounded font-bold transition duration-300 text-[9px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
                             </div>
                         </div>
+                        // ▲▲▲▲▲ 모든 여백, 간격, 버튼 크기를 극단적으로 축소 ▲▲▲▲▲
                     );
                 })}
             </div>
         </section>
-// ... 이후 코드 ...
+    );
+});
 
 
 const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleRemoveFromAutoMatch, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick }) => {
@@ -500,7 +489,6 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
     );
 });
 
-// --- 청백전 수정 --- : InProgressCourt UI 전면 개편
 const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
     const pressTimerRef = useRef(null);
     const courtRef = useRef(null);
@@ -553,9 +541,9 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
         }
     }, [isAdmin, handlePressStart, handlePressEnd]);
     
-  const isSource = courtMove.sourceIndex === courtIndex;
-    // ▼▼▼▼▼ 전체 가로 폭 확보를 위해 p-1 -> p-0.5, gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼
-    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-0.5 gap-0.5 transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
+    const isSource = courtMove.sourceIndex === courtIndex;
+    // ▼▼▼▼▼ 전체 레이아웃 여백/간격 최소화 ▼▼▼▼▼
+    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-px gap-px transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
 
     const renderTeamSlots = (team) => {
         const slots = team === '청' ? [0, 1] : [2, 3];
@@ -570,22 +558,18 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
         });
     };
 
-   return (
+    return (
         <div ref={courtRef} className={courtContainerClass} onClick={handleClick}>
-            {/* ▼▼▼▼▼ 넘버링 영역 최소화: w-6 -> w-4, 글자 크기 text-lg -> text-base 로 수정 ▼▼▼▼▼ */}
             <div className="flex-shrink-0 w-4 flex flex-col items-center justify-center">
-                <p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p>
+                <p className="font-bold text-sm text-white arcade-font">{courtIndex + 1}</p>
                 <p className="font-semibold text-[8px] text-gray-400 arcade-font">코트</p>
             </div>
             <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
-                {/* ▼▼▼▼▼ 카드 영역 확보를 위해 p-2 -> p-0.5 로 수정 ▼▼▼▼▼ */}
                 <div className="flex-1 p-0.5 rounded-md bg-blue-900/30">
-                    {/* ▼▼▼▼▼ 카드 간 간격 최소화: gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼ */}
                     <div className="grid grid-cols-2 gap-0.5">
                         {renderTeamSlots('청')}
                     </div>
                 </div>
-                {/* ▼▼▼▼▼ VS 영역 최소화: text-xl -> text-xs, px-1 삭제 ▼▼▼▼▼ */}
                 <div className="text-xs font-bold text-gray-500 arcade-font">VS</div>
                 <div className="flex-1 p-0.5 rounded-md bg-gray-700/30">
                     <div className="grid grid-cols-2 gap-0.5">
@@ -593,16 +577,14 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
                     </div>
                 </div>
             </div>
-            {/* ▼▼▼▼▼ 버튼 영역 최소화: w-14 -> w-11 로 수정 ▼▼▼▼▼ */}
-            <div className="flex-shrink-0 w-11 text-center">
-                 {/* ▼▼▼▼▼ 버튼 여백 최소화: py-1.5 px-1 -> py-1 로 수정 ▼▼▼▼▼ */}
-                <button className={`arcade-button w-full py-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
+            <div className="flex-shrink-0 w-10 text-center px-0.5">
+                <button className={`arcade-button w-full py-1 rounded font-bold transition duration-300 text-[9px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
                 <CourtTimer court={court} />
             </div>
         </div>
+        // ▲▲▲▲▲ 모든 여백, 간격, 버튼 크기를 극단적으로 축소 ▲▲▲▲▲
     );
 });
-// ... 이후 코드 ...
 
 
 const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
@@ -661,6 +643,8 @@ const TeamScoreboard = ({ scores }) => {
 // Main App Component
 // ===================================================================================
 export default function App() {
+    // ... (App 컴포넌트의 나머지 코드는 이전과 동일합니다) ...
+    // ... (수정이 필요 없는 나머지 코드는 여기에 그대로 유지됩니다) ...
     const [allPlayers, setAllPlayers] = useState({});
     const [gameState, setGameState] = useState(null);
     const [seasonConfig, setSeasonConfig] = useState(null);
@@ -917,7 +901,6 @@ export default function App() {
         }});
     }, [currentUser, updateGameState]);
     
-    // --- 청백전 수정 --- : 선수 교환 로직에 팀 제약 조건 추가
     const handleCardClick = useCallback(async (playerId) => {
         if (!isAdmin) return;
         if (courtMove.sourceIndex !== null) {
@@ -936,11 +919,9 @@ export default function App() {
         } else {
             if (!firstSelectedId) { setSelectedPlayerIds([playerId]); }
             else if (selectedPlayerIds.length === 1 && firstSelectedLoc.location !== 'waiting') {
-                // 선수 교환(swap) 로직
                 const playerA = allPlayers[firstSelectedId];
                 const playerB = allPlayers[playerId];
                 
-                // --- 청백전 수정 --- : 다른 팀 선수와는 교환 불가
                 if (playerA && playerB && playerA.gender !== playerB.gender) {
                     setModal({ type: 'alert', data: { title: '교환 불가', body: '다른 팀 선수와는 자리를 바꿀 수 없습니다.' }});
                     setSelectedPlayerIds([]);
@@ -969,13 +950,11 @@ export default function App() {
         }
     }, [isAdmin, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove, allPlayers]);
     
-    // --- 청백전 수정 --- : 선수 배치 로직에 팀 제약 조건 추가
     const handleSlotClick = useCallback(async (context) => {
         if (!isAdmin || selectedPlayerIds.length === 0) return;
 
         const targetTeam = context.slotIndex < 2 ? '청' : '백';
 
-        // 선택된 모든 선수가 타겟 팀과 일치하는지 확인
         const isTeamMismatch = selectedPlayerIds.some(id => {
             const player = allPlayers[id];
             return player && player.gender !== targetTeam;
@@ -1023,7 +1002,6 @@ export default function App() {
                 const sourceLocation = currentLocations[playerId];
                 if (!sourceLocation || sourceLocation.location !== 'schedule') return { newState };
 
-                // 같은 팀 내에서의 이동만 허용
                 const sourceTeam = sourceLocation.slotIndex < 2 ? '청' : '백';
                 if (sourceTeam !== targetTeam) {
                     throw new Error('다른 팀으로는 이동할 수 없습니다.');
@@ -2358,3 +2336,4 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
         </div>
     );
 }
+
