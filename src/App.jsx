@@ -218,11 +218,11 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     };
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
     const isWaiting = !context.location;
-    
-    // ▼▼▼▼▼ 아래 두 줄의 className을 수정합니다 ▼▼▼▼▼
-    const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter truncate`;
-    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap truncate`;
-    // ▲▲▲▲▲ 여기에 'truncate'를 추가했습니다 ▲▲▲▲▲
+
+    // ▼▼▼▼▼ 폰트가 카드 밖으로 나가지 않도록 className을 수정합니다 ▼▼▼▼▼
+    const playerNameClass = `player-name text-white text-[11px] font-bold whitespace-nowrap leading-tight tracking-tighter`;
+    const playerInfoClass = `player-info text-gray-400 text-[9px] leading-tight mt-px whitespace-nowrap`;
+    // ▲▲▲▲▲ 글자 크기를 미세 조정하여 잘림 현상을 방지합니다 ▲▲▲▲▲
     
     const levelColor = getLevelColor(player.level, player.isGuest);
     const levelStyle = {
@@ -393,40 +393,43 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
                 )}
             </div>
+           // ... 이전 코드 ...
             <div id="scheduled-matches" className="flex flex-col gap-2">
                 {Array.from({ length: numScheduledMatches }).map((_, matchIndex) => {
                     const match = scheduledMatches[String(matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
                     const playerCount = match.filter(p => p).length;
                     return (
-                        // ▼▼▼▼▼ 아래 div의 className에서 'gap-1'을 'gap-0.5'로 수정합니다 ▼▼▼▼▼
-                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-0.5">
+                        // ▼▼▼▼▼ 전체 가로 폭 확보를 위해 p-1 -> p-0.5, gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼
+                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-0.5 gap-0.5">
                             <div 
-                                // ▼▼▼▼▼ 여기 div의 className에서 'w-6'를 'w-5'로 수정합니다 ▼▼▼▼▼
-                                className="flex-shrink-0 w-5 text-center cursor-pointer"
+                                // ▼▼▼▼▼ 넘버링 영역 최소화: w-6 -> w-4, 글자 크기 text-lg -> text-base 로 수정 ▼▼▼▼▼
+                                className="flex-shrink-0 w-4 text-center cursor-pointer"
                                 onMouseDown={() => handlePressStart(matchIndex)}
                                 onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
                                 onTouchStart={() => handlePressStart(matchIndex)}
                                 onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                             >
-                                <p className="font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
+                                <p className="font-bold text-base text-white arcade-font">{matchIndex + 1}</p>
                             </div>
                             <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
-                                <div className="flex-1 p-1 rounded-md bg-blue-900/30">
-                                    <div className="grid grid-cols-2 gap-1">
+                                {/* ▼▼▼▼▼ 카드 영역 확보를 위해 p-2 -> p-0.5 로 수정 ▼▼▼▼▼ */}
+                                <div className="flex-1 p-0.5 rounded-md bg-blue-900/30">
+                                    {/* ▼▼▼▼▼ 카드 간 간격 최소화: gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼ */}
+                                    <div className="grid grid-cols-2 gap-0.5">
                                         {renderTeamSlots(match, matchIndex, '청')}
                                     </div>
                                 </div>
-                                {/* ▼▼▼▼▼ 여기 div의 className에서 'px-1'을 삭제합니다 ▼▼▼▼▼ */}
-                                <div className="text-base font-bold text-gray-500 arcade-font">VS</div>
-                                <div className="flex-1 p-1 rounded-md bg-gray-700/30">
-                                    <div className="grid grid-cols-2 gap-1">
+                                {/* ▼▼▼▼▼ VS 영역 최소화: text-xl -> text-xs, px-1 삭제 ▼▼▼▼▼ */}
+                                <div className="text-xs font-bold text-gray-500 arcade-font">VS</div>
+                                <div className="flex-1 p-0.5 rounded-md bg-gray-700/30">
+                                    <div className="grid grid-cols-2 gap-0.5">
                                         {renderTeamSlots(match, matchIndex, '백')}
                                     </div>
                                 </div>
                             </div>
-                            {/* ▼▼▼▼▼ 여기 div의 className에서 'w-14'를 'w-12'로 수정합니다 ▼▼▼▼▼ */}
-                            <div className="flex-shrink-0 w-12 text-center">
-                                {/* ▼▼▼▼▼ 여기 button의 className에서 'py-1.5 px-1'을 'py-1'로 수정합니다 ▼▼▼▼▼ */}
+                            {/* ▼▼▼▼▼ 버튼 영역 최소화: w-14 -> w-11 로 수정 ▼▼▼▼▼ */}
+                            <div className="flex-shrink-0 w-11 text-center">
+                                {/* ▼▼▼▼▼ 버튼 여백 최소화: py-1.5 px-1 -> py-1 로 수정 ▼▼▼▼▼ */}
                                 <button className={`arcade-button w-full py-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
                             </div>
                         </div>
@@ -434,8 +437,6 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                 })}
             </div>
         </section>
-    );
-});
 // ... 이후 코드 ...
 
 
@@ -552,9 +553,9 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
         }
     }, [isAdmin, handlePressStart, handlePressEnd]);
     
-   const isSource = courtMove.sourceIndex === courtIndex;
-    // ▼▼▼▼▼ 아래 div의 className에서 'gap-1'을 'gap-0.5'로 수정합니다 ▼▼▼▼▼
-    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-0.5 transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
+  const isSource = courtMove.sourceIndex === courtIndex;
+    // ▼▼▼▼▼ 전체 가로 폭 확보를 위해 p-1 -> p-0.5, gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼
+    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-0.5 gap-0.5 transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
 
     const renderTeamSlots = (team) => {
         const slots = team === '청' ? [0, 1] : [2, 3];
@@ -571,34 +572,37 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
 
    return (
         <div ref={courtRef} className={courtContainerClass} onClick={handleClick}>
-            {/* ▼▼▼▼▼ 여기 div의 className에서 'w-6'를 'w-5'로 수정합니다 ▼▼▼▼▼ */}
-            <div className="flex-shrink-0 w-5 flex flex-col items-center justify-center">
-                <p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p>
+            {/* ▼▼▼▼▼ 넘버링 영역 최소화: w-6 -> w-4, 글자 크기 text-lg -> text-base 로 수정 ▼▼▼▼▼ */}
+            <div className="flex-shrink-0 w-4 flex flex-col items-center justify-center">
+                <p className="font-bold text-base text-white arcade-font">{courtIndex + 1}</p>
                 <p className="font-semibold text-[8px] text-gray-400 arcade-font">코트</p>
             </div>
             <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
-                <div className="flex-1 p-1 rounded-md bg-blue-900/30">
-                    <div className="grid grid-cols-2 gap-1">
+                {/* ▼▼▼▼▼ 카드 영역 확보를 위해 p-2 -> p-0.5 로 수정 ▼▼▼▼▼ */}
+                <div className="flex-1 p-0.5 rounded-md bg-blue-900/30">
+                    {/* ▼▼▼▼▼ 카드 간 간격 최소화: gap-1 -> gap-0.5 로 수정 ▼▼▼▼▼ */}
+                    <div className="grid grid-cols-2 gap-0.5">
                         {renderTeamSlots('청')}
                     </div>
                 </div>
-                {/* ▼▼▼▼▼ 여기 div의 className에서 'px-1'을 삭제합니다 ▼▼▼▼▼ */}
-                <div className="text-base font-bold text-gray-500 arcade-font">VS</div>
-                <div className="flex-1 p-1 rounded-md bg-gray-700/30">
-                    <div className="grid grid-cols-2 gap-1">
+                {/* ▼▼▼▼▼ VS 영역 최소화: text-xl -> text-xs, px-1 삭제 ▼▼▼▼▼ */}
+                <div className="text-xs font-bold text-gray-500 arcade-font">VS</div>
+                <div className="flex-1 p-0.5 rounded-md bg-gray-700/30">
+                    <div className="grid grid-cols-2 gap-0.5">
                         {renderTeamSlots('백')}
                     </div>
                 </div>
             </div>
-            {/* ▼▼▼▼▼ 여기 div의 className에서 'w-14'를 'w-12'로 수정합니다 ▼▼▼▼▼ */}
-            <div className="flex-shrink-0 w-12 text-center">
-                {/* ▼▼▼▼▼ 여기 button의 className에서 'py-1.5 px-1'을 'py-1'로 수정합니다 ▼▼▼▼▼ */}
+            {/* ▼▼▼▼▼ 버튼 영역 최소화: w-14 -> w-11 로 수정 ▼▼▼▼▼ */}
+            <div className="flex-shrink-0 w-11 text-center">
+                 {/* ▼▼▼▼▼ 버튼 여백 최소화: py-1.5 px-1 -> py-1 로 수정 ▼▼▼▼▼ */}
                 <button className={`arcade-button w-full py-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
                 <CourtTimer court={court} />
             </div>
         </div>
     );
 });
+// ... 이후 코드 ...
 
 
 const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
