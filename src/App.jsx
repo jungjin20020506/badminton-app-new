@@ -254,7 +254,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     }
 
     const isLongPressDisabled = context.location === 'court';
-    const actionLabel = isWaiting ? '선수 내보내기' : '대기자로 이동';
+    const actionLabel = !context.location ? '선수 내보내기' : '대기자로 이동';
     const todayWins = player.todayWins || 0;
     const todayLosses = player.todayLosses || 0;
     return (
@@ -2338,4 +2338,5 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
         </div>
     );
 }
+
 
