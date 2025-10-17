@@ -412,7 +412,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                         {renderTeamSlots(match, matchIndex, '청')}
                                     </div>
                                 </div>
-                                <div className="text-sm font-bold text-gray-500 arcade-font px-1">VS</div>
+                                <div className="text-xs font-bold text-gray-500 arcade-font px-1">VS</div>
                                 <div className="flex-1 p-2 rounded-md bg-gray-700/30">
                                     <div className="grid grid-cols-2 gap-1">
                                         {renderTeamSlots(match, matchIndex, '백')}
@@ -572,7 +572,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
                         {renderTeamSlots('청')}
                     </div>
                 </div>
-                <div className="text-sm font-bold text-gray-500 arcade-font px-1">VS</div>
+                <div className="text-xs font-bold text-gray-500 arcade-font px-1">VS</div>
                 <div className="flex-1 p-2 rounded-md bg-gray-700/30">
                     <div className="grid grid-cols-2 gap-1">
                         {renderTeamSlots('백')}
