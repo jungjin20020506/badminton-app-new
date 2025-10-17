@@ -216,11 +216,13 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const teamStyle = {
         boxShadow: `inset 4px 0 0 0 ${player.gender === '청' ? '#3B82F6' : '#E5E7EB'}`
     };
-
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
     const isWaiting = !context.location;
-    const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter`;
-    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
+    
+    // ▼▼▼▼▼ 아래 두 줄의 className을 수정합니다 ▼▼▼▼▼
+    const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter truncate`;
+    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap truncate`;
+    // ▲▲▲▲▲ 여기에 'truncate'를 추가했습니다 ▲▲▲▲▲
     
     const levelColor = getLevelColor(player.level, player.isGuest);
     const levelStyle = {
@@ -391,14 +393,17 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
                 )}
             </div>
+           // ... 기존 코드 ...
             <div id="scheduled-matches" className="flex flex-col gap-2">
                 {Array.from({ length: numScheduledMatches }).map((_, matchIndex) => {
                     const match = scheduledMatches[String(matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
                     const playerCount = match.filter(p => p).length;
                     return (
-                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
+                        // ▼▼▼▼▼ 아래 div의 className에서 'gap-1'을 'gap-0.5'로 수정합니다 ▼▼▼▼▼
+                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-0.5">
                             <div 
-                                className="flex-shrink-0 w-6 text-center cursor-pointer"
+                                // ▼▼▼▼▼ 여기 div의 className에서 'w-6'를 'w-5'로 수정합니다 ▼▼▼▼▼
+                                className="flex-shrink-0 w-5 text-center cursor-pointer"
                                 onMouseDown={() => handlePressStart(matchIndex)}
                                 onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
                                 onTouchStart={() => handlePressStart(matchIndex)}
@@ -407,20 +412,23 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                 <p className="font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
                             </div>
                             <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
-                                <div className="flex-1 p-2 rounded-md bg-blue-900/30">
+                                <div className="flex-1 p-1 rounded-md bg-blue-900/30">
                                     <div className="grid grid-cols-2 gap-1">
                                         {renderTeamSlots(match, matchIndex, '청')}
                                     </div>
                                 </div>
-                                <div className="text-xs font-bold text-gray-500 arcade-font px-1">VS</div>
-                                <div className="flex-1 p-2 rounded-md bg-gray-700/30">
+                                {/* ▼▼▼▼▼ 여기 div의 className에서 'px-1'을 삭제합니다 ▼▼▼▼▼ */}
+                                <div className="text-base font-bold text-gray-500 arcade-font">VS</div>
+                                <div className="flex-1 p-1 rounded-md bg-gray-700/30">
                                     <div className="grid grid-cols-2 gap-1">
                                         {renderTeamSlots(match, matchIndex, '백')}
                                     </div>
                                 </div>
                             </div>
-                            <div className="flex-shrink-0 w-14 text-center">
-                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
+                            {/* ▼▼▼▼▼ 여기 div의 className에서 'w-14'를 'w-12'로 수정합니다 ▼▼▼▼▼ */}
+                            <div className="flex-shrink-0 w-12 text-center">
+                                {/* ▼▼▼▼▼ 여기 button의 className에서 'py-1.5 px-1'을 'py-1'로 수정합니다 ▼▼▼▼▼ */}
+                                <button className={`arcade-button w-full py-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex)}>START</button>
                             </div>
                         </div>
                     );
@@ -429,6 +437,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
         </section>
     );
 });
+// ... 이후 코드 ...
 
 
 const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleRemoveFromAutoMatch, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick }) => {
@@ -544,8 +553,9 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
         }
     }, [isAdmin, handlePressStart, handlePressEnd]);
     
-    const isSource = courtMove.sourceIndex === courtIndex;
-    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
+   const isSource = courtMove.sourceIndex === courtIndex;
+    // ▼▼▼▼▼ 아래 div의 className에서 'gap-1'을 'gap-0.5'로 수정합니다 ▼▼▼▼▼
+    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-0.5 transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
 
     const renderTeamSlots = (team) => {
         const slots = team === '청' ? [0, 1] : [2, 3];
@@ -560,27 +570,31 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
         });
     };
 
-    return (
+   return (
         <div ref={courtRef} className={courtContainerClass} onClick={handleClick}>
-            <div className="flex-shrink-0 w-6 flex flex-col items-center justify-center">
+            {/* ▼▼▼▼▼ 여기 div의 className에서 'w-6'를 'w-5'로 수정합니다 ▼▼▼▼▼ */}
+            <div className="flex-shrink-0 w-5 flex flex-col items-center justify-center">
                 <p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p>
                 <p className="font-semibold text-[8px] text-gray-400 arcade-font">코트</p>
             </div>
             <div className="flex-1 flex items-center justify-center gap-1 min-w-0">
-                <div className="flex-1 p-2 rounded-md bg-blue-900/30">
+                <div className="flex-1 p-1 rounded-md bg-blue-900/30">
                     <div className="grid grid-cols-2 gap-1">
                         {renderTeamSlots('청')}
                     </div>
                 </div>
-                <div className="text-xs font-bold text-gray-500 arcade-font px-1">VS</div>
-                <div className="flex-1 p-2 rounded-md bg-gray-700/30">
+                {/* ▼▼▼▼▼ 여기 div의 className에서 'px-1'을 삭제합니다 ▼▼▼▼▼ */}
+                <div className="text-base font-bold text-gray-500 arcade-font">VS</div>
+                <div className="flex-1 p-1 rounded-md bg-gray-700/30">
                     <div className="grid grid-cols-2 gap-1">
                         {renderTeamSlots('백')}
                     </div>
                 </div>
             </div>
-            <div className="flex-shrink-0 w-14 text-center">
-                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
+            {/* ▼▼▼▼▼ 여기 div의 className에서 'w-14'를 'w-12'로 수정합니다 ▼▼▼▼▼ */}
+            <div className="flex-shrink-0 w-12 text-center">
+                {/* ▼▼▼▼▼ 여기 button의 className에서 'py-1.5 px-1'을 'py-1'로 수정합니다 ▼▼▼▼▼ */}
+                <button className={`arcade-button w-full py-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
                 <CourtTimer court={court} />
             </div>
         </div>
