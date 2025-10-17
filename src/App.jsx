@@ -393,7 +393,6 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
                 )}
             </div>
-           // ... 기존 코드 ...
             <div id="scheduled-matches" className="flex flex-col gap-2">
                 {Array.from({ length: numScheduledMatches }).map((_, matchIndex) => {
                     const match = scheduledMatches[String(matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
