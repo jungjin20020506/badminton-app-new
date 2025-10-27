@@ -1493,14 +1493,34 @@ export default function App() {
 
             const newMatches = [...bestMaleMatches, ...bestFemaleMatches];
 
+           // App.jsx (수정된 버전)
+
             if (newMatches.length > 0) {
                 const updateFunction = (currentState) => {
                     const newState = JSON.parse(JSON.stringify(currentState));
+                    
+                    // [수정] 트랜잭션 내부에서 "현재 DB 상태"의 선수 목록을 다시 가져옵니다.
+                    const currentAutoMatchedIds = new Set(
+                        Object.values(newState.autoMatches || {}).flatMap(match => match)
+                    );
+
                     let nextIndex = Object.keys(newState.autoMatches || {}).length;
 
                     for (const match of newMatches) {
-                        newState.autoMatches[String(nextIndex)] = match.map(p => p.id); // Store IDs
-                        nextIndex++;
+                        // [수정] 이 매치에 포함된 선수가 방금 다른 트랜잭션에 의해 추가되었는지 확인
+                        const hasPlayerAlreadyMatched = match.some(player => 
+                            currentAutoMatchedIds.has(player.id)
+                        );
+
+                        // [수정] 이미 매칭된 선수가 없는 "깨끗한" 매치만 추가합니다.
+                        if (!hasPlayerAlreadyMatched) {
+                            newState.autoMatches[String(nextIndex)] = match.map(p => p.id); // Store IDs
+                            nextIndex++;
+
+                            // [수정] 방금 추가한 선수들도 Set에 반영하여, 
+                            // (드물지만) newMatches 배열 내의 다음 매치에서도 중복되지 않도록 합니다.
+                            match.forEach(p => currentAutoMatchedIds.add(p.id));
+                        }
                     }
                     return { newState };
                 };
