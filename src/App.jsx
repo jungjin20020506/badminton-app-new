@@ -102,22 +102,18 @@ onSnapshot(configRef, (doc) => {
             announcement: "랭킹전 시즌에 오신 것을 환영합니다! 공지사항은 관리자 설정에서 변경할 수 있습니다.",
             seasonId: "default-season",
             pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP",
-            // [자동매칭] 기본 설정값 추가 (수정됨)
+            // [자동매칭] 기본 설정값 추가 (수정됨: 코트 수 제거)
             autoMatchConfig: {
                 isEnabled: false,
-                // maleCourts: 2, // [삭제]
-                // femaleCourts: 1, // [삭제]
                 minMaleScore: 75,
                 minFemaleScore: 100
             }
         };
     }
-    // [자동매칭] 기존 설정에 autoMatchConfig가 없으면 기본값 병합 (수정됨)
+    // [자동매칭] 기존 설정에 autoMatchConfig가 없으면 기본값 병합 (수정됨: 코트 수 제거)
     if (seasonConfigData && !seasonConfigData.autoMatchConfig) {
         seasonConfigData.autoMatchConfig = {
             isEnabled: false,
-            // maleCourts: 2, // [삭제]
-            // femaleCourts: 1, // [삭제]
             minMaleScore: 75,
             minFemaleScore: 100
         };
@@ -1466,6 +1462,7 @@ export default function App() {
 
     // [자동 매칭] 스케줄러 실행 로직
     const runMatchScheduler = useCallback(async () => {
+        // [수정] gameState가 null일 때를 대비
         if (!isAdmin || isSchedulerRunningRef.current || !seasonConfig || !seasonConfig.autoMatchConfig.isEnabled || !allPlayers || !gameState) {
             return;
         }
@@ -1714,7 +1711,37 @@ export default function App() {
         setCourtMove({ sourceIndex: null });
     }, [updateGameState]);
 
-    // [자동매칭] 설정 저장 로직 수정
+// ... (기존 코드와 동일, handleSettingsUpdate는 SettingsModal 내부로 이동됨) ...
+
+    const handleToggleRest = useCallback(async () => {
+        if (!currentUser) return;
+        const playerDocRef = doc(playersRef, currentUser.id);
+        const newRestingState = !currentUser.isResting;
+
+        try {
+            // [자동매칭] 휴식 시 자동/수동 매칭에서 즉시 제거
+            if (newRestingState) {
+                const loc = findPlayerLocation(currentUser.id);
+                if (loc.location === 'schedule' || loc.location === 'auto') {
+                    await handleReturnToWaiting(currentUser);
+                }
+            }
+            await updateDoc(playerDocRef, { isResting: newRestingState });
+        } catch (error) {
+            setModal({ type: 'alert', data: { title: '오류', body: '휴식 상태 변경에 실패했습니다.' }});
+        }
+    }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
+
+
+    if (isLoading) {
+        return <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
+    }
+
+    if (!currentUser) {
+        return <EntryPage onEnter={handleEnter} />;
+    }
+
+    // [수정] handleSettingsUpdate를 App 컴포넌트 내부에서 정의 (SettingsModal로 props 전달)
     const handleSettingsUpdate = useCallback(async (settings) => {
         try {
             const { scheduled, courts, announcement, pointSystemInfo, autoMatchConfig } = settings;
@@ -1746,35 +1773,8 @@ export default function App() {
             console.error("Settings save failed:", error);
             setModal({ type: 'alert', data: { title: '저장 실패', body: '설정 저장 중 오류가 발생했습니다.' } });
         }
-    }, []);
+    }, []); // 의존성 배열 비어있음 (db, configRef, gameStateRef는 모듈 스코프 상수)
 
-    const handleToggleRest = useCallback(async () => {
-        if (!currentUser) return;
-        const playerDocRef = doc(playersRef, currentUser.id);
-        const newRestingState = !currentUser.isResting;
-
-        try {
-            // [자동매칭] 휴식 시 자동/수동 매칭에서 즉시 제거
-            if (newRestingState) {
-                const loc = findPlayerLocation(currentUser.id);
-                if (loc.location === 'schedule' || loc.location === 'auto') {
-                    await handleReturnToWaiting(currentUser);
-                }
-            }
-            await updateDoc(playerDocRef, { isResting: newRestingState });
-        } catch (error) {
-            setModal({ type: 'alert', data: { title: '오류', body: '휴식 상태 변경에 실패했습니다.' }});
-        }
-    }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
-
-
-    if (isLoading) {
-        return <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
-    }
-
-    if (!currentUser) {
-        return <EntryPage onEnter={handleEnter} />;
-    }
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -1813,7 +1813,7 @@ export default function App() {
                 courtCount={gameState.numInProgressCourts}
                 seasonConfig={seasonConfig}
                 waitingPlayers={waitingPlayers} /* [자동매칭] CI 계산을 위해 waitingPlayers 전달 */
-                onSave={handleSettingsUpdate}
+                onSave={handleSettingsUpdate} // [수정] App 컴포넌트에서 정의된 함수 전달
                 onCancel={() => setIsSettingsOpen(false)}
                 setModal={setModal}
                 onSystemReset={handleSystemReset}
@@ -2341,7 +2341,7 @@ function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
     );
 }
 
-// [자동매칭] 설정 모달 대규모 업데이트
+// [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
 function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, waitingPlayers, onSave, onCancel, setModal, onSystemReset }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
@@ -2351,11 +2351,12 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
     const [autoMatchConfig, setAutoMatchConfig] = useState(
         seasonConfig.autoMatchConfig || {
             isEnabled: false, 
-            // maleCourts: 2, femaleCourts: 1, // [삭제]
-            minMaleScore: 75, minFemaleScore: 100
+            minMaleScore: 75, 
+            minFemaleScore: 100
         }
     );
     const [isTesting, setIsTesting] = useState(false);
+    const [isManualConfig, setIsManualConfig] = useState(false); // [신규] 수동 설정 상태
 
     if (!isAdmin) return null;
 
@@ -2392,9 +2393,24 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
 
     const handleAutoMatchConfigChange = (e) => {
         const { name, value, type, checked } = e.target;
+        // [수정] type="text"일 때도 숫자로 변환 시도, 실패 시 0 또는 빈 문자열(마이너스 입력 중)
+        let processedValue;
+        if (type === 'checkbox') {
+            processedValue = checked;
+        } else if (value === '-') {
+            processedValue = value; // 마이너스 부호 단독 입력 허용
+        } else if (value === '') {
+            processedValue = 0; // 비어있으면 0으로 처리
+        } else {
+            processedValue = Number(value);
+            if (isNaN(processedValue)) {
+                processedValue = 0; // 숫자가 아니면 0으로
+            }
+        }
+        
         setAutoMatchConfig(prev => ({
             ...prev,
-            [name]: type === 'checkbox' ? checked : (type === 'number' ? Number(value) : value)
+            [name]: processedValue
         }));
     };
 
@@ -2429,9 +2445,21 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
             recommendedFemaleScore: calcMinScore(femaleCI),
             dynamicMaleCourts: dynamicMaleCourts, // UI 표시를 위해 반환
             dynamicFemaleCourts: dynamicFemaleCourts // UI 표시를 위해 반환
-        };
+        } // [수정] ; (세미콜론) 제거
     }, [waitingPlayers, courtCount]); // [수정] 의존성 배열 변경
 
+
+    // [신규] 수동 설정이 아닐 경우, 추천 점수를 autoMatchConfig 상태에 자동으로 반영
+    useEffect(() => {
+        if (!isManualConfig) {
+            // If not in manual mode, update the config state with the live recommended scores
+            setAutoMatchConfig(prev => ({
+                ...prev,
+                minMaleScore: recommendedMaleScore,
+                minFemaleScore: recommendedFemaleScore
+            }));
+        }
+    }, [isManualConfig, recommendedMaleScore, recommendedFemaleScore]);
 
     // Toggle Switch Component
     const ToggleSwitch = ({ name, checked, onChange }) => (
@@ -2465,48 +2493,64 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
 
                         {autoMatchConfig.isEnabled && (
                             <div className="mt-4 pt-4 border-t border-gray-600 space-y-4">
-                                
-                                {/* [삭제] 자동 매칭 전용 코트 수 입력란 (시작) */}
-                                {/* <p className="font-semibold text-center">자동 매칭 전용 코트 수</p>
-                                <div className="flex justify-around gap-4">
-                                    <div className="flex-1 text-center">
-                                        <label className="block mb-1">👨 남자 코트</label>
-                                        <input type="number" name="maleCourts" value={autoMatchConfig.maleCourts} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" min="0" />
-                                    </div>
-                                    <div className="flex-1 text-center">
-                                        <label className="block mb-1">👩 여자 코트</label>
-                                        <input type="number" name="femaleCourts" value={autoMatchConfig.femaleCourts} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" min="0" />
-                                    </div>
-                                </div>
-                                */}
-                                {/* [삭제] 자동 매칭 전용 코트 수 입력란 (끝) */}
 
+                                {/* [수정] 동적 코트 수 및 추천 점수 표시 UI */}
                                 <div className="bg-gray-800 p-2 rounded">
                                     <p className="text-sm text-center text-gray-400">
-                                        {/* [수정] 휴식 선수를 제외한 '활성' 대기자 수 표시 */}
                                         현재 활성 대기: 남 {waitingPlayers.filter(p => p.gender === '남' && !p.isResting).length}명 / 여 {waitingPlayers.filter(p => p.gender === '여' && !p.isResting).length}명
                                     </p>
-                                    {/* [추가] 동적 배분 코트 수 표시 */}
                                     <p className="text-sm text-center text-gray-400">
                                         (자동 배분 코트: 남 {dynamicMaleCourts.toFixed(1)} / 여 {dynamicFemaleCourts.toFixed(1)})
                                     </p>
-                                    {/* [수정] mt-1 추가 */}
                                     <p className="text-sm text-center text-yellow-400 mt-1">
                                         추천 최소 점수: {recommendedMaleScore}점 (남) / {recommendedFemaleScore}점 (여)
                                     </p>
                                 </div>
 
-                                <p className="font-semibold text-center">최종 최소 점수 (수동 조정)</p>
-                                <div className="flex justify-around gap-4">
-                                    <div className="flex-1 text-center">
-                                        <label className="block mb-1">👨 남자 최소 점수</label>
-                                        <input type="number" name="minMaleScore" value={autoMatchConfig.minMaleScore} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" placeholder={String(recommendedMaleScore)} />
+                                {/* [수정됨] 수동 설정 체크박스 및 입력란 수정 */}
+                                <div>
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="font-semibold text-center">최종 최소 점수</p>
+                                        <label className="flex items-center text-sm cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={isManualConfig} 
+                                                onChange={(e) => setIsManualConfig(e.target.checked)}
+                                                className="w-4 h-4 text-yellow-400 bg-gray-700 border-gray-600 rounded focus:ring-yellow-500"
+                                            />
+                                            <span className="ml-2 text-gray-300">수동 설정</span>
+                                        </label>
                                     </div>
-                                    <div className="flex-1 text-center">
-                                        <label className="block mb-1">👩 여자 최소 점수</label>
-                                        <input type="number" name="minFemaleScore" value={autoMatchConfig.minFemaleScore} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" placeholder={String(recommendedFemaleScore)} />
+                                    <div className="flex justify-around gap-4">
+                                        <div className="flex-1 text-center">
+                                            <label className="block mb-1">👨 남자 최소 점수</label>
+                                            <input 
+                                                type="text" // [수정] type="number" -> "text"
+                                                inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
+                                                name="minMaleScore" 
+                                                value={autoMatchConfig.minMaleScore} 
+                                                onChange={handleAutoMatchConfigChange} 
+                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!isManualConfig ? 'text-gray-400' : 'text-white'}`}
+                                                placeholder={String(recommendedMaleScore)}
+                                                disabled={!isManualConfig} // [수정] disabled 속성 추가
+                                            />
+                                        </div>
+                                        <div className="flex-1 text-center">
+                                            <label className="block mb-1">👩 여자 최소 점수</label>
+                                            <input 
+                                                type="text" // [수정] type="number" -> "text"
+                                                inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
+                                                name="minFemaleScore" 
+                                                value={autoMatchConfig.minFemaleScore} 
+                                                onChange={handleAutoMatchConfigChange} 
+                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!isManualConfig ? 'text-gray-400' : 'text-white'}`}
+                                                placeholder={String(recommendedFemaleScore)}
+                                                disabled={!isManualConfig} // [수정] disabled 속성 추가
+                                            />
+                                        </div>
                                     </div>
                                 </div>
+
                                 <p className="text-xs text-gray-500 text-center">
                                     점수가 높을수록 '좋은 조합'을 엄격하게 찾습니다 (매칭 속도 느려짐).<br/>
                                     점수가 낮을수록 '경기 수'만 보고 빠르게 매칭합니다.
@@ -2711,3 +2755,4 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
     ...
 }
 */
+
