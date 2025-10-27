@@ -102,22 +102,22 @@ onSnapshot(configRef, (doc) => {
             announcement: "랭킹전 시즌에 오신 것을 환영합니다! 공지사항은 관리자 설정에서 변경할 수 있습니다.",
             seasonId: "default-season",
             pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP",
-            // [자동매칭] 기본 설정값 추가
+            // [자동매칭] 기본 설정값 추가 (수정됨)
             autoMatchConfig: {
                 isEnabled: false,
-                maleCourts: 2,
-                femaleCourts: 1,
+                // maleCourts: 2, // [삭제]
+                // femaleCourts: 1, // [삭제]
                 minMaleScore: 75,
                 minFemaleScore: 100
             }
         };
     }
-    // [자동매칭] 기존 설정에 autoMatchConfig가 없으면 기본값 병합
+    // [자동매칭] 기존 설정에 autoMatchConfig가 없으면 기본값 병합 (수정됨)
     if (seasonConfigData && !seasonConfigData.autoMatchConfig) {
         seasonConfigData.autoMatchConfig = {
             isEnabled: false,
-            maleCourts: 2,
-            femaleCourts: 1,
+            // maleCourts: 2, // [삭제]
+            // femaleCourts: 1, // [삭제]
             minMaleScore: 75,
             minFemaleScore: 100
         };
@@ -2347,10 +2347,12 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
     const [pointSystemInfo, setPointSystemInfo] = useState(seasonConfig.pointSystemInfo);
-    // 자동매칭 설정 상태
+    // 자동매칭 설정 상태 (수정됨)
     const [autoMatchConfig, setAutoMatchConfig] = useState(
         seasonConfig.autoMatchConfig || {
-            isEnabled: false, maleCourts: 2, femaleCourts: 1, minMaleScore: 75, minFemaleScore: 100
+            isEnabled: false, 
+            // maleCourts: 2, femaleCourts: 1, // [삭제]
+            minMaleScore: 75, minFemaleScore: 100
         }
     );
     const [isTesting, setIsTesting] = useState(false);
@@ -2396,24 +2398,39 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
         }));
     };
 
-    // [자동매칭] CI 및 추천 점수 계산 로직
-    const { recommendedMaleScore, recommendedFemaleScore } = useMemo(() => {
+    // [자동매칭] CI 및 추천 점수 계산 로직 (수정됨)
+    const { recommendedMaleScore, recommendedFemaleScore, dynamicMaleCourts, dynamicFemaleCourts } = useMemo(() => {
         // [수정] waitingPlayers에서 휴식 중인 선수를 제외하고 CI 계산
         const activeWaitingPlayers = waitingPlayers.filter(p => !p.isResting);
         const maleWaitingCount = activeWaitingPlayers.filter(p => p.gender === '남').length;
         const femaleWaitingCount = activeWaitingPlayers.filter(p => p.gender === '여').length;
+        const totalWaitingCount = maleWaitingCount + femaleWaitingCount;
+        const totalCourts = courtCount; // GamsState의 numInProgressCourts (전체 코트 수)
+
+        let dynamicMaleCourts = 0;
+        let dynamicFemaleCourts = 0;
+
+        // [수정] 전체 코트 수를 기준으로 남녀 비율에 따라 동적으로 코트 수 할당
+        if (totalWaitingCount > 0) {
+            const maleRatio = maleWaitingCount / totalWaitingCount;
+            dynamicMaleCourts = totalCourts * maleRatio;
+            dynamicFemaleCourts = totalCourts * (1 - maleRatio);
+        }
 
         const calcCI = (count, courts) => (courts > 0) ? (count / (courts * 4)) : 0;
         const calcMinScore = (ci) => Math.round(50 + ((ci - 1.5) * 100));
 
-        const maleCI = calcCI(maleWaitingCount, autoMatchConfig.maleCourts);
-        const femaleCI = calcCI(femaleWaitingCount, autoMatchConfig.femaleCourts);
+        // [수정] 동적으로 계산된 코트 수를 CI 계산에 사용
+        const maleCI = calcCI(maleWaitingCount, dynamicMaleCourts);
+        const femaleCI = calcCI(femaleWaitingCount, dynamicFemaleCourts);
 
         return {
             recommendedMaleScore: calcMinScore(maleCI),
-            recommendedFemaleScore: calcMinScore(femaleCI)
+            recommendedFemaleScore: calcMinScore(femaleCI),
+            dynamicMaleCourts: dynamicMaleCourts, // UI 표시를 위해 반환
+            dynamicFemaleCourts: dynamicFemaleCourts // UI 표시를 위해 반환
         };
-    }, [waitingPlayers, autoMatchConfig.maleCourts, autoMatchConfig.femaleCourts]);
+    }, [waitingPlayers, courtCount]); // [수정] 의존성 배열 변경
 
 
     // Toggle Switch Component
@@ -2448,7 +2465,9 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
 
                         {autoMatchConfig.isEnabled && (
                             <div className="mt-4 pt-4 border-t border-gray-600 space-y-4">
-                                <p className="font-semibold text-center">자동 매칭 전용 코트 수</p>
+                                
+                                {/* [삭제] 자동 매칭 전용 코트 수 입력란 (시작) */}
+                                {/* <p className="font-semibold text-center">자동 매칭 전용 코트 수</p>
                                 <div className="flex justify-around gap-4">
                                     <div className="flex-1 text-center">
                                         <label className="block mb-1">👨 남자 코트</label>
@@ -2459,13 +2478,20 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
                                         <input type="number" name="femaleCourts" value={autoMatchConfig.femaleCourts} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" min="0" />
                                     </div>
                                 </div>
+                                */}
+                                {/* [삭제] 자동 매칭 전용 코트 수 입력란 (끝) */}
 
                                 <div className="bg-gray-800 p-2 rounded">
                                     <p className="text-sm text-center text-gray-400">
                                         {/* [수정] 휴식 선수를 제외한 '활성' 대기자 수 표시 */}
                                         현재 활성 대기: 남 {waitingPlayers.filter(p => p.gender === '남' && !p.isResting).length}명 / 여 {waitingPlayers.filter(p => p.gender === '여' && !p.isResting).length}명
                                     </p>
-                                    <p className="text-sm text-center text-yellow-400">
+                                    {/* [추가] 동적 배분 코트 수 표시 */}
+                                    <p className="text-sm text-center text-gray-400">
+                                        (자동 배분 코트: 남 {dynamicMaleCourts.toFixed(1)} / 여 {dynamicFemaleCourts.toFixed(1)})
+                                    </p>
+                                    {/* [수정] mt-1 추가 */}
+                                    <p className="text-sm text-center text-yellow-400 mt-1">
                                         추천 최소 점수: {recommendedMaleScore}점 (남) / {recommendedFemaleScore}점 (여)
                                     </p>
                                 </div>
@@ -2474,11 +2500,11 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
                                 <div className="flex justify-around gap-4">
                                     <div className="flex-1 text-center">
                                         <label className="block mb-1">👨 남자 최소 점수</label>
-                                        <input type="number" name="minMaleScore" value={autoMatchConfig.minMaleScore} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" placeholder={recommendedMaleScore} />
+                                        <input type="number" name="minMaleScore" value={autoMatchConfig.minMaleScore} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" placeholder={String(recommendedMaleScore)} />
                                     </div>
                                     <div className="flex-1 text-center">
                                         <label className="block mb-1">👩 여자 최소 점수</label>
-                                        <input type="number" name="minFemaleScore" value={autoMatchConfig.minFemaleScore} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" placeholder={recommendedFemaleScore} />
+                                        <input type="number" name="minFemaleScore" value={autoMatchConfig.minFemaleScore} onChange={handleAutoMatchConfigChange} className="w-full bg-gray-600 p-2 rounded-lg text-center" placeholder={String(recommendedFemaleScore)} />
                                     </div>
                                 </div>
                                 <p className="text-xs text-gray-500 text-center">
@@ -2685,4 +2711,3 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
     ...
 }
 */
-
