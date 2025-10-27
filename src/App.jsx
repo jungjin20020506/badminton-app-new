@@ -1711,36 +1711,6 @@ export default function App() {
         setCourtMove({ sourceIndex: null });
     }, [updateGameState]);
 
-// ... (기존 코드와 동일, handleSettingsUpdate는 SettingsModal 내부로 이동됨) ...
-
-    const handleToggleRest = useCallback(async () => {
-        if (!currentUser) return;
-        const playerDocRef = doc(playersRef, currentUser.id);
-        const newRestingState = !currentUser.isResting;
-
-        try {
-            // [자동매칭] 휴식 시 자동/수동 매칭에서 즉시 제거
-            if (newRestingState) {
-                const loc = findPlayerLocation(currentUser.id);
-                if (loc.location === 'schedule' || loc.location === 'auto') {
-                    await handleReturnToWaiting(currentUser);
-                }
-            }
-            await updateDoc(playerDocRef, { isResting: newRestingState });
-        } catch (error) {
-            setModal({ type: 'alert', data: { title: '오류', body: '휴식 상태 변경에 실패했습니다.' }});
-        }
-    }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
-
-
-    if (isLoading) {
-        return <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
-    }
-
-    if (!currentUser) {
-        return <EntryPage onEnter={handleEnter} />;
-    }
-
     // [수정] handleSettingsUpdate를 App 컴포넌트 내부에서 정의 (SettingsModal로 props 전달)
     const handleSettingsUpdate = useCallback(async (settings) => {
         try {
@@ -1775,6 +1745,34 @@ export default function App() {
         }
     }, []); // 의존성 배열 비어있음 (db, configRef, gameStateRef는 모듈 스코프 상수)
 
+
+    const handleToggleRest = useCallback(async () => {
+        if (!currentUser) return;
+        const playerDocRef = doc(playersRef, currentUser.id);
+        const newRestingState = !currentUser.isResting;
+
+        try {
+            // [자동매칭] 휴식 시 자동/수동 매칭에서 즉시 제거
+            if (newRestingState) {
+                const loc = findPlayerLocation(currentUser.id);
+                if (loc.location === 'schedule' || loc.location === 'auto') {
+                    await handleReturnToWaiting(currentUser);
+                }
+            }
+            await updateDoc(playerDocRef, { isResting: newRestingState });
+        } catch (error) {
+            setModal({ type: 'alert', data: { title: '오류', body: '휴식 상태 변경에 실패했습니다.' }});
+        }
+    }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
+
+
+    if (isLoading) {
+        return <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
+    }
+
+    if (!currentUser) {
+        return <EntryPage onEnter={handleEnter} />;
+    }
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -2755,4 +2753,3 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
     ...
 }
 */
-
