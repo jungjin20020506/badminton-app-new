@@ -477,6 +477,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     }
 
     const isLongPressDisabled = context.location === 'court';
+    // [수정] actionLabel이 'auto' 위치도 인식하도록 수정
     const actionLabel = (isWaiting || context.location === 'auto') ? '선수 내보내기' : '대기자로 이동';
     
     const todayWins = player.todayWins || 0;
@@ -485,6 +486,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     return (
         <div 
             ref={cardRef}
+            // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
@@ -853,10 +855,16 @@ export default function App() {
         return calculateLocations(gameState, activePlayers);
     }, [gameState, activePlayers]);
     
-    // [자동매칭] 자동 매칭 풀(대기 선수)
+    // [수정] waitingPlayers (대기 선수) 정의 변경
+    // 휴식 중인 선수도 UI에 표시하기 위해 `!p.isResting` 필터 제거
+    // 자동 매칭 풀(Pool)에서는 `runMatchScheduler` 내부에서 휴식 선수를 필터링함
     const waitingPlayers = useMemo(() => Object.values(activePlayers)
-        .filter(p => playerLocations[p.id]?.location === 'waiting' && !p.isResting) // 휴식 중인 선수 제외
+        .filter(p => playerLocations[p.id]?.location === 'waiting') // [수정] 휴식 중인 선수도 UI에 표시
         .sort((a, b) => {
+            // [수정] 휴식 중인 선수는 항상 맨 뒤로
+            if (a.isResting !== b.isResting) {
+                return a.isResting ? 1 : -1;
+            }
             const levelA = LEVEL_ORDER[a.level] || 99;
             const levelB = LEVEL_ORDER[b.level] || 99;
             if (levelA !== levelB) return levelA - levelB;
@@ -1053,7 +1061,7 @@ export default function App() {
                 }
             }
         }});
-    }, [waitingPlayers]);
+    }, [waitingPlayers]); // [수정] waitingPlayers가 휴식 선수를 포함하므로 올바르게 동작
 
     const handleEnter = useCallback(async (formData) => {
         const { name, level, gender, isGuest } = formData;
@@ -1206,11 +1214,17 @@ export default function App() {
             const areAllFromWaiting = selectedPlayerIds.every(id => currentLocations[id]?.location === 'waiting');
 
             if (areAllFromWaiting) {
-                // [자동매칭] 'schedule' 위치에서만 이 로직 실행
-                if (context.location !== 'schedule') return { newState };
+                // [자동매칭] 'schedule' 또는 'auto' 위치에서만 이 로직 실행
+                if (context.location !== 'schedule' && context.location !== 'auto') return { newState };
 
                 const playersToMove = [...selectedPlayerIds];
-                let targetArray = newState.scheduledMatches[String(context.matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
+                let targetArray;
+                
+                if(context.location === 'schedule') {
+                    targetArray = newState.scheduledMatches[String(context.matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
+                } else {
+                    targetArray = newState.autoMatches[String(context.matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
+                }
                 
                 // 슬롯이 이미 채워져 있는지 다시 확인 (동시성 문제 방지)
                 const isSlotOccupied = targetArray.some((p, i) => p !== null && playersToMove.length > 0 && targetArray[i] === null);
@@ -1228,7 +1242,12 @@ export default function App() {
                 for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
                     if (targetArray[i] === null) targetArray[i] = playersToMove.shift();
                 }
-                newState.scheduledMatches[String(context.matchIndex)] = targetArray;
+                
+                if(context.location === 'schedule') {
+                    newState.scheduledMatches[String(context.matchIndex)] = targetArray;
+                } else {
+                    newState.autoMatches[String(context.matchIndex)] = targetArray;
+                }
 
             } else if (selectedPlayerIds.length === 1) {
                 const playerId = selectedPlayerIds[0];
@@ -1453,9 +1472,17 @@ export default function App() {
                 Object.values(gameState.autoMatches || {}).flatMap(match => match)
             );
 
-            // [자동매칭] '휴식' 중이거나 이미 '자동 매칭' 목록에 있는 선수는 풀에서 제외
-            const malePool = waitingPlayers.filter(p => p.gender === '남' && !autoMatchedPlayerIds.has(p.id));
-            const femalePool = waitingPlayers.filter(p => p.gender === '여' && !autoMatchedPlayerIds.has(p.id));
+            // [수정] '휴식' 중이거나 이미 '자동 매칭' 목록에 있는 선수는 풀에서 제외
+            const malePool = waitingPlayers.filter(p => 
+                p.gender === '남' && 
+                !autoMatchedPlayerIds.has(p.id) &&
+                !p.isResting // <-- 휴식 선수 제외
+            );
+            const femalePool = waitingPlayers.filter(p => 
+                p.gender === '여' && 
+                !autoMatchedPlayerIds.has(p.id) &&
+                !p.isResting // <-- 휴식 선수 제외
+            );
 
             const bestMaleMatches = findBestMatches(malePool, allPlayers, config.minMaleScore);
             const bestFemaleMatches = findBestMatches(femalePool, allPlayers, config.minFemaleScore);
@@ -1488,8 +1515,8 @@ export default function App() {
 
         if (isAutoMatchEnabled) {
             if (!schedulerIntervalRef.current) {
-                // 10초마다 스케줄러 실행
-                schedulerIntervalRef.current = setInterval(runMatchScheduler, 10000);
+                // [수정] 7초마다 스케줄러 실행
+                schedulerIntervalRef.current = setInterval(runMatchScheduler, 7000);
             }
         } else {
             if (schedulerIntervalRef.current) {
@@ -2356,8 +2383,10 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
 
     // [자동매칭] CI 및 추천 점수 계산 로직
     const { recommendedMaleScore, recommendedFemaleScore } = useMemo(() => {
-        const maleWaitingCount = waitingPlayers.filter(p => p.gender === '남').length;
-        const femaleWaitingCount = waitingPlayers.filter(p => p.gender === '여').length;
+        // [수정] waitingPlayers에서 휴식 중인 선수를 제외하고 CI 계산
+        const activeWaitingPlayers = waitingPlayers.filter(p => !p.isResting);
+        const maleWaitingCount = activeWaitingPlayers.filter(p => p.gender === '남').length;
+        const femaleWaitingCount = activeWaitingPlayers.filter(p => p.gender === '여').length;
 
         const calcCI = (count, courts) => (courts > 0) ? (count / (courts * 4)) : 0;
         const calcMinScore = (ci) => Math.round(50 + ((ci - 1.5) * 100));
@@ -2418,7 +2447,8 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
 
                                 <div className="bg-gray-800 p-2 rounded">
                                     <p className="text-sm text-center text-gray-400">
-                                        현재 대기: 남 {waitingPlayers.filter(p => p.gender === '남').length}명 / 여 {waitingPlayers.filter(p => p.gender === '여').length}명
+                                        {/* [수정] 휴식 선수를 제외한 '활성' 대기자 수 표시 */}
+                                        현재 활성 대기: 남 {waitingPlayers.filter(p => p.gender === '남' && !p.isResting).length}명 / 여 {waitingPlayers.filter(p => p.gender === '여' && !p.isResting).length}명
                                     </p>
                                     <p className="text-sm text-center text-yellow-400">
                                         추천 최소 점수: {recommendedMaleScore}점 (남) / {recommendedFemaleScore}점 (여)
@@ -2640,3 +2670,4 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
     ...
 }
 */
+
