@@ -2590,7 +2590,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
                                 </div>
                             </div>
                             <div className="text-center">
-                                <p>진행 코트</p>
+                                <p>경기 진행</p>
                                 <div className="flex items-center gap-2 mt-1">
                                     <button onClick={() => setCourts(c => Math.max(1, c - 1))} className="w-8 h-8 bg-gray-600 rounded-full text-lg">-</button>
                                     <span className="text-xl font-bold w-8 text-center">{courts}</span>
