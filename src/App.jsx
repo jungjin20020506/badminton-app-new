@@ -2582,7 +2582,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
                         <span className="font-semibold mb-2 block text-center">일반 설정</span>
                         <div className="flex items-center justify-around">
                             <div className="text-center">
-                                <p>수동 예정</p>
+                                <p>경기 예정</p>
                                 <div className="flex items-center gap-2 mt-1">
                                     <button onClick={() => setScheduled(c => Math.max(1, c - 1))} className="w-8 h-8 bg-gray-600 rounded-full text-lg">-</button>
                                     <span className="text-xl font-bold w-8 text-center">{scheduled}</span>
@@ -2590,7 +2590,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, wait
                                 </div>
                             </div>
                             <div className="text-center">
-                                <p>전체 코트</p>
+                                <p>진행 코트</p>
                                 <div className="flex items-center gap-2 mt-1">
                                     <button onClick={() => setCourts(c => Math.max(1, c - 1))} className="w-8 h-8 bg-gray-600 rounded-full text-lg">-</button>
                                     <span className="text-xl font-bold w-8 text-center">{courts}</span>
