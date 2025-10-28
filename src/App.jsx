@@ -603,8 +603,8 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
     return (
         <section>
             <div className="flex justify-between items-center mb-2 px-1">
-                {/* [UI 수정] 제목 폰트 크기 text-base로 조정 */}
-                <h2 className="text-base font-bold text-cyan-400 arcade-font">경기 예정 (수동)</h2>
+                {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
+                <h2 className="text-sm font-bold text-cyan-400 arcade-font">경기 예정</h2>
                 {isAdmin && hasMatches && (
                     <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
                 )}
@@ -665,8 +665,8 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
     return (
         <section>
             <div className="flex justify-between items-center mb-2 px-1">
-                 {/* [UI 수정] 제목 폰트 크기 text-base로 조정 */}
-                 <h2 className={`text-base font-bold text-green-400 arcade-font ${isAutoMatchOn ? 'flicker-text' : ''}`}>
+                 {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
+                 <h2 className={`text-sm font-bold text-green-400 arcade-font ${isAutoMatchOn ? 'flicker-text' : ''}`}>
                     🤖 자동 매칭 {isAutoMatchOn ? '(ON)' : '(OFF)'}
                  </h2>
                  {isAdmin && matchList.length > 0 && (
@@ -795,8 +795,8 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
 const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
     return (
         <section>
-            {/* [UI 수정] 제목 폰트 크기 text-base로 조정 */}
-            <h2 className="text-base font-bold mb-2 text-red-500 px-1 arcade-font">경기 진행</h2>
+            {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
+            <h2 className="text-sm font-bold mb-2 text-red-500 px-1 arcade-font">경기 진행</h2>
             <div id="in-progress-courts" className="flex flex-col gap-2">
                 {Array.from({ length: numInProgressCourts }).map((_, courtIndex) => (
                     <InProgressCourt
