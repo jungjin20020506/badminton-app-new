@@ -2546,29 +2546,29 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         <div className="flex justify-around gap-4">
                                         <div className="flex-1 text-center">
                                             <label className="block mb-1">👨 남자 최소 점수</label>
-                                            <input 
-                type="text"
-                                                inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
-                                                name="minMaleScore" 
-                                                value={autoMatchConfig.minMaleScore} 
-                                                onChange={handleAutoMatchConfigChange} 
-                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!isManualConfig ? 'text-gray-400' : 'text-white'}`}
-                                                placeholder={String(recommendedMaleScore)}
-                                              disabled={!autoMatchConfig.isManualConfig} // [수정]
-            />
+                                           <input 
+                                            type="text" // [수정] type="number" -> "text"
+                                            inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
+                                            name="minMaleScore" 
+                                            value={autoMatchConfig.minMaleScore} 
+                                            onChange={handleAutoMatchConfigChange} 
+                                            className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
+                                            placeholder={String(recommendedMaleScore)}
+                                            disabled={!autoMatchConfig.isManualConfig} // [수정] disabled 속성 추가
+                                        />
                                         </div>
                                         <div className="flex-1 text-center">
                                             <label className="block mb-1">👩 여자 최소 점수</label>
-                                          <input 
-                type="text"
-                                                inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
-                                                name="minFemaleScore" 
-                                                value={autoMatchConfig.minFemaleScore} 
-                                                onChange={handleAutoMatchConfigChange} 
-                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!isManualConfig ? 'text-gray-400' : 'text-white'}`}
-                                                placeholder={String(recommendedFemaleScore)}
-                                               disabled={!autoMatchConfig.isManualConfig} // [수정]
-            />
+                                         <input 
+                                            type="text" // [수정] type="number" -> "text"
+                                            inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
+                                            name="minFemaleScore" 
+                                            value={autoMatchConfig.minFemaleScore} 
+                                            onChange={handleAutoMatchConfigChange} 
+                                            className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
+                                            placeholder={String(recommendedFemaleScore)}
+                                            disabled={!autoMatchConfig.isManualConfig} // [수정] disabled 속성 추가
+                                        />
         </div>
     </div>
                                 </div>
