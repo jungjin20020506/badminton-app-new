@@ -2434,9 +2434,9 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     };
 
     // [자동매칭] CI 및 추천 점수 계산 로직 (수정됨)
-    const { recommendedMaleScore, recommendedFemaleScore, dynamicMaleCourts, dynamicFemaleCourts } = useMemo(() => {
-        // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식/게스트 제외
-        const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting && !p.isGuest);
+   const { malePlayerCount, femalePlayerCount, recommendedMaleScore, recommendedFemaleScore, dynamicMaleCourts, dynamicFemaleCourts } = useMemo(() => {
+    // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식/게스트 제외
+    const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting && !p.isGuest);
         const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
         const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
         const totalPlayerCount = malePlayerCount + femalePlayerCount;
@@ -2462,12 +2462,14 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         const femaleCI = calcCI(femalePlayerCount, dynamicFemaleCourts);
 
         return {
-            recommendedMaleScore: calcMinScore(maleCI),
-            recommendedFemaleScore: calcMinScore(femaleCI),
-            dynamicMaleCourts: dynamicMaleCourts, // UI 표시를 위해 반환
-            dynamicFemaleCourts: dynamicFemaleCourts // UI 표시를 위해 반환
-        }
-    }, [activePlayers, courtCount]); // [수정] 의존성 배열 변경
+        malePlayerCount, // [수정] UI 표시를 위해 반환
+        femalePlayerCount, // [수정] UI 표시를 위해 반환
+        recommendedMaleScore: calcMinScore(maleCI),
+        recommendedFemaleScore: calcMinScore(femaleCI),
+        dynamicMaleCourts: dynamicMaleCourts, // UI 표시를 위해 반환
+        dynamicFemaleCourts: dynamicFemaleCourts // UI 표시를 위해 반환
+    }
+}, [activePlayers, courtCount]); // [수정] 의존성 배열 변경
 
 
     // [신규] 수동 설정이 아닐 경우, 추천 점수를 autoMatchConfig 상태에 자동으로 반영
@@ -2515,10 +2517,10 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                             <div className="mt-4 pt-4 border-t border-gray-600 space-y-4">
 
                                 {/* [수정] 동적 코트 수 및 추천 점수 표시 UI */}
-                                <div className="bg-gray-800 p-2 rounded">
-                                    <p className="text-sm text-center text-gray-400">
-                                        현재 활성 대기: 남 {waitingPlayers.filter(p => p.gender === '남' && !p.isResting).length}명 / 여 {waitingPlayers.filter(p => p.gender === '여' && !p.isResting).length}명
-                                    </p>
+                               <div className="bg-gray-800 p-2 rounded">
+                                <p className="text-sm text-center text-gray-400">
+                                    계산 기준 (활성): 남 {malePlayerCount}명 / 여 {femalePlayerCount}명
+                                </p>
                                     <p className="text-sm text-center text-gray-400">
                                         (자동 배분 코트: 남 {dynamicMaleCourts.toFixed(1)} / 여 {dynamicFemaleCourts.toFixed(1)})
                                     </p>
