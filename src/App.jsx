@@ -1826,17 +1826,17 @@ export default function App() {
             {modal?.type === 'rankingHistory' && <RankingHistoryModal onCancel={() => setModal({ type: null, data: null })} />}
             {/* [자동매칭] AutoMatchSetupModal은 더 이상 사용하지 않음 (설정으로 통합) */}
 
-            {isSettingsOpen && <SettingsModal
-    isAdmin={isAdmin}
-    scheduledCount={gameState.numScheduledMatches}
-    courtCount={gameState.numInProgressCourts}
-    seasonConfig={seasonConfig}
-    activePlayers={activePlayers} /* [수정] '대기'가 아닌 '전체 활성' 선수 전달 */
-    onSave={handleSettingsUpdate} // [수정] App 컴포넌트에서 정의된 함수 전달
-    onCancel={() => setIsSettingsOpen(false)}
-    setModal={setModal}
-    onSystemReset={handleSystemReset}
-/>}
+          {isSettingsOpen && <SettingsModal
+            isAdmin={isAdmin}
+            scheduledCount={gameState.numScheduledMatches}
+            courtCount={gameState.numInProgressCourts}
+            seasonConfig={seasonConfig}
+            activePlayers={activePlayers} /* [수정] '대기'가 아닌 '전체 활성' 선수 전달 */
+            onSave={handleSettingsUpdate} // [수정] App 컴포넌트에서 정의된 함수 전달
+            onCancel={() => setIsSettingsOpen(false)}
+            setModal={setModal}
+            onSystemReset={handleSystemReset}
+        />}
 
             <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
                 <div className="flex items-center justify-between gap-2">
@@ -2372,13 +2372,13 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
             isEnabled: false, 
             minMaleScore: 75, 
             minFemaleScore: 100,
-            isManualConfig: false // 1번에서 설정했지만, 방어코드로 추가
+            isManualConfig: false // 기본값
         }
     );
     const [isTesting, setIsTesting] = useState(false);
-    // [수정] 4번 항목에서 이 로컬 상태는 제거됩니다. (여기서는 일단 둠)
 
     if (!isAdmin) return null;
+    
     const handleSave = () => {
         onSave({ scheduled, courts, announcement, pointSystemInfo, autoMatchConfig });
     };
@@ -2435,8 +2435,8 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 
     // [자동매칭] CI 및 추천 점수 계산 로직 (수정됨)
    const { malePlayerCount, femalePlayerCount, recommendedMaleScore, recommendedFemaleScore, dynamicMaleCourts, dynamicFemaleCourts } = useMemo(() => {
-    // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식/게스트 제외
-    const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting && !p.isGuest);
+        // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식/게스트 제외
+        const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting && !p.isGuest);
         const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
         const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
         const totalPlayerCount = malePlayerCount + femalePlayerCount;
@@ -2462,14 +2462,14 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         const femaleCI = calcCI(femalePlayerCount, dynamicFemaleCourts);
 
         return {
-        malePlayerCount, // [수정] UI 표시를 위해 반환
-        femalePlayerCount, // [수정] UI 표시를 위해 반환
-        recommendedMaleScore: calcMinScore(maleCI),
-        recommendedFemaleScore: calcMinScore(femaleCI),
-        dynamicMaleCourts: dynamicMaleCourts, // UI 표시를 위해 반환
-        dynamicFemaleCourts: dynamicFemaleCourts // UI 표시를 위해 반환
-    }
-}, [activePlayers, courtCount]); // [수정] 의존성 배열 변경
+            malePlayerCount, // [수정] UI 표시를 위해 반환
+            femalePlayerCount, // [수정] UI 표시를 위해 반환
+            recommendedMaleScore: calcMinScore(maleCI),
+            recommendedFemaleScore: calcMinScore(femaleCI),
+            dynamicMaleCourts: dynamicMaleCourts, // UI 표시를 위해 반환
+            dynamicFemaleCourts: dynamicFemaleCourts // UI 표시를 위해 반환
+        }
+    }, [activePlayers, courtCount]); // [수정] 의존성 배열 변경
 
 
     // [신규] 수동 설정이 아닐 경우, 추천 점수를 autoMatchConfig 상태에 자동으로 반영
@@ -2483,6 +2483,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
             }));
         }
     }, [autoMatchConfig.isManualConfig, recommendedMaleScore, recommendedFemaleScore]); // [수정]
+    
     // Toggle Switch Component
     const ToggleSwitch = ({ name, checked, onChange }) => (
         <label className="relative inline-flex items-center cursor-pointer">
@@ -2532,45 +2533,45 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                                 {/* [수정됨] 수동 설정 체크박스 및 입력란 수정 */}
                                 <div>
                                    <div className="flex justify-between items-center mb-2">
-            <p className="font-semibold text-center">최종 최소 점수</p>
-            <label className="flex items-center text-sm cursor-pointer">
-                <input 
-                    type="checkbox" 
-                    checked={autoMatchConfig.isManualConfig || false} // [수정]
-                    onChange={(e) => setAutoMatchConfig(prev => ({ ...prev, isManualConfig: e.target.checked }))} // [수정]
-                    className="w-4 h-4 text-yellow-400 bg-gray-700 border-gray-600 rounded focus:ring-yellow-500"
-                />
-                <span className="ml-2 text-gray-300">수동 설정</span>
-            </label>
-        </div>
-        <div className="flex justify-around gap-4">
+                                        <p className="font-semibold text-center">최종 최소 점수</p>
+                                        <label className="flex items-center text-sm cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={autoMatchConfig.isManualConfig || false} 
+                                                onChange={(e) => setAutoMatchConfig(prev => ({ ...prev, isManualConfig: e.target.checked }))} 
+                                                className="w-4 h-4 text-yellow-400 bg-gray-700 border-gray-600 rounded focus:ring-yellow-500"
+                                            />
+                                            <span className="ml-2 text-gray-300">수동 설정</span>
+                                        </label>
+                                    </div>
+                                    <div className="flex justify-around gap-4">
                                         <div className="flex-1 text-center">
                                             <label className="block mb-1">👨 남자 최소 점수</label>
                                            <input 
-                                            type="text" // [수정] type="number" -> "text"
-                                            inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
-                                            name="minMaleScore" 
-                                            value={autoMatchConfig.minMaleScore} 
-                                            onChange={handleAutoMatchConfigChange} 
-                                            className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
-                                            placeholder={String(recommendedMaleScore)}
-                                            disabled={!autoMatchConfig.isManualConfig} // [수정] disabled 속성 추가
-                                        />
+                                                type="text" 
+                                                inputMode="decimal" 
+                                                name="minMaleScore" 
+                                                value={autoMatchConfig.minMaleScore} 
+                                                onChange={handleAutoMatchConfigChange} 
+                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
+                                                placeholder={String(recommendedMaleScore)}
+                                                disabled={!autoMatchConfig.isManualConfig} 
+                                            />
                                         </div>
                                         <div className="flex-1 text-center">
                                             <label className="block mb-1">👩 여자 최소 점수</label>
-                                         <input 
-                                            type="text" // [수정] type="number" -> "text"
-                                            inputMode="decimal" // [수정] inputMode 추가 (마이너스, 소수점)
-                                            name="minFemaleScore" 
-                                            value={autoMatchConfig.minFemaleScore} 
-                                            onChange={handleAutoMatchConfigChange} 
-                                            className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
-                                            placeholder={String(recommendedFemaleScore)}
-                                            disabled={!autoMatchConfig.isManualConfig} // [수정] disabled 속성 추가
-                                        />
-        </div>
-    </div>
+                                             <input 
+                                                type="text" 
+                                                inputMode="decimal" 
+                                                name="minFemaleScore" 
+                                                value={autoMatchConfig.minFemaleScore} 
+                                                onChange={handleAutoMatchConfigChange} 
+                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
+                                                placeholder={String(recommendedFemaleScore)}
+                                                disabled={!autoMatchConfig.isManualConfig} 
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
 
                                 <p className="text-xs text-gray-500 text-center">
