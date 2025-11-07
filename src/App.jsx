@@ -3,7 +3,8 @@ import { initializeApp } from 'firebase/app';
 import {
     getFirestore, doc, getDoc, setDoc, onSnapshot,
     collection, deleteDoc, updateDoc, writeBatch, runTransaction,
-    query, getDocs, where
+    query, getDocs, where,
+    enableIndexedDbPersistence  // <-- 이 부분을 추가해주세요
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from "firebase/functions";
 
@@ -23,6 +24,28 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// ============ [4번 전략 적용] 오프라인 지속성 활성화 ============
+// db 객체를 만든 직후, 다른 Firestore 작업을 하기 전에 호출합니다.
+try {
+  enableIndexedDbPersistence(db)
+    .then(() => {
+      // 개발자 도구(F12) 콘솔에서 성공 여부를 확인할 수 있습니다.
+      console.log("Firestore 오프라인 지속성 활성화 성공");
+    })
+    .catch((err) => {
+      // 여러 브라우저 탭에 앱이 동시에 열려있으면 실패할 수 있습니다. (정상)
+      if (err.code == 'failed-precondition') {
+        console.warn("Firestore: 여러 탭이 열려 있어 오프라인 지속성을 활성화할 수 없습니다.");
+      } else if (err.code == 'unimplemented') {
+        console.warn("Firestore: 현재 브라우저가 오프라인 지속성을 지원하지 않습니다.");
+      }
+    });
+} catch (err) {
+  console.error("Firestore 오프라인 지속성 설정 오류:", err);
+}
+// ==========================================================
+
 const functions = getFunctions(app);
 
 const playersRef = collection(db, "players");
