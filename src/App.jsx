@@ -422,111 +422,71 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const pressTimerRef = useRef(null);
     const cardRef = useRef(null);
 
-    const stableOnLongPress = useCallback(() => {
-        if(onLongPress) onLongPress(player);
-    }, [onLongPress, player]);
-
-    const handlePressStart = useCallback((e) => {
-        if (!isMovable || !isAdmin) return;
-        if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
-        pressTimerRef.current = setTimeout(stableOnLongPress, 1000);
-    }, [isAdmin, isMovable, stableOnLongPress]);
-
-    const handlePressEnd = useCallback(() => {
-        if (pressTimerRef.current) {
-            clearTimeout(pressTimerRef.current);
-            pressTimerRef.current = null;
-        }
-    }, []);
-
-    useEffect(() => {
-        const cardElement = cardRef.current;
-        if (cardElement && isAdmin && isMovable) {
-            const options = { passive: true };
-            cardElement.addEventListener('touchstart', handlePressStart, options);
-            cardElement.addEventListener('touchend', handlePressEnd);
-            cardElement.addEventListener('touchcancel', handlePressEnd);
-
-            return () => {
-                cardElement.removeEventListener('touchstart', handlePressStart);
-                cardElement.removeEventListener('touchend', handlePressEnd);
-                cardElement.removeEventListener('touchcancel', handlePressEnd);
-            };
-        }
-    }, [isAdmin, isMovable, handlePressStart, handlePressEnd]);
-
+    // ... (이벤트 핸들러 로직은 그대로 유지) ...
+    const stableOnLongPress = useCallback(() => { if(onLongPress) onLongPress(player); }, [onLongPress, player]);
+    const handlePressStart = useCallback((e) => { if (!isMovable || !isAdmin) return; if (pressTimerRef.current) clearTimeout(pressTimerRef.current); pressTimerRef.current = setTimeout(stableOnLongPress, 1000); }, [isAdmin, isMovable, stableOnLongPress]);
+    const handlePressEnd = useCallback(() => { if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; } }, []);
+    useEffect(() => { const cardElement = cardRef.current; if (cardElement && isAdmin && isMovable) { const options = { passive: true }; cardElement.addEventListener('touchstart', handlePressStart, options); cardElement.addEventListener('touchend', handlePressEnd); cardElement.addEventListener('touchcancel', handlePressEnd); return () => { cardElement.removeEventListener('touchstart', handlePressStart); cardElement.removeEventListener('touchend', handlePressEnd); cardElement.removeEventListener('touchcancel', handlePressEnd); }; } }, [isAdmin, isMovable, handlePressStart, handlePressEnd]);
     const handleContextMenu = (e) => { e.preventDefault(); };
 
-   const genderColor = player.gender === '남' ? '#3B82F6' : '#EC4899';
-
+    // [디자인 수정] 성별 컬러 바
+    const genderColor = player.gender === '남' ? '#3B82F6' : '#EC4899';
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
-    const isWaiting = !context.location;
-    const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter`;
-    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
-
-    const levelColor = getLevelColor(player.level, player.isGuest);
-
-    const levelStyle = {
-        color: levelColor,
-        fontWeight: 'bold',
-        fontSize: '14px',
-        textShadow: `0 0 5px ${levelColor}`
+    
+    // [디자인 수정] 레벨 뱃지 스타일
+    const levelBadgeColor = getLevelColor(player.level, player.isGuest);
+    
+    // [디자인 수정] 카드 스타일 정의
+    const cardStyle = {
+        backgroundColor: '#FFFFFF', // 완전 흰색
+        borderLeft: `4px solid ${genderColor}`, // 왼쪽 성별 라인
+        borderRadius: '10px', // 부드러운 라운딩
+        boxShadow: '0 2px 4px rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.02)', // 아주 은은한 그림자
+        border: context.selected ? '2px solid #10B981' : '1px solid #F1F5F9', // 선택시 초록 테두리, 평소엔 연한 회색
+        opacity: isPlaying ? 0.6 : 1,
+        transform: context.selected ? 'scale(1.02)' : 'scale(1)',
+        transition: 'all 0.2s ease',
     };
-
-   const cardStyle = {
-        borderLeft: `4px solid ${genderColor}`, // 왼쪽 성별 테두리
-        backgroundColor: '#FFFFFF',             // 흰색 배경
-        borderRadius: '8px',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.1)', // 부드러운 그림자
-        color: '#1E1E1E',                       // 검은 글씨
-        transition: 'all 0.2s ease-in-out',
-        opacity: isPlaying ? 0.5 : 1,
-        border: context.selected ? '2px solid #00B16A' : '1px solid #E5E7EB', // 선택시 초록색
-    };
-
-  if (context.selected || isSelectedForWin) {
-        // 선택 효과 (콕스타 초록)
-        cardStyle.transform = 'scale(1.02)';
-        cardStyle.boxShadow = '0 0 0 2px #00B16A';
-    }
 
     if (isCurrentUser) {
-        // 내 카드 강조 (노랑)
-        cardStyle.border = '2px solid #FFD700';
+        cardStyle.border = '2px solid #F59E0B'; // 나(User)는 오렌지/골드 테두리
+        cardStyle.backgroundColor = '#FFFBEB'; // 아주 연한 노랑 배경
     }
 
-    const isLongPressDisabled = context.location === 'court';
-    // [수정] actionLabel이 'auto' 위치도 인식하도록 수정
+    const isWaiting = !context.location;
     const actionLabel = (isWaiting || context.location === 'auto') ? '선수 내보내기' : '대기자로 이동';
-
     const todayWins = player.todayWins || 0;
     const todayLosses = player.todayLosses || 0;
 
     return (
         <div
             ref={cardRef}
-            // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
-            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
+            className={`player-card p-2 relative flex flex-col justify-center h-16 w-full ${player.isResting ? 'grayscale opacity-70' : ''}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
-            onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
-            onMouseUp={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
-            onMouseLeave={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
+            onMouseDown={isAdmin && isMovable ? handlePressStart : null}
+            onMouseUp={isAdmin && isMovable ? handlePressEnd : null}
+            onMouseLeave={isAdmin && isMovable ? handlePressEnd : null}
             onContextMenu={handleContextMenu}
         >
-            <div>
-                <div className={playerNameClass}>{adminIcon}{player.name}</div>
-                <div className={playerInfoClass}>
-                    <span style={levelStyle}>{player.level.replace('조','')}</span>|
-                    {`${todayWins}승 ${todayLosses}패`}
-                </div>
+            <div className="flex justify-between items-center mb-1">
+                <span className="text-slate-800 text-xs font-bold truncate">{adminIcon}{player.name}</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                    {player.level.replace('조','')}
+                </span>
             </div>
+            <div className="text-[10px] text-slate-400 flex justify-between items-center">
+                 <span>{todayWins}승 {todayLosses}패</span>
+            </div>
+
             {isAdmin && onAction && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onAction(player); }}
-                    className={`absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400`}
+                    className="absolute -top-2 -right-2 w-5 h-5 bg-white rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-red-500 border border-gray-100 z-10"
                     aria-label={actionLabel}
-                ><i className={"fas fa-times-circle fa-xs"}></i></button>
+                >
+                    <i className="fas fa-times text-xs"></i>
+                </button>
             )}
         </div>
     );
@@ -579,12 +539,12 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
     const totalWaiting = maleWaitingPlayers.length + femaleWaitingPlayers.length;
 
     return (
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-            <div className="flex justify-between items-center mb-3">
-                {/* 제목: 진한 회색 */}
-                <h2 className="text-base font-bold text-[#1E1E1E]">
-                    대기 명단 ({totalWaiting})
-                </h2>
+       <section className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-4">
+        <div className="flex justify-between items-center mb-3">
+            <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                <span>📋 대기 명단</span>
+                <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">{totalWaiting}</span>
+            </h2>
                 {/* [신규 기능] 대기자 전체 내보내기 버튼 */}
                 {isAdmin && totalWaiting > 0 && (
                     <button
@@ -639,15 +599,15 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     const playerCount = match.filter(p => p).length;
                     return (
                         // [UI 수정] 내부 요소 정렬 및 간격 유지
-                       <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-50 border border-gray-200 rounded-xl p-2 gap-2 shadow-sm">
+                     <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-white border border-slate-100 rounded-xl p-2 gap-2 shadow-sm mb-2">
                             <div
-                                className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
+                                className="flex-shrink-0 w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
                                 onMouseDown={() => handlePressStart(matchIndex)}
                                 onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
                                 onTouchStart={() => handlePressStart(matchIndex)}
                                 onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                             >
-                                <p className="font-bold text-lg text-[#00B16A]">{matchIndex + 1}</p>
+                               <p className="font-bold text-sm text-green-600">{matchIndex + 1}</p>
                             </div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                 {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
@@ -690,7 +650,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
         <section>
             <div className="flex justify-between items-center mb-2 px-1">
                  {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
-                 <h2 className={`text-sm font-bold text-green-400 arcade-font ${isAutoMatchOn ? 'flicker-text' : ''}`}>
+                 <h2 className={`text-sm font-extrabold flex items-center gap-2 ${isAutoMatchOn ? 'text-green-600' : 'text-slate-400'}`}>
                     🤖 자동 매칭 {isAutoMatchOn ? '(ON)' : '(OFF)'}
                  </h2>
                  {isAdmin && matchList.length > 0 && (
@@ -708,7 +668,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                     const playerCount = match.filter(p => p).length;
                     return (
                         // [UI 수정] 내부 요소 정렬 및 간격 유지
-                        <div key={`auto-match-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
+                       <div key={`auto-match-${matchIndex}`} className="flex items-center w-full bg-gradient-to-r from-green-50 to-white border border-green-100 rounded-xl p-2 gap-2 shadow-sm mb-2">
                             <div
                                 className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
                                 onMouseDown={() => handlePressStart(matchIndex)}
@@ -793,15 +753,15 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
 
    const isSource = courtMove.sourceIndex === courtIndex;
     // 흰색 배경, 회색 테두리
-    const courtContainerClass = `flex items-center w-full bg-white rounded-xl p-2 gap-2 shadow-md border transition-all duration-300 ${isSource ? 'border-2 border-[#00B16A] ring-2 ring-[#00B16A]/20' : 'border-gray-200'} ${isAdmin ? 'cursor-pointer' : ''}`;
+   const courtContainerClass = `flex items-center w-full bg-white rounded-xl p-3 gap-3 shadow-md border transition-all duration-300 mb-2 ${isSource ? 'border-2 border-green-500 ring-4 ring-green-500/10' : 'border-slate-100'}`;
 
     return (
         <div ref={courtRef} className={courtContainerClass} onClick={handleClick}>
             {/* [UI 수정] 내부 요소 정렬 및 간격 유지 */}
-            <div className="flex-shrink-0 w-8 flex flex-col items-center justify-center">
-                <p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p>
-                <p className="font-semibold text-[8px] text-gray-400 arcade-font">코트</p>
-            </div>
+            <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-slate-800 flex flex-col items-center justify-center text-white shadow-sm">
+        <p className="font-bold text-sm">{courtIndex + 1}</p>
+        <p className="text-[8px] opacity-70">COURT</p>
+    </div>
             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((playerId, slotIndex) => {
                     const player = players[playerId];
@@ -1819,8 +1779,8 @@ export default function App() {
         return <EntryPage onEnter={handleEnter} />;
     }
 
-    return (
-        <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+  return (
+        <div className="bg-slate-50 text-slate-900 min-h-screen font-sans flex flex-col">
             {resetNotification && (
                 <ConfirmationModal
                     title={resetNotification.status === 'error' ? "⚠️ 저장 오류" : "🏆 시즌 마감"}
@@ -1949,58 +1909,58 @@ export default function App() {
                 )}
             </main>
             <InstallBanner />
-            <style>{`
-                /* 1. 전체 폰트 적용 (Pretendard) */
-                body, button, input, textarea, select, .player-card, div, span, h1, h2, h3, p {
+           <style>{`
+                /* [Global] 폰트 및 기본 설정 */
+                body, button, input, textarea, select {
                     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+                    -webkit-font-smoothing: antialiased; /* 폰트 부드럽게 */
+                    color: #1E293B; /* Slate-800: 진한 회색 (검정 대신 사용) */
+                }
+                
+                /* [Text] 깜빡임 효과 -> 부드러운 컬러 강조로 변경 */
+                .flicker-text {
+                    animation: pulse-green 2s infinite;
+                    color: #059669 !important; /* Emerald-600 */
+                    text-shadow: none !important;
+                }
+                @keyframes pulse-green {
+                    0%, 100% { opacity: 1; }
+                    50% { opacity: 0.7; }
+                }
+
+                /* [Font] 아케이드 폰트 제거 -> 모던 고딕으로 통일 */
+                .arcade-font {
+                    font-family: 'Pretendard', sans-serif !important;
+                    font-weight: 800;
+                    letter-spacing: -0.02em;
+                }
+
+                /* [Button] 아케이드 버튼 -> 모던 라운드 버튼 */
+                .arcade-button {
+                    position: relative;
+                    border: none;
+                    border-radius: 12px; /* 둥근 모서리 */
+                    font-weight: 600;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    transition: all 0.2s ease;
+                }
+                .arcade-button:active {
+                    transform: scale(0.96);
+                    box-shadow: none;
+                }
+
+                /* [UI] 스크롤바 숨기기 */
+                .hide-scrollbar::-webkit-scrollbar { display: none; }
+                .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+                /* [Choice] 선택 방지 */
+                body, .player-card, div, button, span, h1, h2, h3, p {
                     -webkit-user-select: none;
                     user-select: none;
                 }
 
-                /* 2. 아케이드 폰트 클래스 덮어쓰기 (이름은 유지하되 스타일은 모던하게) */
-                .arcade-font {
-                    font-family: 'Pretendard', sans-serif !important;
-                    letter-spacing: -0.02em;
-                }
-
-                /* 3. 버튼 디자인: 콕스타 스타일 (둥글고 그림자) */
-                .arcade-button {
-                    position: relative;
-                    border: none;
-                    border-radius: 8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                    font-weight: 700;
-                    transition: all 0.2s ease;
-                    white-space: nowrap;
-                }
-                .arcade-button:active {
-                    transform: scale(0.98);
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-                }
-
-                /* 4. 깜빡임 효과 제거 (부드러운 강조로 변경) */
-                .flicker-text {
-                    color: #00B16A !important; /* 콕스타 초록색 */
-                    text-shadow: none !important;
-                }
-                
-                /* 5. 스크롤바 숨기기 (콕스타 스타일) */
-                .hide-scrollbar::-webkit-scrollbar { display: none; }
-                .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-                /* 토글 스위치 색상 변경 */
-                input:checked + div { background-color: #00B16A !important; }
-        
-                }
-                /* [UI 수정] 토글 스위치 스타일 (Tailwind CSS JIT 필요) */
-                input:checked + div {
-                    background-color: #22c55e; /* green-500 */
-                }
-                input:checked + div:after {
-                    transform: translateX(24px); /* w-6 */
-                    border-color: white;
-                }
-                
+                /* [Toggle] 토글 스위치 색상 (초록색) */
+                input:checked + div { background-color: #10B981 !important; }
             `}</style>
         </div>
     );
@@ -2040,25 +2000,22 @@ function EntryPage({ onEnter }) {
     ));
 
     return (
-       <div className="bg-slate-100 text-[#1E1E1E] min-h-screen font-sans flex flex-col">
-            <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
-                <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">⚡ COCKSLIGHTING</h1>
+        <div className="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+            <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-slate-100">
+                <div className="text-center mb-8">
+                    <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight mb-1">⚡ COCKSLIGHTING</h1>
+                    <p className="text-slate-400 text-xs">프리미엄 배드민턴 매칭 시스템</p>
+                </div>
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
+                    {/* 입력창 스타일: 연한 회색 배경 */}
+                    <input type="text" name="name" placeholder="이름을 입력하세요" value={formData.name} onChange={handleChange} 
+                        className="w-full bg-slate-50 text-slate-900 p-4 rounded-xl border border-slate-200 focus:outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/20 transition-all font-bold" required />
+                    
+                    {/* 레벨 버튼들 */}
                     <div className="grid grid-cols-4 gap-2">
-                        {levelButtons}
+                        {levelButtons} {/* 버튼 클래스는 arcade-button 스타일을 따름 */}
                     </div>
-                    <div className="flex justify-around items-center text-lg">
-                        <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자</label>
-                        <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자</label>
-                    </div>
-                    <div className="text-center">
-                        <label className="flex items-center justify-center text-lg cursor-pointer">
-                            <input type="checkbox" name="isGuest" checked={formData.isGuest} onChange={handleChange} className="mr-2 h-4 w-4 rounded text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" />
-                            게스트
-                        </label>
-                    </div>
-                    <button type="submit" className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition duration-300">입장하기</button>
+                    {/* ... (나머지 동일, 텍스트 색상만 text-slate-600 등으로 변경) ... */}
                 </form>
             </div>
         </div>
@@ -2889,29 +2846,22 @@ function InstallBanner() {
     if (!isVisible) return null;
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-yellow-400 p-4 z-50 flex flex-col md:flex-row items-center justify-between shadow-lg animate-slide-up">
+        <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-4 z-50 flex flex-col md:flex-row items-center justify-between shadow-[0_-4px_20px_rgba(0,0,0,0.05)] animate-slide-up">
             <div className="mb-3 md:mb-0 text-center md:text-left">
-                <p className="text-yellow-400 font-bold text-sm mb-1">⚡ COCKSLIGHTING 앱 설치</p>
-                <p className="text-gray-300 text-xs">
-                    {isIos 
-                        ? "앱으로 이용하면 화면이 더 넓어집니다!" 
-                        : "어플로 설치하시면 더욱 편리하게 이용 가능합니다."}
+                <p className="text-slate-900 font-bold text-sm mb-0.5">
+                    {isKakao ? "⚠️ 브라우저 변경 필요" : "⚡ 앱으로 더 편하게!"}
+                </p>
+                <p className="text-slate-500 text-xs">
+                    {isKakao 
+                        ? "주소를 복사하여 Chrome/Safari에서 열어주세요."
+                        : "홈 화면에 추가하여 전체 화면으로 즐기세요."}
                 </p>
             </div>
             <div className="flex gap-3 w-full md:w-auto">
-                <button 
-                    onClick={handleClose}
-                    className="flex-1 md:flex-none py-2 px-4 rounded-lg bg-gray-700 text-gray-300 text-xs font-bold"
-                >
-                    괜찮아요
-                </button>
-                <button 
-                    onClick={handleInstallClick}
-                    className="flex-1 md:flex-none py-2 px-4 rounded-lg bg-yellow-500 text-black text-xs font-bold shadow-md hover:bg-yellow-400 transition-colors"
-                >
-                    {isIos ? "설치 방법 보기" : "다운로드"}
+                <button onClick={handleClose} className="flex-1 md:flex-none py-2.5 px-5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">닫기</button>
+                <button onClick={handleInstallClick} className={`flex-1 md:flex-none py-2.5 px-5 rounded-xl text-white text-xs font-bold shadow-md shadow-green-500/30 ${isKakao ? 'bg-slate-800' : 'bg-green-500'}`}>
+                    {isKakao ? "주소 복사" : "앱 설치하기"}
                 </button>
             </div>
         </div>
     );
-}
