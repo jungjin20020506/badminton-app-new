@@ -1861,10 +1861,11 @@ export default function App() {
             onSystemReset={handleSystemReset}
         />}
 
-            <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
+            <header className="flex-shrink-0 p-3 flex flex-col gap-1 bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-gray-200 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center flex-shrink-0">
-                        <h1 className="text-sm sm:text-lg font-bold text-yellow-400 arcade-font flicker-text flex items-center">
+                        {/* 콕스타 초록색 로고 스타일 */}
+                        <h1 className="text-lg font-extrabold text-[#00B16A] tracking-tighter flex items-center">
                             <span className="mr-1">⚡</span>
                             <span className="uppercase">COCKSLIGHTING</span>
                         </h1>
@@ -1948,36 +1949,47 @@ export default function App() {
             </main>
             <InstallBanner />
             <style>{`
-                body, .player-card, div, button, span, h1, h2, h3, p {
+                /* 1. 전체 폰트 적용 (Pretendard) */
+                body, button, input, textarea, select, .player-card, div, span, h1, h2, h3, p {
+                    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
                     -webkit-user-select: none;
-                    -moz-user-select: none;
-                    -ms-user-select: none;
                     user-select: none;
                 }
-                @keyframes slide-up {
-                    from { transform: translateY(100%); }
-                    to { transform: translateY(0); }
+
+                /* 2. 아케이드 폰트 클래스 덮어쓰기 (이름은 유지하되 스타일은 모던하게) */
+                .arcade-font {
+                    font-family: 'Pretendard', sans-serif !important;
+                    letter-spacing: -0.02em;
                 }
-                .animate-slide-up {
-                    animation: slide-up 0.5s ease-out;
-                }
-                .arcade-font { font-family: 'Press Start 2P', cursive; }
+
+                /* 3. 버튼 디자인: 콕스타 스타일 (둥글고 그림자) */
                 .arcade-button {
                     position: relative;
-                    border: 2px solid #222;
-                    box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF;
+                    border: none;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    font-weight: 700;
+                    transition: all 0.2s ease;
                     white-space: nowrap;
                 }
                 .arcade-button:active {
-                    transform: translateY(2px);
-                    box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF;
+                    transform: scale(0.98);
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
                 }
-                @keyframes flicker {
-                  0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700, 0 0 12px #22c55e; }
-                  50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700, 0 0 18px #22c55e; }
-                }
+
+                /* 4. 깜빡임 효과 제거 (부드러운 강조로 변경) */
                 .flicker-text {
-                  animation: flicker 1.5s infinite;
+                    color: #00B16A !important; /* 콕스타 초록색 */
+                    text-shadow: none !important;
+                }
+                
+                /* 5. 스크롤바 숨기기 (콕스타 스타일) */
+                .hide-scrollbar::-webkit-scrollbar { display: none; }
+                .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+                /* 토글 스위치 색상 변경 */
+                input:checked + div { background-color: #00B16A !important; }
+        
                 }
                 /* [UI 수정] 토글 스위치 스타일 (Tailwind CSS JIT 필요) */
                 input:checked + div {
@@ -2027,7 +2039,7 @@ function EntryPage({ onEnter }) {
     ));
 
     return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
+       <div className="bg-slate-100 text-[#1E1E1E] min-h-screen font-sans flex flex-col">
             <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
                 <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">⚡ COCKSLIGHTING</h1>
                 <form onSubmit={handleSubmit} className="space-y-4">
