@@ -419,49 +419,40 @@ const calculateLocations = (gameState, players) => {
 // 자식 컴포넌트들
 // ===================================================================================
 const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false }) => {
+    // ... (이벤트 핸들러 로직은 기존과 동일, 생략) ...
     const pressTimerRef = useRef(null);
     const cardRef = useRef(null);
-
-    // ... (이벤트 핸들러 로직은 그대로 유지) ...
     const stableOnLongPress = useCallback(() => { if(onLongPress) onLongPress(player); }, [onLongPress, player]);
     const handlePressStart = useCallback((e) => { if (!isMovable || !isAdmin) return; if (pressTimerRef.current) clearTimeout(pressTimerRef.current); pressTimerRef.current = setTimeout(stableOnLongPress, 1000); }, [isAdmin, isMovable, stableOnLongPress]);
     const handlePressEnd = useCallback(() => { if (pressTimerRef.current) { clearTimeout(pressTimerRef.current); pressTimerRef.current = null; } }, []);
     useEffect(() => { const cardElement = cardRef.current; if (cardElement && isAdmin && isMovable) { const options = { passive: true }; cardElement.addEventListener('touchstart', handlePressStart, options); cardElement.addEventListener('touchend', handlePressEnd); cardElement.addEventListener('touchcancel', handlePressEnd); return () => { cardElement.removeEventListener('touchstart', handlePressStart); cardElement.removeEventListener('touchend', handlePressEnd); cardElement.removeEventListener('touchcancel', handlePressEnd); }; } }, [isAdmin, isMovable, handlePressStart, handlePressEnd]);
     const handleContextMenu = (e) => { e.preventDefault(); };
 
-    // [디자인 수정] 성별 컬러 바
+    // [디자인]
     const genderColor = player.gender === '남' ? '#3B82F6' : '#EC4899';
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
     
-    // [디자인 수정] 레벨 뱃지 스타일
-    const levelBadgeColor = getLevelColor(player.level, player.isGuest);
-    
-    // [디자인 수정] 카드 스타일 정의
     const cardStyle = {
-        backgroundColor: '#FFFFFF', // 완전 흰색
-        borderLeft: `4px solid ${genderColor}`, // 왼쪽 성별 라인
-        borderRadius: '10px', // 부드러운 라운딩
-        boxShadow: '0 2px 4px rgba(0,0,0,0.03), 0 1px 2px rgba(0,0,0,0.02)', // 아주 은은한 그림자
-        border: context.selected ? '2px solid #10B981' : '1px solid #F1F5F9', // 선택시 초록 테두리, 평소엔 연한 회색
-        opacity: isPlaying ? 0.6 : 1,
+        backgroundColor: isCurrentUser ? '#FFFBEB' : '#FFFFFF',
+        borderRadius: '12px',
+        // 테두리를 조금 더 진하게 하여 구분감 상승
+        border: context.selected ? '2px solid #10B981' : (isCurrentUser ? '2px solid #F59E0B' : '1px solid #E2E8F0'),
+        // 그림자를 더 부드럽고 깊게
+        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+        opacity: isPlaying ? 0.5 : 1,
         transform: context.selected ? 'scale(1.02)' : 'scale(1)',
-        transition: 'all 0.2s ease',
+        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+        // 왼쪽 성별 바 두께 증가 (4px -> 6px)
+        borderLeft: `6px solid ${genderColor}`
     };
 
-    if (isCurrentUser) {
-        cardStyle.border = '2px solid #F59E0B'; // 나(User)는 오렌지/골드 테두리
-        cardStyle.backgroundColor = '#FFFBEB'; // 아주 연한 노랑 배경
-    }
-
-    const isWaiting = !context.location;
-    const actionLabel = (isWaiting || context.location === 'auto') ? '선수 내보내기' : '대기자로 이동';
-    const todayWins = player.todayWins || 0;
-    const todayLosses = player.todayLosses || 0;
+    const actionLabel = (!context.location || context.location === 'auto') ? '삭제' : '대기';
 
     return (
         <div
             ref={cardRef}
-            className={`player-card p-2 relative flex flex-col justify-center h-16 w-full ${player.isResting ? 'grayscale opacity-70' : ''}`}
+            // [수정] h-14 -> h-20 (높이 대폭 증가) / p-1 -> p-2 (내부 여백 확보)
+            className={`player-card relative w-full h-20 p-1.5 flex flex-col justify-between ${player.isResting ? 'grayscale opacity-60' : ''}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
             onMouseDown={isAdmin && isMovable ? handlePressStart : null}
@@ -469,21 +460,28 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             onMouseLeave={isAdmin && isMovable ? handlePressEnd : null}
             onContextMenu={handleContextMenu}
         >
-            <div className="flex justify-between items-center mb-1">
-                <span className="text-slate-800 text-xs font-bold truncate">{adminIcon}{player.name}</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                    {player.level.replace('조','')}
+            {/* 상단: 이름 영역 (최대 2줄까지 허용하여 잘림 방지) */}
+            <div className="flex-grow flex items-center justify-center w-full overflow-hidden">
+                <span className="text-slate-900 text-sm font-bold text-center leading-tight break-keep line-clamp-2">
+                    {adminIcon}{player.name}
                 </span>
             </div>
-            <div className="text-[10px] text-slate-400 flex justify-between items-center">
-                 <span>{todayWins}승 {todayLosses}패</span>
+
+            {/* 하단: 정보 영역 (급수 | 승패) */}
+            <div className="w-full flex justify-center items-center gap-1 mt-1 pt-1 border-t border-slate-100">
+                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-1.5 rounded">
+                    {player.level.replace('조','')}
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                    {player.todayWins}승{player.todayLosses}패
+                </span>
             </div>
 
+            {/* 관리자용 삭제 버튼 (크기 키움) */}
             {isAdmin && onAction && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onAction(player); }}
-                    className="absolute -top-2 -right-2 w-5 h-5 bg-white rounded-full shadow-md flex items-center justify-center text-gray-400 hover:text-red-500 border border-gray-100 z-10"
-                    aria-label={actionLabel}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-white rounded-full shadow-md border border-slate-200 flex items-center justify-center text-slate-400 hover:text-red-500 z-10 active:scale-90 transition-transform"
                 >
                     <i className="fas fa-times text-xs"></i>
                 </button>
@@ -517,9 +515,10 @@ const CourtTimer = ({ court }) => {
     return <div className="text-center text-xs font-mono text-white mt-1 tracking-wider">{time}</div>;
 };
 
+
 const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onClearAllWaitingPlayers }) => {
     const renderPlayerGrid = (players) => (
-        <div className="grid grid-cols-5 gap-1">
+        <div className="grid grid-cols-5 gap-1.5"> {/* 간격 조정 */}
             {players.map(player => (
                 <PlayerCard
                     key={player.id}
@@ -539,17 +538,16 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
     const totalWaiting = maleWaitingPlayers.length + femaleWaitingPlayers.length;
 
     return (
-       <section className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-4">
-        <div className="flex justify-between items-center mb-3">
-            <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                <span>📋 대기 명단</span>
-                <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">{totalWaiting}</span>
-            </h2>
-                {/* [신규 기능] 대기자 전체 내보내기 버튼 */}
+        <section className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-4">
+            <div className="flex justify-between items-center mb-3">
+                <h2 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                    <span>📋 대기 명단</span>
+                    <span className="bg-slate-100 text-slate-600 text-xs px-2 py-0.5 rounded-full">{totalWaiting}</span>
+                </h2>
                 {isAdmin && totalWaiting > 0 && (
                     <button
                         onClick={onClearAllWaitingPlayers}
-                        className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md"
+                        className="text-xs font-bold text-red-500 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
                     >
                         전체 내보내기
                     </button>
@@ -558,14 +556,13 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
             <div className="flex flex-col gap-2">
                 {renderPlayerGrid(maleWaitingPlayers)}
                 {maleWaitingPlayers.length > 0 && femaleWaitingPlayers.length > 0 && (
-                    <hr className="border-dashed border-gray-600 my-1" />
+                    <div className="h-px bg-slate-100 my-1 w-full"></div> /* 구분선 디자인 변경 */
                 )}
                 {renderPlayerGrid(femaleWaitingPlayers)}
             </div>
         </section>
     );
 });
-
 
 const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds }) => {
     const pressTimerRef = useRef(null);
@@ -1909,77 +1906,52 @@ export default function App() {
                 )}
             </main>
             <InstallBanner />
-           <style>{`
-                /* [Global] 폰트 및 기본 설정 */
-                body, button, input, textarea, select {
-                    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
-                    -webkit-font-smoothing: antialiased;
-                    -moz-osx-font-smoothing: grayscale;
-                    color: #1E293B; /* Slate-800 */
+         <style>{`
+                /* [Global] */
+                :root {
+                    --primary: #10B981;
+                    --bg-app: #F8FAFC;
+                    --text-main: #1E293B;
+                    --text-sub: #64748B;
                 }
-                
-                /* [Text] 콕스타 전용 텍스트 효과 */
-                .flicker-text {
-                    animation: pulse-green 2s infinite;
-                    color: #00B16A !important; 
-                    text-shadow: none !important;
-                }
-                @keyframes pulse-green {
-                    0%, 100% { opacity: 1; }
-                    50% { opacity: 0.8; }
-                }
-
-                /* [Font] 아케이드 폰트 -> 모던 타이포그래피로 교체 */
-                .arcade-font {
-                    font-family: 'Pretendard', sans-serif !important;
-                    font-weight: 800;
-                    letter-spacing: -0.03em;
-                }
-
-                /* [Button] 고급스러운 버튼 스타일 */
-                .arcade-button {
-                    position: relative;
-                    border: none;
-                    border-radius: 14px; /* 더 둥글게 */
-                    font-weight: 600;
-                    letter-spacing: -0.01em;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-                }
-                .arcade-button:active {
-                    transform: scale(0.96);
-                    box-shadow: none;
-                }
-
-                /* [UI] 스크롤바 숨기기 & 부드러운 스크롤 */
-                .hide-scrollbar::-webkit-scrollbar { display: none; }
-                .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-                html { scroll-behavior: smooth; }
-
-                /* [Choice] 텍스트 선택 방지 (앱 같은 느낌) */
-                body, .player-card, div, button, span, h1, h2, h3, p {
-                    -webkit-user-select: none;
-                    user-select: none;
+                body {
+                    font-family: 'Pretendard', -apple-system, sans-serif;
+                    background-color: var(--bg-app);
+                    color: var(--text-main);
                     -webkit-tap-highlight-color: transparent;
                 }
 
-                /* [Toggle] 토글 스위치 콕스타 초록색 */
-                input:checked + div { background-color: #00B16A !important; }
+                /* [Card] 선수 카드 텍스트 자동 줄바꿈 & 중앙 정렬 */
+                .player-card-content {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100%;
+                    width: 100%;
+                    text-align: center;
+                }
+
+                /* [Rank] 랭킹 리스트 애니메이션 */
+                .rank-item {
+                    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
+                .rank-item:active {
+                    transform: scale(0.98);
+                }
+
+                /* [UI] 스크롤바 숨기기 */
+                .hide-scrollbar::-webkit-scrollbar { display: none; }
+                .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
                 
-                /* [Modal] 모달 애니메이션 */
+                /* 모달 애니메이션 */
                 @keyframes modal-pop {
                     0% { transform: scale(0.95); opacity: 0; }
                     100% { transform: scale(1); opacity: 1; }
                 }
-                
-                /* [Banner] 하단 배너 슬라이드 */
-                @keyframes slide-up {
-                    from { transform: translateY(100%); }
-                    to { transform: translateY(0); }
-                }
-                .animate-slide-up {
-                    animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-                }
+                /* 깜빡임 효과 */
+                .flicker-text { animation: pulse-soft 2s infinite; color: #10B981; }
+                @keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
             `}</style>
         </div>
     );
@@ -2807,6 +2779,9 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
 }
 */
 
+// ===================================================================================
+// [신규 기능] 모바일 앱 설치 유도 배너 컴포넌트
+// ===================================================================================
 // ===================================================================================
 // [신규 기능] 모바일 앱 설치 유도 배너 컴포넌트
 // ===================================================================================
