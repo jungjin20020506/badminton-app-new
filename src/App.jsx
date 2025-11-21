@@ -1913,54 +1913,73 @@ export default function App() {
                 /* [Global] 폰트 및 기본 설정 */
                 body, button, input, textarea, select {
                     font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
-                    -webkit-font-smoothing: antialiased; /* 폰트 부드럽게 */
-                    color: #1E293B; /* Slate-800: 진한 회색 (검정 대신 사용) */
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
+                    color: #1E293B; /* Slate-800 */
                 }
                 
-                /* [Text] 깜빡임 효과 -> 부드러운 컬러 강조로 변경 */
+                /* [Text] 콕스타 전용 텍스트 효과 */
                 .flicker-text {
                     animation: pulse-green 2s infinite;
-                    color: #059669 !important; /* Emerald-600 */
+                    color: #00B16A !important; 
                     text-shadow: none !important;
                 }
                 @keyframes pulse-green {
                     0%, 100% { opacity: 1; }
-                    50% { opacity: 0.7; }
+                    50% { opacity: 0.8; }
                 }
 
-                /* [Font] 아케이드 폰트 제거 -> 모던 고딕으로 통일 */
+                /* [Font] 아케이드 폰트 -> 모던 타이포그래피로 교체 */
                 .arcade-font {
                     font-family: 'Pretendard', sans-serif !important;
                     font-weight: 800;
-                    letter-spacing: -0.02em;
+                    letter-spacing: -0.03em;
                 }
 
-                /* [Button] 아케이드 버튼 -> 모던 라운드 버튼 */
+                /* [Button] 고급스러운 버튼 스타일 */
                 .arcade-button {
                     position: relative;
                     border: none;
-                    border-radius: 12px; /* 둥근 모서리 */
+                    border-radius: 14px; /* 더 둥글게 */
                     font-weight: 600;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-                    transition: all 0.2s ease;
+                    letter-spacing: -0.01em;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                 }
                 .arcade-button:active {
                     transform: scale(0.96);
                     box-shadow: none;
                 }
 
-                /* [UI] 스크롤바 숨기기 */
+                /* [UI] 스크롤바 숨기기 & 부드러운 스크롤 */
                 .hide-scrollbar::-webkit-scrollbar { display: none; }
                 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+                html { scroll-behavior: smooth; }
 
-                /* [Choice] 선택 방지 */
+                /* [Choice] 텍스트 선택 방지 (앱 같은 느낌) */
                 body, .player-card, div, button, span, h1, h2, h3, p {
                     -webkit-user-select: none;
                     user-select: none;
+                    -webkit-tap-highlight-color: transparent;
                 }
 
-                /* [Toggle] 토글 스위치 색상 (초록색) */
-                input:checked + div { background-color: #10B981 !important; }
+                /* [Toggle] 토글 스위치 콕스타 초록색 */
+                input:checked + div { background-color: #00B16A !important; }
+                
+                /* [Modal] 모달 애니메이션 */
+                @keyframes modal-pop {
+                    0% { transform: scale(0.95); opacity: 0; }
+                    100% { transform: scale(1); opacity: 1; }
+                }
+                
+                /* [Banner] 하단 배너 슬라이드 */
+                @keyframes slide-up {
+                    from { transform: translateY(100%); }
+                    to { transform: translateY(0); }
+                }
+                .animate-slide-up {
+                    animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+                }
             `}</style>
         </div>
     );
@@ -2789,24 +2808,29 @@ function AutoMatchSetupModal({ onConfirm, onCancel }) {
 */
 
 // ===================================================================================
-// [신규 기능] 모바일 앱 설치 유도 배너 컴포넌트 (여기서부터 끝까지 복사해서 붙여넣으세요)
+// [신규 기능] 모바일 앱 설치 유도 배너 컴포넌트
 // ===================================================================================
 function InstallBanner() {
     const [deferredPrompt, setDeferredPrompt] = React.useState(null);
     const [isIos, setIsIos] = React.useState(false);
+    const [isKakao, setIsKakao] = React.useState(false); // 카카오톡 감지용
     const [isVisible, setIsVisible] = React.useState(false);
 
     React.useEffect(() => {
-        // 1. 이미 앱으로 실행 중인지 확인
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
         if (isStandalone) return;
 
-        // 2. iOS인지 확인
         const userAgent = window.navigator.userAgent.toLowerCase();
+
+        if (userAgent.includes('kakaotalk')) {
+            setIsKakao(true);
+            setIsVisible(true);
+            return;
+        }
+
         const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
         setIsIos(isIosDevice);
 
-        // 3. 안드로이드: 설치 이벤트 감지
         const handleBeforeInstallPrompt = (e) => {
             e.preventDefault();
             setDeferredPrompt(e);
@@ -2815,7 +2839,6 @@ function InstallBanner() {
             }
         };
 
-        // 4. iOS: 처음 접속 시 배너 표시
         if (isIosDevice && !localStorage.getItem('hideInstallBanner')) {
             setIsVisible(true);
         }
@@ -2825,6 +2848,16 @@ function InstallBanner() {
     }, []);
 
     const handleInstallClick = async () => {
+        if (isKakao) {
+            try {
+                await navigator.clipboard.writeText(window.location.href);
+                alert("주소가 복사되었습니다! 📋\n\n인터넷(Chrome) 또는 사파리(Safari) 앱을 켜고\n주소창에 '붙여넣기'해서 접속해주세요.");
+            } catch (err) {
+                prompt("이 주소를 복사해서 브라우저로 열어주세요:", window.location.href);
+            }
+            return;
+        }
+
         if (isIos) {
             alert("아이폰은 수동 설치가 필요합니다.\n\nSafari 하단의 [공유] 버튼(네모 화살표)을 누르고\n'홈 화면에 추가'를 선택해주세요!");
         } else {
@@ -2840,28 +2873,39 @@ function InstallBanner() {
 
     const handleClose = () => {
         setIsVisible(false);
-        localStorage.setItem('hideInstallBanner', 'true');
+        if (!isKakao) {
+            localStorage.setItem('hideInstallBanner', 'true');
+        }
     };
 
     if (!isVisible) return null;
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-slate-200 p-4 z-50 flex flex-col md:flex-row items-center justify-between shadow-[0_-4px_20px_rgba(0,0,0,0.05)] animate-slide-up">
-            <div className="mb-3 md:mb-0 text-center md:text-left">
-                <p className="text-slate-900 font-bold text-sm mb-0.5">
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-gray-200 p-5 z-50 flex flex-col md:flex-row items-center justify-between shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-slide-up pb-8 md:pb-5">
+            <div className="mb-4 md:mb-0 text-center md:text-left">
+                <p className="text-slate-900 font-bold text-base mb-1">
                     {isKakao ? "⚠️ 브라우저 변경 필요" : "⚡ 앱으로 더 편하게!"}
                 </p>
-                <p className="text-slate-500 text-xs">
+                <p className="text-slate-500 text-sm">
                     {isKakao 
-                        ? "주소를 복사하여 Chrome/Safari에서 열어주세요."
-                        : "홈 화면에 추가하여 전체 화면으로 즐기세요."}
+                        ? "설치를 위해 크롬이나 사파리로 접속해주세요."
+                        : "홈 화면에 추가하여 전체 화면으로 즐겨보세요."}
                 </p>
             </div>
             <div className="flex gap-3 w-full md:w-auto">
-                <button onClick={handleClose} className="flex-1 md:flex-none py-2.5 px-5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold">닫기</button>
-                <button onClick={handleInstallClick} className={`flex-1 md:flex-none py-2.5 px-5 rounded-xl text-white text-xs font-bold shadow-md shadow-green-500/30 ${isKakao ? 'bg-slate-800' : 'bg-green-500'}`}>
+                <button 
+                    onClick={handleClose}
+                    className="flex-1 md:flex-none py-3 px-6 rounded-2xl bg-slate-100 text-slate-600 text-sm font-bold active:scale-95 transition-transform"
+                >
+                    닫기
+                </button>
+                <button 
+                    onClick={handleInstallClick}
+                    className={`flex-1 md:flex-none py-3 px-6 rounded-2xl text-white text-sm font-bold shadow-lg active:scale-95 transition-transform ${isKakao ? 'bg-slate-800 shadow-slate-500/30' : 'bg-[#00B16A] shadow-green-500/30'}`}
+                >
                     {isKakao ? "주소 복사" : "앱 설치하기"}
                 </button>
             </div>
         </div>
     );
+} // <--- 여기가 빠져서 에러가 났었습니다!
