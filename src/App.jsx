@@ -457,9 +457,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
 
     const handleContextMenu = (e) => { e.preventDefault(); };
 
-    const genderStyle = {
-        boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}`
-    };
+   const genderColor = player.gender === '남' ? '#3B82F6' : '#EC4899';
 
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
     const isWaiting = !context.location;
@@ -475,25 +473,26 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         textShadow: `0 0 5px ${levelColor}`
     };
 
-    const cardStyle = {
-        ...genderStyle,
-        borderWidth: '1px',
-        borderStyle: 'solid',
-        borderColor: 'transparent',
+   const cardStyle = {
+        borderLeft: `4px solid ${genderColor}`, // 왼쪽 성별 테두리
+        backgroundColor: '#FFFFFF',             // 흰색 배경
+        borderRadius: '8px',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.1)', // 부드러운 그림자
+        color: '#1E1E1E',                       // 검은 글씨
         transition: 'all 0.2s ease-in-out',
-        backgroundColor: '#2d3748',
-        opacity: isPlaying ? 0.6 : 1,
+        opacity: isPlaying ? 0.5 : 1,
+        border: context.selected ? '2px solid #00B16A' : '1px solid #E5E7EB', // 선택시 초록색
     };
 
-    if (context.selected || isSelectedForWin) {
-        cardStyle.borderColor = '#34d399';
-        cardStyle.transform = 'scale(1.1)';
-        cardStyle.boxShadow = `${cardStyle.boxShadow}, 0 0 15px 5px rgba(52, 211, 153, 0.9)`;
+  if (context.selected || isSelectedForWin) {
+        // 선택 효과 (콕스타 초록)
+        cardStyle.transform = 'scale(1.02)';
+        cardStyle.boxShadow = '0 0 0 2px #00B16A';
     }
 
     if (isCurrentUser) {
-        cardStyle.borderColor = '#FBBF24';
-        cardStyle.boxShadow = `${cardStyle.boxShadow}, 0 0 12px 4px rgba(251, 191, 36, 0.9)`;
+        // 내 카드 강조 (노랑)
+        cardStyle.border = '2px solid #FFD700';
     }
 
     const isLongPressDisabled = context.location === 'court';
@@ -580,9 +579,10 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
     const totalWaiting = maleWaitingPlayers.length + femaleWaitingPlayers.length;
 
     return (
-        <section className="bg-gray-800/50 rounded-lg p-2">
-            <div className="flex justify-between items-center mb-2">
-                <h2 className="text-sm font-bold text-yellow-400 arcade-font flicker-text">
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex justify-between items-center mb-3">
+                {/* 제목: 진한 회색 */}
+                <h2 className="text-base font-bold text-[#1E1E1E]">
                     대기 명단 ({totalWaiting})
                 </h2>
                 {/* [신규 기능] 대기자 전체 내보내기 버튼 */}
@@ -639,7 +639,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     const playerCount = match.filter(p => p).length;
                     return (
                         // [UI 수정] 내부 요소 정렬 및 간격 유지
-                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
+                       <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-50 border border-gray-200 rounded-xl p-2 gap-2 shadow-sm">
                             <div
                                 className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
                                 onMouseDown={() => handlePressStart(matchIndex)}
@@ -647,7 +647,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                 onTouchStart={() => handlePressStart(matchIndex)}
                                 onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                             >
-                                <p className="font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
+                                <p className="font-bold text-lg text-[#00B16A]">{matchIndex + 1}</p>
                             </div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                 {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
@@ -791,8 +791,9 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
         }
     }, [isAdmin, handlePressStart, handlePressEnd]);
 
-    const isSource = courtMove.sourceIndex === courtIndex;
-    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
+   const isSource = courtMove.sourceIndex === courtIndex;
+    // 흰색 배경, 회색 테두리
+    const courtContainerClass = `flex items-center w-full bg-white rounded-xl p-2 gap-2 shadow-md border transition-all duration-300 ${isSource ? 'border-2 border-[#00B16A] ring-2 ring-[#00B16A]/20' : 'border-gray-200'} ${isAdmin ? 'cursor-pointer' : ''}`;
 
     return (
         <div ref={courtRef} className={courtContainerClass} onClick={handleClick}>
