@@ -1133,16 +1133,21 @@ export default function App() {
         }
     }, []);
 
-    const handleLogout = useCallback(() => {
+   const handleLogout = useCallback(() => {
         if (!currentUser) return;
         setModal({ type: 'confirm', data: {
             title: '나가기',
             body: '나가시면 현황판에서 제외됩니다. 정말 나가시겠습니까? (기록은 유지됩니다)',
             onConfirm: async () => {
                 try {
+                    // 1. 현재 이 선수가 '경기 진행(Court)' 중인지 확인합니다.
+                    const isPlaying = inProgressPlayerIds.has(currentUser.id);
+
                     const updateFunction = (currentState) => {
                         const newState = JSON.parse(JSON.stringify(currentState));
                         const playerId = currentUser.id;
+
+                        // (1) 대기 예정(Schedule)에서는 무조건 지웁니다.
                         Object.keys(newState.scheduledMatches).forEach(matchKey => {
                             const match = newState.scheduledMatches[matchKey];
                             if(match) {
@@ -1150,7 +1155,8 @@ export default function App() {
                                 if (playerIndex > -1) match[playerIndex] = null;
                             }
                         });
-                        // [자동매칭] 자동 매칭에서도 제거
+
+                        // (2) 자동 매칭(Auto)에서도 무조건 지웁니다.
                         Object.keys(newState.autoMatches).forEach(matchKey => {
                             const match = newState.autoMatches[matchKey];
                             if(match) {
@@ -1158,28 +1164,42 @@ export default function App() {
                                 if (playerIndex > -1) match[playerIndex] = null;
                             }
                         });
-                        newState.inProgressCourts.forEach((court, courtIndex) => {
-                            if (court?.players) {
-                                const playerIndex = court.players.indexOf(playerId);
-                                if (playerIndex > -1) court.players[playerIndex] = null;
-                                if (court.players.every(p => p === null)) newState.inProgressCourts[courtIndex] = null;
-                            }
-                        });
+
+                        // (3) [핵심 변경] 경기 진행(Court) 중이라면, 코트에서 지우지 않고 그대로 둡니다!
+                        // 경기 중이 아닐 때만 코트 데이터를 비웁니다.
+                        if (!isPlaying) {
+                            newState.inProgressCourts.forEach((court, courtIndex) => {
+                                if (court?.players) {
+                                    const playerIndex = court.players.indexOf(playerId);
+                                    if (playerIndex > -1) court.players[playerIndex] = null;
+                                    if (court.players.every(p => p === null)) newState.inProgressCourts[courtIndex] = null;
+                                }
+                            });
+                        }
                         return { newState };
                     };
                     await updateGameState(updateFunction);
 
-                    await updateDoc(doc(playersRef, currentUser.id), { status: 'inactive' });
+                    // 2. 상태 업데이트 분기 처리
+                    if (isPlaying) {
+                        // [핵심] 경기 중이라면 'inactive'로 만들지 않고, 'isResting(휴식)' 상태로 만듭니다.
+                        // 이렇게 하면 카드가 회색으로 변한 채로 코트에 남아있게 되어, 관리자가 경기를 종료할 수 있습니다.
+                        await updateDoc(doc(playersRef, currentUser.id), { isResting: true });
+                    } else {
+                        // 경기 중이 아니라면 아예 명단에서 뺍니다.
+                        await updateDoc(doc(playersRef, currentUser.id), { status: 'inactive' });
+                    }
 
                     localStorage.removeItem('badminton-currentUser-id');
                     setCurrentUser(null);
                     setModal({ type: null, data: null });
                 } catch (error) {
+                    console.error(error);
                     setModal({ type: 'alert', data: { title: '오류', body: '나가는 도중 문제가 발생했습니다.' }});
                 }
             }
         }});
-    }, [currentUser, updateGameState]);
+    }, [currentUser, updateGameState, inProgressPlayerIds]); // [중요] inProgressPlayerIds 추가됨
 
     const handleCardClick = useCallback(async (playerId) => {
         if (!isAdmin) return;
