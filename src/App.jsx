@@ -629,12 +629,12 @@ const TeamScoreboard = ({ scores }) => {
         <section className="bg-gray-900/50 rounded-lg p-3 my-2">
             <div className="flex justify-around items-center text-center">
                 <div className="flex-1">
-                    <h2 className="text-lg font-bold text-blue-400 arcade-font" style={scoreStyle.blue}>청팀 스코어</h2>
+                    <h2 className="text-lg font-bold text-blue-400 arcade-font" style={scoreStyle.blue}>가희벙팀 스코어</h2>
                     <p className="text-4xl font-bold text-blue-400 arcade-font mt-1" style={scoreStyle.blue}>{scores.blue}</p>
                 </div>
                 <div className="text-4xl font-bold text-gray-400 arcade-font">:</div>
                 <div className="flex-1">
-                    <h2 className="text-lg font-bold text-gray-200 arcade-font" style={scoreStyle.white}>백팀 스코어</h2>
+                    <h2 className="text-lg font-bold text-gray-200 arcade-font" style={scoreStyle.white}>콕스팀 스코어</h2>
                     <p className="text-4xl font-bold text-gray-200 arcade-font mt-1" style={scoreStyle.white}>{scores.white}</p>
                 </div>
             </div>
