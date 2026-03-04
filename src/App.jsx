@@ -1740,11 +1740,11 @@ function EntryPage({ onEnter }) {
                     <div className="flex justify-around items-center text-lg">
                         <label className="flex items-center cursor-pointer">
                             <input type="radio" name="gender" value="청" checked={formData.gender === '청'} onChange={handleChange} className="mr-2 h-4 w-4 text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" /> 
-                            청팀
+                            가희팀
                         </label>
                         <label className="flex items-center cursor-pointer">
                             <input type="radio" name="gender" value="백" checked={formData.gender === '백'} onChange={handleChange} className="mr-2 h-4 w-4 text-gray-200 bg-gray-700 border-gray-600 focus:ring-gray-200" /> 
-                            백팀
+                            콕스팀
                         </label>
                     </div>
                     <div className="text-center">
