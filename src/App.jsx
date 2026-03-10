@@ -1824,12 +1824,16 @@ export default function App() {
                 pureAutoMatchConfig.announcementType = announcementType || 'text';
                 pureAutoMatchConfig.announcementPhotoUrl = finalPhotoUrl;
 
+               // [수정] pureAutoMatchConfig 내부에도 타입을 명시하여 설정 모달을 다시 열었을 때 초기값이 유지되도록 함
+                pureAutoMatchConfig.announcementType = announcementType || 'text';
+                pureAutoMatchConfig.announcementPhotoUrl = finalPhotoUrl;
+
                 transaction.set(configRef, { 
                     announcement, 
                     pointSystemInfo, 
                     autoMatchConfig: pureAutoMatchConfig,
-                    announcementType: announcementType || 'text',
-                    announcementPhotoUrl: finalPhotoUrl
+                    announcementType: announcementType || 'text', // 루트 레벨 저장
+                    announcementPhotoUrl: finalPhotoUrl // 루트 레벨 저장
                 }, { merge: true });
             });
 
