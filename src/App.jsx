@@ -858,6 +858,7 @@ export default function App() {
     const [courtMove, setCourtMove] = useState({ sourceIndex: null });
     const [resetNotification, setResetNotification] = useState(null);
     const [selectedAutoMatchSlot, setSelectedAutoMatchSlot] = useState(null);
+    const [isSeasonModalDismissed, setIsSeasonModalDismissed] = useState(false); // 세션 내 공지 닫기 상태 추가
 
     // [모바일 UI 개선] 화면 너비와 활성 탭 상태를 관리합니다.
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -991,14 +992,15 @@ export default function App() {
         };
     }, []);
 
-    useEffect(() => {
-        if (isLoading || !seasonConfig || (modal && modal.type) || resetNotification) return;
+   useEffect(() => {
+        // isSeasonModalDismissed가 true라면(현재 접속 중 닫았다면) 다시 실행하지 않음
+        if (isLoading || !seasonConfig || (modal && modal.type) || resetNotification || isSeasonModalDismissed) return;
         const today = new Date().toDateString();
         const lastSeen = localStorage.getItem(`seen-${seasonConfig.seasonId}`);
         if (lastSeen !== today) {
             setModal({ type: 'season', data: seasonConfig });
         }
-    }, [isLoading, seasonConfig, modal, resetNotification]);
+    }, [isLoading, seasonConfig, modal, resetNotification, isSeasonModalDismissed]);
 
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
@@ -1885,7 +1887,10 @@ export default function App() {
                 />
             )}
 
-            {modal?.type === 'season' && <SeasonModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
+           {modal?.type === 'season' && <SeasonModal {...modal.data} onClose={() => {
+                setIsSeasonModalDismissed(true); // 현재 세션에서 공지를 닫았음을 기록
+                setModal({ type: null, data: null });
+            }} />}
             {modal?.type === 'resultInput' && <ResultInputModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'profile' && <ProfileModal player={modal.data.player} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'adminEditPlayer' && <AdminEditPlayerModal player={modal.data.player} mode={modal.data.mode} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} setModal={setModal} />}
