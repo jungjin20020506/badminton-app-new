@@ -2304,17 +2304,51 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                 .poster-wrapper .club-name { font-family: 'Black Han Sans', sans-serif; font-size: 48px; line-height: 1; color: var(--brand-yellow); letter-spacing: -1px; margin-bottom: 4px; }
                 .poster-wrapper .club-sub { font-size: 14px; font-weight: 300; letter-spacing: 4px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
                 .poster-wrapper .section { padding: 0 20px; margin-top: 20px; text-align: left; }
-                .poster-wrapper .section-label { font-size: 9px; letter-spacing: 2px; color: var(--brand-yellow); margin-bottom: 10px; font-weight: 700; opacity: 0.8; }
-                .poster-wrapper .time-banner { background: #1a1a1a; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,0.03); }
-                
-                /* [수정] 공지사항 폰트 크기 조정 및 줄바꿈 허용 */
+                @keyframes pulse-border {
+                  0% { border-color: rgba(255, 224, 0, 0.1); box-shadow: 0 0 0px rgba(255, 224, 0, 0); }
+                  50% { border-color: rgba(255, 224, 0, 0.5); box-shadow: 0 0 10px rgba(255, 224, 0, 0.1); }
+                  100% { border-color: rgba(255, 224, 0, 0.1); box-shadow: 0 0 0px rgba(255, 224, 0, 0); }
+                }
+                @keyframes status-blink {
+                  0%, 100% { opacity: 1; }
+                  50% { opacity: 0.3; }
+                }
+                .poster-wrapper .section-label { 
+                  font-size: 9px; 
+                  letter-spacing: 2px; 
+                  color: var(--brand-yellow); 
+                  margin-bottom: 10px; 
+                  font-weight: 700; 
+                  display: flex;
+                  align-items: center;
+                  gap: 6px;
+                }
+                .poster-wrapper .status-dot {
+                  width: 5px;
+                  height: 5px;
+                  background-color: #ff4d4d;
+                  border-radius: 50%;
+                  box-shadow: 0 0 5px #ff4d4d;
+                  animation: status-blink 1s infinite;
+                }
+                .poster-wrapper .time-banner { 
+                  background: #151515; 
+                  border-radius: 8px; 
+                  padding: 14px 18px; 
+                  display: flex; 
+                  align-items: center; 
+                  justify-content: space-between; 
+                  border: 1px solid rgba(255,224,0,0.2);
+                  animation: pulse-border 3s infinite ease-in-out;
+                }
                 .poster-wrapper .time-banner-value { 
                   font-family: 'Pretendard', sans-serif; 
                   font-size: 14px; 
-                  color: #eee; 
-                  line-height: 1.5;
+                  color: #ffffff; 
+                  line-height: 1.6;
                   word-break: keep-all;
                   white-space: pre-wrap;
+                  text-shadow: 0 0 1px rgba(255,255,255,0.2);
                 }
                 
                 .poster-wrapper .shuttle-list { display: flex; flex-direction: column; gap: 8px; }
@@ -2342,15 +2376,15 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                     <div className="club-name">콕스라이팅</div>
                     <div className="club-sub">COCKSLIGHTING</div>
                 </div>
-                
                 <div className="section animate-item delay-2">
-                    <div className="section-label">NOTIFICATION</div>
+                    <div className="section-label">
+                        <span className="status-dot"></span>
+                        NOTIFICATION
+                    </div>
                     <div className="time-banner">
-                        {/* [수정] 하드코딩 문구 대신 announcement 변수 사용 */}
-                        <span className="time-banner-value">{announcement || "금일 공지사항이 없습니다."}</span>
+                        <span className="time-banner-value">{announcement || "금일 등록된 공지사항이 없습니다."}</span>
                     </div>
                 </div>
-
                 <div className="section animate-item delay-3">
                     <div className="section-label">EQUIPMENT</div>
                     <div className="shuttle-list">
