@@ -2404,9 +2404,9 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                                 </div>
                                 
                                 <div className="section animate-item delay-2">
-                                    <div className="section-label">PLAY TIME</div>
+                                    <div className="section-label">NOTIFICATION</div>
                                     <div className="time-banner">
-                                        <span className="time-banner-value">매주 화·목 저녁 7시</span>
+                                        <span className="time-banner-value">금일 콕지원합니다! 콕 1개씩 제출(게스트 제외)</span>
                                     </div>
                                 </div>
 
