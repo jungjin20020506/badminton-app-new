@@ -1777,16 +1777,17 @@ export default function App() {
     }, [updateGameState]);
 
     // [수정] handleSettingsUpdate를 App 컴포넌트 내부에서 정의 (SettingsModal로 props 전달)
-   const handleSettingsUpdate = useCallback(async (settings) => {
+  const handleSettingsUpdate = useCallback(async (settings) => {
         try {
-            const { scheduled, courts, announcement, pointSystemInfo, autoMatchConfig, announcementType, photoFile } = settings;
+            const { scheduled, courts, announcement, pointSystemInfo, autoMatchConfig } = settings;
+            // autoMatchConfig 내부에 포함된 announcementType과 photoFile 추출
+            const { announcementType, photoFile } = autoMatchConfig;
             let finalPhotoUrl = seasonConfig.announcementPhotoUrl || "";
 
             // 사진 모드이고 새 파일이 업로드된 경우
-            if (announcementType === 'photo' && photoFile) {
+            if (announcementType === 'photo' && photoFile instanceof File) {
                 setModal({ type: 'alert', data: { title: '업로드 중', body: '사진을 업로드하고 있습니다...' } });
                 
-                // 기존 사진이 있다면 삭제 (옵션)
                 if (finalPhotoUrl) {
                     try {
                         const oldStorageRef = ref(storage, 'announcements/season_image');
@@ -1814,14 +1815,14 @@ export default function App() {
                 }
                 transaction.set(gameStateRef, newGameState);
 
-               // Firestore에 저장하기 전, File 객체가 포함된 필드 제거
-                const { photoFile: _, ...pureAutoMatchConfig } = autoMatchConfig;
+                // Firestore에 저장하기 전, File 객체 필드를 확실히 제거
+                const pureAutoMatchConfig = { ...autoMatchConfig };
+                delete pureAutoMatchConfig.photoFile;
 
-                // 공지사항 타입 및 사진 URL 추가 저장
                 transaction.set(configRef, { 
                     announcement, 
                     pointSystemInfo, 
-                    autoMatchConfig: pureAutoMatchConfig, // 파일 객체가 제거된 데이터 사용
+                    autoMatchConfig: pureAutoMatchConfig,
                     announcementType: announcementType || 'text',
                     announcementPhotoUrl: finalPhotoUrl
                 }, { merge: true });
