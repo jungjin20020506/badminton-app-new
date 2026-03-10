@@ -4,10 +4,10 @@ import {
     getFirestore, doc, getDoc, setDoc, onSnapshot,
     collection, deleteDoc, updateDoc, writeBatch, runTransaction,
     query, getDocs, where,
-    enableIndexedDbPersistence  // <-- 이 부분을 추가해주세요
+    enableIndexedDbPersistence
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from "firebase/functions";
-
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"; // Storage 임포트 추가
 // ===================================================================================
 // Firebase & Service Logic (하나의 파일로 통합)
 // ===================================================================================
@@ -24,6 +24,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const storage = getStorage(app); // Storage 초기화
 
 // ============ [4번 전략 적용] 오프라인 지속성 활성화 ============
 // db 객체를 만든 직후, 다른 Firestore 작업을 하기 전에 호출합니다.
@@ -1776,17 +1777,33 @@ export default function App() {
     }, [updateGameState]);
 
     // [수정] handleSettingsUpdate를 App 컴포넌트 내부에서 정의 (SettingsModal로 props 전달)
-    const handleSettingsUpdate = useCallback(async (settings) => {
+   const handleSettingsUpdate = useCallback(async (settings) => {
         try {
-            const { scheduled, courts, announcement, pointSystemInfo, autoMatchConfig } = settings;
+            const { scheduled, courts, announcement, pointSystemInfo, autoMatchConfig, announcementType, photoFile } = settings;
+            let finalPhotoUrl = seasonConfig.announcementPhotoUrl || "";
+
+            // 사진 모드이고 새 파일이 업로드된 경우
+            if (announcementType === 'photo' && photoFile) {
+                setModal({ type: 'alert', data: { title: '업로드 중', body: '사진을 업로드하고 있습니다...' } });
+                
+                // 기존 사진이 있다면 삭제 (옵션)
+                if (finalPhotoUrl) {
+                    try {
+                        const oldStorageRef = ref(storage, 'announcements/season_image');
+                        await deleteObject(oldStorageRef);
+                    } catch (e) { console.log("기존 파일 삭제 스킵"); }
+                }
+
+                const storageRef = ref(storage, 'announcements/season_image');
+                await uploadBytes(storageRef, photoFile);
+                finalPhotoUrl = await getDownloadURL(storageRef);
+            }
 
             await runTransaction(db, async (transaction) => {
                 const currentGameStateDoc = await transaction.get(gameStateRef);
-                if (!currentGameStateDoc.exists()) {
-                    throw new Error("GameState document does not exist!");
-                }
+                if (!currentGameStateDoc.exists()) throw new Error("GameState document does not exist!");
+                
                 const currentGameState = currentGameStateDoc.data();
-
                 const newGameState = { ...currentGameState, numScheduledMatches: scheduled, numInProgressCourts: courts };
 
                 let currentCourts = newGameState.inProgressCourts || [];
@@ -1797,8 +1814,14 @@ export default function App() {
                 }
                 transaction.set(gameStateRef, newGameState);
 
-                // autoMatchConfig도 함께 저장
-                transaction.set(configRef, { announcement, pointSystemInfo, autoMatchConfig }, { merge: true });
+                // 공지사항 타입 및 사진 URL 추가 저장
+                transaction.set(configRef, { 
+                    announcement, 
+                    pointSystemInfo, 
+                    autoMatchConfig,
+                    announcementType: announcementType || 'text',
+                    announcementPhotoUrl: finalPhotoUrl
+                }, { merge: true });
             });
 
             setIsSettingsOpen(false);
@@ -1807,7 +1830,7 @@ export default function App() {
             console.error("Settings save failed:", error);
             setModal({ type: 'alert', data: { title: '저장 실패', body: '설정 저장 중 오류가 발생했습니다.' } });
         }
-    }, []); // 의존성 배열 비어있음 (db, configRef, gameStateRef는 모듈 스코프 상수)
+    }, [seasonConfig, storage]);
 
 
     const handleToggleRest = useCallback(async () => {
@@ -2211,20 +2234,28 @@ function ProfileModal({ player, onClose }) {
     );
 }
 
-function SeasonModal({ announcement, seasonId, onClose }) {
-    const handleClose = () => {
-        localStorage.setItem(`seen-${seasonId}`, new Date().toDateString());
+function SeasonModal({ announcement, seasonId, onClose, announcementType, announcementPhotoUrl }) {
+    const handleClose = (isHideToday = false) => {
+        if (isHideToday) {
+            localStorage.setItem(`seen-${seasonId}`, new Date().toDateString());
+        }
         onClose();
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font flicker-text">📢 시즌 공지</h3>
-                <p className="text-gray-300 mb-6 whitespace-pre-wrap">{announcement}</p>
-                <div className="flex flex-col gap-2">
-                    <button onClick={handleClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition-colors">확인</button>
-                    <button onClick={handleClose} className="w-full text-gray-500 text-xs mt-2 hover:text-white">오늘 하루 보지 않기</button>
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg overflow-hidden w-full max-w-sm text-center shadow-2xl flex flex-col">
+                <div className="p-4 flex-grow overflow-y-auto max-h-[70vh]">
+                    <h3 className="text-lg font-bold text-yellow-400 mb-4 arcade-font">📢 시즌 공지</h3>
+                    {announcementType === 'photo' && announcementPhotoUrl ? (
+                        <img src={announcementPhotoUrl} alt="공지사항" className="w-full h-auto rounded-md shadow-lg mb-2" />
+                    ) : (
+                        <p className="text-gray-200 mb-6 whitespace-pre-wrap text-left leading-relaxed">{announcement}</p>
+                    )}
+                </div>
+                <div className="bg-gray-900/50 p-3 flex flex-col gap-2 border-t border-gray-700">
+                    <button onClick={() => handleClose(false)} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition-colors">닫기</button>
+                    <button onClick={() => handleClose(true)} className="text-gray-400 text-xs py-1 hover:text-white underline underline-offset-4">오늘 하루 보지 않기</button>
                 </div>
             </div>
         </div>
@@ -2647,9 +2678,31 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                             </div>
                         </div>
                     </div>
-                    <div className="bg-gray-700 p-3 rounded-lg">
-                        <label className="font-semibold mb-2 block">시즌 공지사항</label>
-                        <textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
+                   <div className="bg-gray-700 p-3 rounded-lg space-y-3">
+                        <label className="font-semibold block text-center border-b border-gray-600 pb-2">시즌 공지 설정</label>
+                        <div className="flex justify-center gap-4 mb-2">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="announcementType" value="text" checked={(autoMatchConfig.announcementType || 'text') === 'text'} 
+                                    onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
+                                <span>텍스트</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="announcementType" value="photo" checked={autoMatchConfig.announcementType === 'photo'} 
+                                    onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
+                                <span>사진</span>
+                            </label>
+                        </div>
+                        
+                        {(autoMatchConfig.announcementType || 'text') === 'text' ? (
+                            <textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" placeholder="공지 내용을 입력하세요"
+                                className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
+                        ) : (
+                            <div className="space-y-2">
+                                <input type="file" accept="image/*" onChange={(e) => setAutoMatchConfig(prev => ({...prev, photoFile: e.target.files[0]}))}
+                                    className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-yellow-500 file:text-black hover:file:bg-yellow-600" />
+                                {seasonConfig.announcementPhotoUrl && <p className="text-[10px] text-gray-500 text-center">기존 사진이 등록되어 있습니다. 변경 시 덮어씌워집니다.</p>}
+                            </div>
+                        )}
                     </div>
                      <div className="bg-gray-700 p-3 rounded-lg">
                         <label className="font-semibold mb-2 block">점수 획득 설명</label>
