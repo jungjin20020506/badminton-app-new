@@ -992,15 +992,22 @@ export default function App() {
         };
     }, []);
 
-   useEffect(() => {
-        // isSeasonModalDismissed가 true라면(현재 접속 중 닫았다면) 다시 실행하지 않음
+  useEffect(() => {
+        // [개선] 데이터 로딩 완료 시 이미지 미리 불러오기 (Pre-loading)
+        if (!isLoading && seasonConfig?.announcementType === 'photo' && seasonConfig?.announcementPhotoUrl) {
+            const img = new Image();
+            img.src = seasonConfig.announcementPhotoUrl;
+        }
+
+        // 이전 답변에서 드린 닫기 오류 해결 로직 포함 (isSeasonModalDismissed)
         if (isLoading || !seasonConfig || (modal && modal.type) || resetNotification || isSeasonModalDismissed) return;
+        
         const today = new Date().toDateString();
         const lastSeen = localStorage.getItem(`seen-${seasonConfig.seasonId}`);
         if (lastSeen !== today) {
             setModal({ type: 'season', data: seasonConfig });
         }
-    }, [isLoading, seasonConfig, modal, resetNotification, isSeasonModalDismissed]);
+    }, [isLoading, seasonConfig, resetNotification, isSeasonModalDismissed]);
 
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
@@ -2264,7 +2271,13 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                 <div className="p-4 flex-grow overflow-y-auto max-h-[70vh]">
                     <h3 className="text-lg font-bold text-yellow-400 mb-4 arcade-font">📢 시즌 공지</h3>
                     {announcementType === 'photo' && announcementPhotoUrl ? (
-                        <img src={announcementPhotoUrl} alt="공지사항" className="w-full h-auto rounded-md shadow-lg mb-2" />
+                        <img 
+                            src={announcementPhotoUrl} 
+                            alt="공지사항" 
+                            className="w-full h-auto rounded-md shadow-lg mb-2"
+                            fetchpriority="high" // [개선] 가장 높은 우선순위로 다운로드
+                            loading="eager"      // [개선] 즉시 로딩
+                        />
                     ) : (
                         <p className="text-gray-200 mb-6 whitespace-pre-wrap text-left leading-relaxed">{announcement}</p>
                     )}
