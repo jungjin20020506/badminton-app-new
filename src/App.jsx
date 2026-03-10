@@ -1814,11 +1814,14 @@ export default function App() {
                 }
                 transaction.set(gameStateRef, newGameState);
 
+               // Firestore에 저장하기 전, File 객체가 포함된 필드 제거
+                const { photoFile: _, ...pureAutoMatchConfig } = autoMatchConfig;
+
                 // 공지사항 타입 및 사진 URL 추가 저장
                 transaction.set(configRef, { 
                     announcement, 
                     pointSystemInfo, 
-                    autoMatchConfig,
+                    autoMatchConfig: pureAutoMatchConfig, // 파일 객체가 제거된 데이터 사용
                     announcementType: announcementType || 'text',
                     announcementPhotoUrl: finalPhotoUrl
                 }, { merge: true });
