@@ -1817,9 +1817,12 @@ export default function App() {
                 }
                 transaction.set(gameStateRef, newGameState);
 
-                // Firestore에 저장하기 전, File 객체 필드를 확실히 제거
+              // Firestore에 저장하기 전, File 객체 필드를 확실히 제거
                 const pureAutoMatchConfig = { ...autoMatchConfig };
                 delete pureAutoMatchConfig.photoFile;
+                // [수정] 객체 내부에도 정보를 기록하여 초기 로드 시 누락 방지
+                pureAutoMatchConfig.announcementType = announcementType || 'text';
+                pureAutoMatchConfig.announcementPhotoUrl = finalPhotoUrl;
 
                 transaction.set(configRef, { 
                     announcement, 
@@ -2450,14 +2453,12 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
     const [pointSystemInfo, setPointSystemInfo] = useState(seasonConfig.pointSystemInfo);
     // 자동매칭 설정 상태 (수정됨)
-   const [autoMatchConfig, setAutoMatchConfig] = useState(
-        seasonConfig.autoMatchConfig || {
-            isEnabled: false, 
-            minMaleScore: 75, 
-            minFemaleScore: 100,
-            isManualConfig: false // 기본값
-        }
-    );
+  const [autoMatchConfig, setAutoMatchConfig] = useState({
+        ...(seasonConfig.autoMatchConfig || {}),
+        // [수정] 루트 레벨에 저장된 공지 타입과 사진 URL을 초기값으로 명시
+        announcementType: seasonConfig.announcementType || 'text',
+        announcementPhotoUrl: seasonConfig.announcementPhotoUrl || ''
+    });
     const [isTesting, setIsTesting] = useState(false);
 
     if (!isAdmin) return null;
