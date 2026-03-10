@@ -2268,9 +2268,182 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
     return (
         <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg overflow-hidden w-full max-w-sm text-center shadow-2xl flex flex-col">
-                <div className="p-4 flex-grow overflow-y-auto max-h-[70vh]">
+                <div className="p-4 flex-grow overflow-y-auto max-h-[80vh]">
                     <h3 className="text-lg font-bold text-yellow-400 mb-4 arcade-font">📢 시즌 공지</h3>
-                    {announcementType === 'photo' && announcementPhotoUrl ? (
+                    
+                    {announcementType === 'custom' ? (
+                        <div className="poster-wrapper">
+                            <style>{`
+                              .poster-wrapper {
+                                --yellow: #FFE000;
+                                --yellow-bright: #FFF176;
+                                --yellow-deep: #F5C400;
+                                --black: #0A0A0A;
+                                --black-card: #111111;
+                                --black-soft: #1A1A1A;
+                                --gray: #2A2A2A;
+                                --gray-light: #444444;
+                                --white: #FFFFFF;
+                                --white-dim: rgba(255,255,255,0.08);
+                                display: flex;
+                                justify-content: center;
+                                align-items: flex-start;
+                                background: #050505;
+                                padding: 16px 8px;
+                                font-family: 'Noto Sans KR', sans-serif;
+                                border-radius: 8px;
+                              }
+                              .poster-wrapper .poster {
+                                width: 100%;
+                                max-width: 340px;
+                                aspect-ratio: 4 / 5;
+                                background: var(--black);
+                                position: relative;
+                                overflow: hidden;
+                                border-radius: 4px;
+                                box-shadow: 0 0 40px rgba(255, 224, 0, 0.15), 0 15px 40px rgba(0,0,0,0.8);
+                              }
+                              .poster-wrapper .poster::before {
+                                content: ''; position: absolute; inset: 0;
+                                background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255,224,0,0.12) 0%, transparent 60%), url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+                                z-index: 0; pointer-events: none;
+                              }
+                              .poster-wrapper .deco-lines { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; pointer-events: none; }
+                              .poster-wrapper .deco-lines svg { width: 100%; height: 100%; }
+                              .poster-wrapper .top-bar { position: relative; z-index: 2; background: var(--yellow); padding: 10px 22px; display: flex; align-items: center; justify-content: space-between; clip-path: polygon(0 0, 100% 0, 100% 75%, 96% 100%, 0 100%); }
+                              .poster-wrapper .top-bar-label { font-family: 'Bebas Neue', sans-serif; font-size: 13px; letter-spacing: 3px; color: var(--black); font-weight: 400; }
+                              .poster-wrapper .top-bar-sport { font-family: 'Oswald', sans-serif; font-size: 11px; letter-spacing: 4px; color: rgba(0,0,0,0.55); text-transform: uppercase; font-weight: 600; }
+                              .poster-wrapper .hero { position: relative; z-index: 2; padding: 18px 22px 0; text-align: left; }
+                              .poster-wrapper .club-name-wrap { position: relative; display: inline-block; }
+                              .poster-wrapper .club-name-bg { font-family: 'Black Han Sans', sans-serif; font-size: 52px; line-height: 0.95; color: transparent; -webkit-text-stroke: 1px rgba(255,224,0,0.15); position: absolute; top: -4px; left: -2px; white-space: nowrap; letter-spacing: -2px; user-select: none; }
+                              .poster-wrapper .club-name { font-family: 'Black Han Sans', sans-serif; font-size: 52px; line-height: 0.95; color: var(--yellow); letter-spacing: -2px; position: relative; white-space: nowrap; text-shadow: 0 0 40px rgba(255,224,0,0.4), 0 4px 20px rgba(0,0,0,0.8); }
+                              .poster-wrapper .club-sub { font-family: 'Bebas Neue', sans-serif; font-size: 13px; letter-spacing: 3px; color: rgba(255,255,255,0.4); margin-top: 4px; text-transform: uppercase; }
+                              .poster-wrapper .icon-shuttle { position: absolute; right: 22px; top: 14px; z-index: 3; opacity: 0.9; }
+                              .poster-wrapper .icon-shuttle svg { width: 48px; height: 48px; filter: drop-shadow(0 0 12px rgba(255,224,0,0.5)); }
+                              .poster-wrapper .divider { height: 1px; background: linear-gradient(to right, var(--yellow), transparent); margin: 14px 22px; position: relative; z-index: 2; opacity: 0.6; }
+                              .poster-wrapper .divider-dot { width: 6px; height: 6px; background: var(--yellow); border-radius: 50%; position: absolute; top: -2.5px; left: 0; box-shadow: 0 0 8px var(--yellow); }
+                              .poster-wrapper .section { position: relative; z-index: 2; padding: 0 22px; margin-bottom: 12px; }
+                              .poster-wrapper .section-label { font-family: 'Bebas Neue', sans-serif; font-size: 11px; letter-spacing: 4px; color: var(--yellow); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+                              .poster-wrapper .section-label::after { content: ''; flex: 1; height: 1px; background: rgba(255,224,0,0.2); }
+                              .poster-wrapper .schedule-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+                              .poster-wrapper .schedule-card { background: var(--black-card); border: 1px solid rgba(255,224,0,0.15); border-radius: 6px; padding: 10px 12px; position: relative; overflow: hidden; transition: border-color 0.2s; text-align: left;}
+                              .poster-wrapper .schedule-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--yellow); }
+                              .poster-wrapper .schedule-card.tue::before { background: var(--yellow); }
+                              .poster-wrapper .schedule-card.thu::before { background: rgba(255,224,0,0.5); }
+                              .poster-wrapper .day-badge { font-family: 'Black Han Sans', sans-serif; font-size: 24px; color: var(--yellow); line-height: 1; text-shadow: 0 0 20px rgba(255,224,0,0.4); }
+                              .poster-wrapper .schedule-card.thu .day-badge { color: rgba(255,224,0,0.7); }
+                              .poster-wrapper .day-en { font-family: 'Bebas Neue', sans-serif; font-size: 10px; letter-spacing: 2px; color: rgba(255,255,255,0.3); margin-bottom: 4px; }
+                              .poster-wrapper .place-name { font-family: 'Noto Sans KR', sans-serif; font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.85); line-height: 1.3; }
+                              .poster-wrapper .time-tag { font-family: 'Oswald', sans-serif; font-size: 10px; letter-spacing: 1px; color: var(--yellow); margin-top: 4px; opacity: 0.8; }
+                              .poster-wrapper .time-banner { position: relative; z-index: 2; margin: 0 22px 12px; background: var(--yellow); border-radius: 6px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; clip-path: polygon(0 0, 100% 0, 100% 100%, 2% 100%); }
+                              .poster-wrapper .time-banner-label { font-family: 'Bebas Neue', sans-serif; font-size: 11px; letter-spacing: 3px; color: rgba(0,0,0,0.5); }
+                              .poster-wrapper .time-banner-value { font-family: 'Black Han Sans', sans-serif; font-size: 20px; color: var(--black); letter-spacing: -0.5px; }
+                              .poster-wrapper .shuttle-list { display: flex; flex-direction: column; gap: 6px; }
+                              .poster-wrapper .shuttle-item { display: flex; align-items: center; gap: 10px; background: var(--black-soft); border-radius: 5px; padding: 9px 14px; border-left: 3px solid var(--yellow); }
+                              .poster-wrapper .shuttle-item.personal { border-left-color: rgba(255,224,0,0.4); background: rgba(255,224,0,0.04); }
+                              .poster-wrapper .shuttle-dot { width: 6px; height: 6px; background: var(--yellow); border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 6px var(--yellow); }
+                              .poster-wrapper .shuttle-item.personal .shuttle-dot { background: rgba(255,224,0,0.5); box-shadow: none; }
+                              .poster-wrapper .shuttle-text { font-family: 'Noto Sans KR', sans-serif; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.85); letter-spacing: -0.3px; }
+                              .poster-wrapper .shuttle-item.personal .shuttle-text { color: rgba(255,255,255,0.5); font-size: 10px; }
+                              .poster-wrapper .ban-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+                              .poster-wrapper .ban-item { background: var(--black-soft); border-radius: 5px; padding: 7px 6px; text-align: center; border: 1px solid rgba(255,255,255,0.06); position: relative; overflow: hidden; }
+                              .poster-wrapper .ban-item::before { content: '✕'; position: absolute; top: 3px; right: 5px; font-size: 8px; color: rgba(255,60,60,0.4); font-weight: 900; }
+                              .poster-wrapper .ban-text { font-family: 'Noto Sans KR', sans-serif; font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.55); letter-spacing: -0.3px; }
+                              .poster-wrapper .ban-item.red-ban { border-color: rgba(255,60,60,0.2); background: rgba(255,30,30,0.06); }
+                              .poster-wrapper .ban-item.red-ban .ban-text { color: rgba(255,120,120,0.8); }
+                              .poster-wrapper .footer { position: relative; z-index: 2; margin-top: auto; padding: 10px 22px 16px; display: flex; align-items: center; justify-content: space-between; }
+                              .poster-wrapper .footer-tag { font-family: 'Bebas Neue', sans-serif; font-size: 10px; letter-spacing: 3px; color: rgba(255,255,255,0.2); }
+                              .poster-wrapper .footer-name { font-family: 'Black Han Sans', sans-serif; font-size: 16px; color: rgba(255,224,0,0.4); letter-spacing: -0.5px; }
+                              .poster-wrapper .bg-number { position: absolute; right: -10px; bottom: 60px; font-family: 'Bebas Neue', sans-serif; font-size: 160px; color: rgba(255,224,0,0.03); line-height: 1; z-index: 1; pointer-events: none; user-select: none; letter-spacing: -5px; }
+                            `}</style>
+                            <div className="poster">
+                              <div className="deco-lines">
+                                <svg viewBox="0 0 400 500" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                  <line x1="0" y1="500" x2="400" y2="80" stroke="rgba(255,224,0,0.04)" strokeWidth="60"/>
+                                  <line x1="-40" y1="500" x2="360" y2="80" stroke="rgba(255,224,0,0.02)" strokeWidth="1"/>
+                                  <circle cx="360" cy="420" r="120" stroke="rgba(255,224,0,0.04)" strokeWidth="1" fill="none"/>
+                                  <circle cx="360" cy="420" r="80" stroke="rgba(255,224,0,0.03)" strokeWidth="1" fill="none"/>
+                                </svg>
+                              </div>
+                              <div className="bg-number">24</div>
+                              <div className="top-bar">
+                                <span className="top-bar-label">BADMINTON CLUB</span>
+                                <span className="top-bar-sport">SINCE 2023</span>
+                              </div>
+                              <div className="hero">
+                                <div className="club-name-wrap">
+                                  <div className="club-name-bg">콕스라이팅</div>
+                                  <div className="club-name">콕스라이팅</div>
+                                </div>
+                                <div className="club-sub">COCKSLIGHTING · 배드민턴 정기모임</div>
+                                <div className="icon-shuttle">
+                                  <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <ellipse cx="28" cy="40" rx="7" ry="9" fill="rgba(255,224,0,0.9)" />
+                                    <ellipse cx="28" cy="40" rx="4" ry="6" fill="rgba(10,10,10,0.8)" />
+                                    <path d="M28 32 Q20 22 14 12" stroke="rgba(255,224,0,0.9)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                                    <path d="M28 32 Q23 20 20 10" stroke="rgba(255,224,0,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                                    <path d="M28 32 Q27 20 26 8" stroke="rgba(255,224,0,0.9)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                                    <path d="M28 32 Q31 20 33 8" stroke="rgba(255,224,0,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                                    <path d="M28 32 Q34 21 38 11" stroke="rgba(255,224,0,0.7)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                                    <path d="M28 32 Q37 23 42 14" stroke="rgba(255,224,0,0.6)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+                                    <path d="M14 12 Q28 6 42 14" stroke="rgba(255,224,0,0.5)" strokeWidth="1" fill="none"/>
+                                    <path d="M20 10 Q28 5 33 8" stroke="rgba(255,224,0,0.4)" strokeWidth="1" fill="none"/>
+                                  </svg>
+                                </div>
+                              </div>
+                              <div className="divider"><div className="divider-dot"></div></div>
+                              <div className="section">
+                                <div className="section-label">REGULAR SCHEDULE</div>
+                                <div className="schedule-grid">
+                                  <div className="schedule-card tue">
+                                    <div className="day-en">TUESDAY</div>
+                                    <div className="day-badge">화</div>
+                                    <div className="place-name">익스민턴</div>
+                                    <div className="time-tag">19:00 – 22:00</div>
+                                  </div>
+                                  <div className="schedule-card thu">
+                                    <div className="day-en">THURSDAY</div>
+                                    <div className="day-badge">목</div>
+                                    <div className="place-name">구봉산<br/>다목적체육관</div>
+                                    <div className="time-tag">19:00 – 22:00</div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="time-banner">
+                                <span className="time-banner-label">PLAY TIME</span>
+                                <span className="time-banner-value">매주 화·목 저녁 7시</span>
+                              </div>
+                              <div className="section">
+                                <div className="section-label">SHUTTLECOCK</div>
+                                <div className="shuttle-list">
+                                  <div className="shuttle-item">
+                                    <div className="shuttle-dot"></div>
+                                    <div className="shuttle-text">KBB79 · BOBON365 · 삼화블랙 이상</div>
+                                  </div>
+                                  <div className="shuttle-item personal">
+                                    <div className="shuttle-dot"></div>
+                                    <div className="shuttle-text">개인콕 사용 가능</div>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="section">
+                                <div className="section-label">MANNER RULES</div>
+                                <div className="ban-grid">
+                                  <div className="ban-item red-ban"><div className="ban-text">비매너</div></div>
+                                  <div className="ban-item red-ban"><div className="ban-text">영업행위</div></div>
+                                  <div className="ban-item red-ban"><div className="ban-text">남미새/여미새</div></div>
+                                  <div className="ban-item"><div className="ban-text">철새</div></div>
+                                  <div className="ban-item"><div className="ban-text">텃세</div></div>
+                                  <div className="ban-item"><div className="ban-text">지나친 승부욕</div></div>
+                                </div>
+                              </div>
+                              <div className="footer">
+                                <span className="footer-tag">BADMINTON · FUN · RESPECT</span>
+                                <span className="footer-name">콕스라이팅</span>
+                              </div>
+                            </div>
+                        </div>
+                    ) : announcementType === 'photo' && announcementPhotoUrl ? (
                         <img 
                             src={announcementPhotoUrl} 
                             alt="공지사항" 
@@ -2707,7 +2880,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
                    <div className="bg-gray-700 p-3 rounded-lg space-y-3">
                         <label className="font-semibold block text-center border-b border-gray-600 pb-2">시즌 공지 설정</label>
-                        <div className="flex justify-center gap-4 mb-2">
+                      <div className="flex justify-center gap-4 mb-2">
                             <label className="flex items-center gap-2 cursor-pointer">
                                 <input type="radio" name="announcementType" value="text" checked={(autoMatchConfig.announcementType || 'text') === 'text'} 
                                     onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
@@ -2718,16 +2891,25 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                                     onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
                                 <span>사진</span>
                             </label>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="announcementType" value="custom" checked={autoMatchConfig.announcementType === 'custom'} 
+                                    onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
+                                <span>사용자지정</span>
+                            </label>
                         </div>
                         
                         {(autoMatchConfig.announcementType || 'text') === 'text' ? (
                             <textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" placeholder="공지 내용을 입력하세요"
                                 className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
-                        ) : (
+                        ) : autoMatchConfig.announcementType === 'photo' ? (
                             <div className="space-y-2">
                                 <input type="file" accept="image/*" onChange={(e) => setAutoMatchConfig(prev => ({...prev, photoFile: e.target.files[0]}))}
                                     className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-yellow-500 file:text-black hover:file:bg-yellow-600" />
                                 {seasonConfig.announcementPhotoUrl && <p className="text-[10px] text-gray-500 text-center">기존 사진이 등록되어 있습니다. 변경 시 덮어씌워집니다.</p>}
+                            </div>
+                        ) : (
+                            <div className="text-center text-sm text-gray-400 py-2">
+                                <p>내장된 포스터 템플릿이 공지로 표시됩니다.</p>
                             </div>
                         )}
                     </div>
