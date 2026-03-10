@@ -2268,185 +2268,120 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
     return (
         <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
             <div className="bg-[#111] rounded-2xl overflow-hidden w-full max-w-sm text-center shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col border border-white/5">
-                <div className="p-3 flex-grow overflow-y-auto max-h-[85vh]">
-                    {/* 상단 공지 헤더 최적화 */}
-                    <div className="mb-3">
-                        <h3 className="text-xs font-medium text-white/40 tracking-[0.2em] uppercase">Season Announcement</h3>
-                    </div>
-                    
-                    {announcementType === 'custom' ? (
-                        <div className="poster-wrapper">
-                            <style>{`
-                                .poster-wrapper {
-                                  --brand-yellow: #FFE000;
-                                  --bg-solid: #0A0A0A;
-                                  display: flex;
-                                  justify-content: center;
-                                  background: transparent;
-                                  padding: 0;
-                                  font-family: 'Inter', 'Pretendard', sans-serif;
-                                }
-                                .poster-wrapper .poster {
-                                  width: 100%;
-                                  background: var(--bg-solid);
-                                  position: relative;
-                                  overflow: hidden;
-                                  border-radius: 12px;
-                                  display: flex;
-                                  flex-direction: column;
-                                  padding-bottom: 20px;
-                                  box-shadow: inset 0 0 100px rgba(255,224,0,0.05);
-                                }
-                                .poster-wrapper .top-line {
-                                  height: 4px;
-                                  background: var(--brand-yellow);
-                                  width: 100%;
-                                }
-                                .poster-wrapper .top-bar {
-                                  padding: 12px 20px;
-                                  display: flex;
-                                  justify-content: space-between;
-                                  align-items: center;
-                                  border-bottom: 1px solid rgba(255,255,255,0.05);
-                                }
-                                .poster-wrapper .top-bar-label { font-size: 9px; letter-spacing: 2px; color: #555; font-weight: 600; }
-                                .poster-wrapper .hero { padding: 24px 20px 10px; text-align: left; }
-                                .poster-wrapper .club-name { 
-                                  font-family: 'Black Han Sans', sans-serif; 
-                                  font-size: 48px; 
-                                  line-height: 1; 
-                                  color: var(--brand-yellow); 
-                                  letter-spacing: -1px;
-                                  margin-bottom: 4px;
-                                }
-                                .poster-wrapper .club-sub { 
-                                  font-size: 14px; 
-                                  font-weight: 300;
-                                  letter-spacing: 4px; 
-                                  color: rgba(255,255,255,0.4); 
-                                  text-transform: uppercase;
-                                }
-                                .poster-wrapper .section { padding: 0 20px; margin-top: 20px; text-align: left; }
-                                .poster-wrapper .section-label { 
-                                  font-size: 9px; 
-                                  letter-spacing: 2px; 
-                                  color: var(--brand-yellow); 
-                                  margin-bottom: 10px; 
-                                  font-weight: 700;
-                                  opacity: 0.8;
-                                }
-                                .poster-wrapper .time-banner { 
-                                  background: #1a1a1a; 
-                                  border-radius: 8px; 
-                                  padding: 12px 16px; 
-                                  display: flex; 
-                                  align-items: center; 
-                                  justify-content: space-between;
-                                  border: 1px solid rgba(255,255,255,0.03);
-                                }
-                                .poster-wrapper .time-banner-value { 
-                                  font-family: 'Black Han Sans', sans-serif; 
-                                  font-size: 18px; 
-                                  color: #eee; 
-                                }
-                                .poster-wrapper .shuttle-list { display: flex; flex-direction: column; gap: 8px; }
-                                .poster-wrapper .shuttle-item { 
-                                  display: flex; 
-                                  align-items: center; 
-                                  gap: 12px; 
-                                  padding: 10px 0; 
-                                  border-bottom: 1px solid rgba(255,255,255,0.05);
-                                }
-                                .poster-wrapper .shuttle-text { font-size: 12px; font-weight: 400; color: #aaa; }
-                                .poster-wrapper .ban-grid { 
-                                  display: grid; 
-                                  grid-template-columns: repeat(3, 1fr); 
-                                  gap: 6px; 
-                                  margin-top: 5px;
-                                }
-                                .poster-wrapper .ban-item { 
-                                  background: rgba(255,255,255,0.03); 
-                                  border-radius: 4px; 
-                                  padding: 8px 4px; 
-                                  text-align: center; 
-                                }
-                                .poster-wrapper .ban-text { font-size: 10px; font-weight: 500; color: #666; }
-                                .poster-wrapper .ban-item.red-ban { background: rgba(255,0,0,0.05); }
-                                .poster-wrapper .ban-item.red-ban .ban-text { color: #844; }
-                                
-                                /* 애니메이션: 고급스러운 시퀀스 효과 */
-                                @keyframes revealUp {
-                                  0% { opacity: 0; transform: translateY(20px); }
-                                  100% { opacity: 1; transform: translateY(0); }
-                                }
-                                @keyframes glow {
-                                  0%, 100% { opacity: 0.3; }
-                                  50% { opacity: 0.6; }
-                                }
-                                .poster-wrapper .animate-item { animation: revealUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-                                .poster-wrapper .delay-1 { animation-delay: 0.1s; }
-                                .poster-wrapper .delay-2 { animation-delay: 0.2s; }
-                                .poster-wrapper .delay-3 { animation-delay: 0.3s; }
-                                .poster-wrapper .delay-4 { animation-delay: 0.4s; }
-                                .poster-wrapper .delay-5 { animation-delay: 0.5s; }
-                                
-                                .poster-wrapper .club-name:hover { transform: scale(1.02); transition: transform 0.3s ease; }
-                            `}</style>
-                            <div className="poster">
-                                <div className="top-line"></div>
-                                <div className="top-bar animate-item">
-                                    <span className="top-bar-label">COCKSLIGHTING OFFICIAL</span>
-                                    <span className="top-bar-label">EST. 2023</span>
-                                </div>
-                                <div className="hero animate-item delay-1">
-                                    <div className="club-name">콕스라이팅</div>
-                                    <div className="club-sub">COCKSLIGHTING</div>
-                                </div>
-                                
-                                <div className="section animate-item delay-2">
-                                    <div className="section-label">NOTIFICATION</div>
-                                    <div className="time-banner">
-                                        <span className="time-banner-value">금일 콕지원합니다! 콕 1개씩 제출(게스트 제외)</span>
-                                    </div>
-                                </div>
-
-                                <div className="section animate-item delay-3">
-                                    <div className="section-label">EQUIPMENT</div>
-                                    <div className="shuttle-list">
-                                        <div className="shuttle-item">
-                                            <div className="shuttle-text">KBB79 · BOBON365 · 삼화블랙 이상</div>
-                                        </div>
-                                        <div className="shuttle-item">
-                                            <div className="shuttle-text text-white/60">개인콕 사용</div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="section animate-item delay-4" style={{marginTop: '15px'}}>
-                                    <div className="section-label">MANNER RULES</div>
-                                    <div className="ban-grid">
-                                        <div className="ban-item red-ban"><div className="ban-text">비매너</div></div>
-                                        <div className="ban-item red-ban"><div className="ban-text">영업행위</div></div>
-                                        <div className="ban-item red-ban"><div className="ban-text">남미새/여미새</div></div>
-                                        <div className="ban-item"><div className="ban-text">철새</div></div>
-                                        <div className="ban-item"><div className="ban-text">텃세</div></div>
-                                        <div className="ban-item"><div className="ban-text">승부욕</div></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ) : announcementType === 'photo' && announcementPhotoUrl ? (
-                        <img 
-                            src={announcementPhotoUrl} 
-                            alt="공지사항" 
-                            className="w-full h-auto rounded-xl shadow-2xl mb-2"
-                            fetchpriority="high"
-                            loading="eager"
-                        />
-                    ) : (
-                        <p className="text-gray-300 mb-6 whitespace-pre-wrap text-left leading-relaxed text-sm px-2">{announcement}</p>
-                    )}
+               <div className="p-3 flex-grow overflow-y-auto max-h-[85vh]">
+    {/* 상단 공지 헤더 최적화 */}
+    <div className="mb-3">
+        <h3 className="text-xs font-medium text-white/40 tracking-[0.2em] uppercase">Season Announcement</h3>
+    </div>
+    
+    {(announcementType === 'text' || !announcementType) ? (
+        <div className="poster-wrapper">
+            <style>{`
+                .poster-wrapper {
+                  --brand-yellow: #FFE000;
+                  --bg-solid: #0A0A0A;
+                  display: flex;
+                  justify-content: center;
+                  background: transparent;
+                  padding: 0;
+                  font-family: 'Inter', 'Pretendard', sans-serif;
+                }
+                .poster-wrapper .poster {
+                  width: 100%;
+                  background: var(--bg-solid);
+                  position: relative;
+                  overflow: hidden;
+                  border-radius: 12px;
+                  display: flex;
+                  flex-direction: column;
+                  padding-bottom: 20px;
+                  box-shadow: inset 0 0 100px rgba(255,224,0,0.05);
+                }
+                .poster-wrapper .top-line { height: 4px; background: var(--brand-yellow); width: 100%; }
+                .poster-wrapper .top-bar { padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+                .poster-wrapper .top-bar-label { font-size: 9px; letter-spacing: 2px; color: #555; font-weight: 600; }
+                .poster-wrapper .hero { padding: 24px 20px 10px; text-align: left; }
+                .poster-wrapper .club-name { font-family: 'Black Han Sans', sans-serif; font-size: 48px; line-height: 1; color: var(--brand-yellow); letter-spacing: -1px; margin-bottom: 4px; }
+                .poster-wrapper .club-sub { font-size: 14px; font-weight: 300; letter-spacing: 4px; color: rgba(255,255,255,0.4); text-transform: uppercase; }
+                .poster-wrapper .section { padding: 0 20px; margin-top: 20px; text-align: left; }
+                .poster-wrapper .section-label { font-size: 9px; letter-spacing: 2px; color: var(--brand-yellow); margin-bottom: 10px; font-weight: 700; opacity: 0.8; }
+                .poster-wrapper .time-banner { background: #1a1a1a; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; border: 1px solid rgba(255,255,255,0.03); }
+                
+                /* [수정] 공지사항 폰트 크기 조정 및 줄바꿈 허용 */
+                .poster-wrapper .time-banner-value { 
+                  font-family: 'Pretendard', sans-serif; 
+                  font-size: 14px; 
+                  color: #eee; 
+                  line-height: 1.5;
+                  word-break: keep-all;
+                  white-space: pre-wrap;
+                }
+                
+                .poster-wrapper .shuttle-list { display: flex; flex-direction: column; gap: 8px; }
+                .poster-wrapper .shuttle-item { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+                .poster-wrapper .shuttle-text { font-size: 12px; font-weight: 400; color: #aaa; }
+                .poster-wrapper .ban-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 5px; }
+                .poster-wrapper .ban-item { background: rgba(255,0,0,0.03); border-radius: 4px; padding: 8px 4px; text-align: center; }
+                .poster-wrapper .ban-text { font-size: 10px; font-weight: 500; color: #666; }
+                .poster-wrapper .ban-item.red-ban { background: rgba(255,0,0,0.05); }
+                .poster-wrapper .ban-item.red-ban .ban-text { color: #844; }
+                @keyframes revealUp { 0% { opacity: 0; transform: translateY(20px); } 100% { opacity: 1; transform: translateY(0); } }
+                .poster-wrapper .animate-item { animation: revealUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+                .poster-wrapper .delay-1 { animation-delay: 0.1s; }
+                .poster-wrapper .delay-2 { animation-delay: 0.2s; }
+                .poster-wrapper .delay-3 { animation-delay: 0.3s; }
+                .poster-wrapper .delay-4 { animation-delay: 0.4s; }
+            `}</style>
+            <div className="poster">
+                <div className="top-line"></div>
+                <div className="top-bar animate-item">
+                    <span className="top-bar-label">COCKSLIGHTING OFFICIAL</span>
+                    <span className="top-bar-label">EST. 2023</span>
                 </div>
+                <div className="hero animate-item delay-1">
+                    <div className="club-name">콕스라이팅</div>
+                    <div className="club-sub">COCKSLIGHTING</div>
+                </div>
+                
+                <div className="section animate-item delay-2">
+                    <div className="section-label">NOTIFICATION</div>
+                    <div className="time-banner">
+                        {/* [수정] 하드코딩 문구 대신 announcement 변수 사용 */}
+                        <span className="time-banner-value">{announcement || "금일 공지사항이 없습니다."}</span>
+                    </div>
+                </div>
+
+                <div className="section animate-item delay-3">
+                    <div className="section-label">EQUIPMENT</div>
+                    <div className="shuttle-list">
+                        <div className="shuttle-item"><div className="shuttle-text">KBB79 · BOBON365 · 삼화블랙 이상</div></div>
+                        <div className="shuttle-item"><div className="shuttle-text text-white/60">개인콕 사용 (게스트 제외)</div></div>
+                    </div>
+                </div>
+
+                <div className="section animate-item delay-4" style={{marginTop: '15px'}}>
+                    <div className="section-label">MANNER RULES</div>
+                    <div className="ban-grid">
+                        <div className="ban-item red-ban"><div className="ban-text">비매너</div></div>
+                        <div className="ban-item red-ban"><div className="ban-text">영업행위</div></div>
+                        <div className="ban-item red-ban"><div className="ban-text">남미새/여미새</div></div>
+                        <div className="ban-item"><div className="ban-text">철새</div></div>
+                        <div className="ban-item"><div className="ban-text">텃세</div></div>
+                        <div className="ban-item"><div className="ban-text">승부욕</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    ) : (
+        <img 
+            src={announcementPhotoUrl} 
+            alt="공지사항" 
+            className="w-full h-auto rounded-xl shadow-2xl mb-2"
+            fetchpriority="high"
+            loading="eager"
+        />
+    )}
+</div>
                 <div className="bg-[#111] p-4 flex flex-col gap-2 border-t border-white/5">
                     <button onClick={() => handleClose(false)} className="w-full py-3.5 bg-white text-black font-bold rounded-xl hover:bg-yellow-400 transition-all active:scale-95 text-sm">확인했습니다</button>
                     <button onClick={() => handleClose(true)} className="text-white/20 text-[10px] py-1 hover:text-white/40 tracking-tight">오늘 하루 보지 않기</button>
@@ -2872,38 +2807,32 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
                    <div className="bg-gray-700 p-3 rounded-lg space-y-3">
                         <label className="font-semibold block text-center border-b border-gray-600 pb-2">시즌 공지 설정</label>
-                      <div className="flex justify-center gap-4 mb-2">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="announcementType" value="text" checked={(autoMatchConfig.announcementType || 'text') === 'text'} 
-                                    onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
-                                <span>텍스트</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="announcementType" value="photo" checked={autoMatchConfig.announcementType === 'photo'} 
-                                    onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
-                                <span>사진</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="announcementType" value="custom" checked={autoMatchConfig.announcementType === 'custom'} 
-                                    onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
-                                <span>사용자지정</span>
-                            </label>
-                        </div>
-                        
-                        {(autoMatchConfig.announcementType || 'text') === 'text' ? (
-                            <textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" placeholder="공지 내용을 입력하세요"
-                                className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
-                        ) : autoMatchConfig.announcementType === 'photo' ? (
-                            <div className="space-y-2">
-                                <input type="file" accept="image/*" onChange={(e) => setAutoMatchConfig(prev => ({...prev, photoFile: e.target.files[0]}))}
-                                    className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-yellow-500 file:text-black hover:file:bg-yellow-600" />
-                                {seasonConfig.announcementPhotoUrl && <p className="text-[10px] text-gray-500 text-center">기존 사진이 등록되어 있습니다. 변경 시 덮어씌워집니다.</p>}
-                            </div>
-                        ) : (
-                            <div className="text-center text-sm text-gray-400 py-2">
-                                <p>내장된 포스터 템플릿이 공지로 표시됩니다.</p>
-                            </div>
-                        )}
+                    <div className="flex justify-center gap-4 mb-2">
+    <label className="flex items-center gap-2 cursor-pointer">
+        <input type="radio" name="announcementType" value="text" checked={(autoMatchConfig.announcementType || 'text') === 'text'} 
+            onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
+        <span>일반(포스터)</span>
+    </label>
+    <label className="flex items-center gap-2 cursor-pointer">
+        <input type="radio" name="announcementType" value="photo" checked={autoMatchConfig.announcementType === 'photo'} 
+            onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
+        <span>사진 업로드</span>
+    </label>
+</div>
+
+{(autoMatchConfig.announcementType || 'text') === 'text' ? (
+    <div className="space-y-2">
+        <textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" placeholder="공지 내용을 입력하세요 (포스터 내에 표시됩니다)"
+            className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
+        <p className="text-[10px] text-center text-gray-500">입력한 내용이 '사용자 지정 포스터' 디자인에 자동으로 삽입됩니다.</p>
+    </div>
+) : (
+    <div className="space-y-2">
+        <input type="file" accept="image/*" onChange={(e) => setAutoMatchConfig(prev => ({...prev, photoFile: e.target.files[0]}))}
+            className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-yellow-500 file:text-black hover:file:bg-yellow-600" />
+        {seasonConfig.announcementPhotoUrl && <p className="text-[10px] text-gray-500 text-center">기존 사진이 등록되어 있습니다. 변경 시 덮어씌워집니다.</p>}
+    </div>
+)}
                     </div>
                      <div className="bg-gray-700 p-3 rounded-lg">
                         <label className="font-semibold mb-2 block">점수 획득 설명</label>
