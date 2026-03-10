@@ -2389,7 +2389,7 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                     <div className="section-label">EQUIPMENT</div>
                     <div className="shuttle-list">
                         <div className="shuttle-item"><div className="shuttle-text">KBB79 · BOBON365 · 삼화블랙 이상</div></div>
-                        <div className="shuttle-item"><div className="shuttle-text text-white/60">개인콕 사용 (게스트 제외)</div></div>
+                        <div className="shuttle-item"><div className="shuttle-text text-white/60">개인콕 사용</div></div>
                     </div>
                 </div>
 
