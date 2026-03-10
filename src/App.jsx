@@ -2369,7 +2369,7 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                                 .poster-wrapper .section:nth-of-type(3) { animation-delay: 0.35s; }
                                 .poster-wrapper .footer { animation-delay: 0.4s; }
                             `}</style>
-                            <div className="poster">
+                          <div className="poster">
                                 <div className="deco-lines">
                                     <svg viewBox="0 0 400 500" preserveAspectRatio="none" fill="none" xmlns="http://www.w3.org/2000/svg">
                                         <line x1="0" y1="500" x2="400" y2="80" stroke="rgba(255,224,0,0.04)" strokeWidth="60"/>
@@ -2389,43 +2389,16 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                                         <div className="club-name">콕스라이팅</div>
                                     </div>
                                     <div className="club-sub">COCKSLIGHTING · 배드민턴 정기모임</div>
-                                    <div className="icon-shuttle">
-                                        <svg viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                            <ellipse cx="28" cy="40" rx="7" ry="9" fill="rgba(255,224,0,0.9)" />
-                                            <ellipse cx="28" cy="40" rx="4" ry="6" fill="rgba(10,10,10,0.8)" />
-                                            <path d="M28 32 Q20 22 14 12" stroke="rgba(255,224,0,0.9)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                                            <path d="M28 32 Q23 20 20 10" stroke="rgba(255,224,0,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                                            <path d="M28 32 Q27 20 26 8" stroke="rgba(255,224,0,0.9)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                                            <path d="M28 32 Q31 20 33 8" stroke="rgba(255,224,0,0.8)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                                            <path d="M28 32 Q34 21 38 11" stroke="rgba(255,224,0,0.7)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                                            <path d="M28 32 Q37 23 42 14" stroke="rgba(255,224,0,0.6)" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
-                                            <path d="M14 12 Q28 6 42 14" stroke="rgba(255,224,0,0.5)" strokeWidth="1" fill="none"/>
-                                            <path d="M20 10 Q28 5 33 8" stroke="rgba(255,224,0,0.4)" strokeWidth="1" fill="none"/>
-                                        </svg>
-                                    </div>
                                 </div>
                                 <div className="divider"><div className="divider-dot"></div></div>
-                                <div className="section">
-                                    <div className="section-label">REGULAR SCHEDULE</div>
-                                    <div className="schedule-grid">
-                                        <div className="schedule-card tue">
-                                            <div className="day-en">TUESDAY</div>
-                                            <div className="day-badge">화</div>
-                                            <div className="place-name">익스민턴</div>
-                                            <div className="time-tag">19:00 – 22:00</div>
-                                        </div>
-                                        <div className="schedule-card thu">
-                                            <div className="day-en">THURSDAY</div>
-                                            <div className="day-badge">목</div>
-                                            <div className="place-name">구봉산<br/>다목적체육관</div>
-                                            <div className="time-tag">19:00 – 22:00</div>
-                                        </div>
-                                    </div>
-                                </div>
+                                
+                                {/* 중간 공지: 시간 배너 */}
                                 <div className="time-banner">
                                     <span className="time-banner-label">PLAY TIME</span>
                                     <span className="time-banner-value">매주 화·목 저녁 7시</span>
                                 </div>
+
+                                {/* 하단 강조: 셔틀콕 관련 내용 */}
                                 <div className="section">
                                     <div className="section-label">SHUTTLECOCK</div>
                                     <div className="shuttle-list">
@@ -2439,6 +2412,7 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                                         </div>
                                     </div>
                                 </div>
+
                                 <div className="section">
                                     <div className="section-label">MANNER RULES</div>
                                     <div className="ban-grid">
