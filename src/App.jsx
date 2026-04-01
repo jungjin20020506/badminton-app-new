@@ -1485,6 +1485,22 @@ export default function App() {
         setModal({ type: null, data: null });
     }, [gameState, allPlayers, updateGameState]);
 
+    // [신규] 경기 취소(무효화) 처리 함수
+    const handleCancelMatch = useCallback(async (courtIndex) => {
+        setModal({ type: 'confirm', data: {
+            title: '경기 취소',
+            body: '경기를 무효화하고 코트를 비우시겠습니까? 선수들의 기록은 변경되지 않습니다.',
+            onConfirm: async () => {
+                await updateGameState(currentState => {
+                    const newState = JSON.parse(JSON.stringify(currentState));
+                    newState.inProgressCourts[courtIndex] = null;
+                    return { newState };
+                }, '경기 취소에 실패했습니다.');
+                setModal({ type: null, data: null });
+            }
+        }});
+    }, [updateGameState]);
+
     const handleEndMatch = useCallback(async (courtIndex) => {
         const court = gameState.inProgressCourts[courtIndex];
         if (!court || !court.players || court.players.some(p=>!p)) return;
@@ -1510,9 +1526,10 @@ export default function App() {
                 courtIndex,
                 players: matchPlayers,
                 onResultSubmit: processMatchResult,
+                onCancelMatch: handleCancelMatch, // [수정] 취소 함수 전달
             }
         });
-    }, [gameState, allPlayers, processMatchResult]);
+    }, [gameState, allPlayers, processMatchResult, handleCancelMatch]);
 
     // [자동 매칭] 스케줄러 실행 로직
     const runMatchScheduler = useCallback(async () => {
@@ -2425,7 +2442,7 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
     );
 }
 
-function ResultInputModal({ courtIndex, players, onResultSubmit, onClose }) {
+function ResultInputModal({ courtIndex, players, onResultSubmit, onCancelMatch, onClose }) {
     const [winners, setWinners] = useState([]);
 
     const handlePlayerClick = (playerId) => {
@@ -2466,12 +2483,19 @@ function ResultInputModal({ courtIndex, players, onResultSubmit, onClose }) {
                         />
                     ))}
                 </div>
-                <button onClick={onClose} className="mt-6 w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button>
+                {/* [수정] 버튼 레이아웃 변경: 일반 닫기 버튼과 별도로 하단에 경기 취소 링크형 버튼 추가 */}
+                <button onClick={onClose} className="mt-6 w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">창 닫기</button>
+                
+                <button 
+                    onClick={() => onCancelMatch(courtIndex)} 
+                    className="mt-4 w-full text-[11px] text-gray-500 hover:text-red-400 transition-colors underline decoration-dotted"
+                >
+                    실수로 경기를 시작했나요? 경기 취소하기
+                </button>
             </div>
         </div>
     );
 }
-
 function PointSystemModal({ content, onClose }) {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
