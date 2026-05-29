@@ -1682,6 +1682,43 @@ useEffect(() => {
         }});
     }, [updateGameState]);
 
+    const handleAdminAddPlayer = useCallback(async (formData) => {
+        const { name, level, gender, isGuest } = formData;
+        if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' }}); return; }
+        const id = generateId(name);
+        try {
+            const playerDocRef = doc(playersRef, id);
+            let docSnap = await getDoc(playerDocRef);
+            let playerData;
+
+            if (docSnap.exists()) {
+                const existingData = docSnap.data();
+                playerData = {
+                    ...existingData,
+                    level,
+                    gender,
+                    isGuest,
+                    status: 'active',
+                    todayRecentGames: existingData.todayRecentGames || [],
+                    isResting: existingData.isResting || false,
+                };
+            } else {
+                playerData = {
+                    id, name, level, gender, isGuest,
+                    entryTime: new Date().toISOString(), isResting: false,
+                    status: 'active',
+                    todayRecentGames: [],
+                };
+            }
+
+            await setDoc(playerDocRef, playerData, { merge: true });
+            setModal({ type: 'alert', data: { title: '추가 완료', body: `${name} 선수가 수동으로 추가되었습니다.` }});
+        } catch (error) {
+            console.error("Admin add player failed: ", error);
+            setModal({ type: 'alert', data: { title: '오류', body: '선수 추가 처리 중 문제가 발생했습니다.' }});
+        }
+    }, []);
+
     const handleGenerateRobots = useCallback(async (maleCount, femaleCount) => {
         setModal({ type: 'alert', data: { title: '생성 중', body: '테스트 로봇을 생성하고 있습니다...' } });
         try {
@@ -1853,6 +1890,7 @@ useEffect(() => {
             setModal={setModal}
             onSystemReset={handleSystemReset}
             onGenerateRobots={handleGenerateRobots}
+            onAdminAddPlayer={handleAdminAddPlayer}
         />}
 
             <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
@@ -2271,12 +2309,17 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
 }
 
 // [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onGenerateRobots }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onGenerateRobots, onAdminAddPlayer }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
     const [robotMaleCount, setRobotMaleCount] = useState(0);
     const [robotFemaleCount, setRobotFemaleCount] = useState(0);
+
+    // 수동 선수 추가 폼 상태
+    const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
+    const [newPlayerForm, setNewPlayerForm] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
+
     // 자동매칭 설정 상태 (수정됨)
   const [autoMatchConfig, setAutoMatchConfig] = useState({
         ...(seasonConfig.autoMatchConfig || {}),
@@ -2495,6 +2538,63 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         {seasonConfig.announcementPhotoUrl && <p className="text-[10px] text-gray-500 text-center">기존 사진이 등록되어 있습니다. 변경 시 덮어씌워집니다.</p>}
     </div>
 )}
+                    </div>
+
+                 {/* --- 선수 수동 추가 --- */}
+                    <div className="bg-gray-700 p-3 rounded-lg space-y-2">
+                        <div 
+                            className="flex justify-between items-center cursor-pointer"
+                            onClick={() => setShowAddPlayerForm(!showAddPlayerForm)}
+                        >
+                            <label className="font-semibold cursor-pointer">👤 관리자 선수 임의 추가</label>
+                            <span className="text-gray-400">{showAddPlayerForm ? '▲' : '▼'}</span>
+                        </div>
+                        
+                        {showAddPlayerForm && (
+                            <div className="bg-gray-800 p-3 rounded border border-gray-600 mt-2 space-y-3">
+                                <input 
+                                    type="text" 
+                                    placeholder="이름" 
+                                    value={newPlayerForm.name} 
+                                    onChange={(e) => setNewPlayerForm(prev => ({...prev, name: e.target.value}))} 
+                                    className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm" 
+                                />
+                                <div className="grid grid-cols-4 gap-1">
+                                    {['A조', 'B조', 'C조', 'D조'].map(level => (
+                                        <button
+                                            key={level}
+                                            type="button"
+                                            onClick={() => setNewPlayerForm(prev => ({ ...prev, level }))}
+                                            className={`py-1 rounded text-xs font-bold transition-colors arcade-button ${newPlayerForm.level === level ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-white'}`}
+                                        >
+                                            {level}
+                                        </button>
+                                    ))}
+                                </div>
+                                <div className="flex justify-around items-center text-sm bg-gray-600 p-2 rounded-md">
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="radio" name="newPlayerGender" value="남" checked={newPlayerForm.gender === '남'} onChange={() => setNewPlayerForm(prev => ({...prev, gender: '남'}))} className="mr-1 h-3 w-3 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자
+                                    </label>
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="radio" name="newPlayerGender" value="여" checked={newPlayerForm.gender === '여'} onChange={() => setNewPlayerForm(prev => ({...prev, gender: '여'}))} className="mr-1 h-3 w-3 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자
+                                    </label>
+                                    <div className="w-px h-4 bg-gray-500"></div>
+                                    <label className="flex items-center cursor-pointer">
+                                        <input type="checkbox" checked={newPlayerForm.isGuest} onChange={(e) => setNewPlayerForm(prev => ({...prev, isGuest: e.target.checked}))} className="mr-1 h-3 w-3 rounded text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" /> 게스트
+                                    </label>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        onAdminAddPlayer(newPlayerForm);
+                                        setNewPlayerForm({ name: '', level: 'A조', gender: '남', isGuest: false });
+                                        setShowAddPlayerForm(false);
+                                    }}
+                                    className="w-full arcade-button bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 rounded text-sm"
+                                >
+                                    추가하기
+                                </button>
+                            </div>
+                        )}
                     </div>
 
                   {/* --- 고급 기능 --- */}
