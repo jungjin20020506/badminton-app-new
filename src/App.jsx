@@ -355,12 +355,6 @@ function findBestMatches(pool, allPlayers, minScore) {
 // ===================================================================================
 const ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "오미리"];
 const PLAYERS_PER_MATCH = 4;
-const RP_CONFIG = {
-    ATTENDANCE: 20,
-    WIN: 30,
-    LOSS: 10,
-    WIN_STREAK_BONUS: 20, // 3연승부터 1승마다 +20 RP
-};
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 
 const generateId = (name) => name.replace(/\s+/g, '_');
@@ -501,9 +495,6 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     // [수정] actionLabel이 'auto' 위치도 인식하도록 수정
     const actionLabel = (isWaiting || context.location === 'auto') ? '선수 내보내기' : '대기자로 이동';
 
-    const todayWins = player.todayWins || 0;
-    const todayLosses = player.todayLosses || 0;
-
     return (
         <div
             ref={cardRef}
@@ -519,8 +510,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             <div>
                 <div className={playerNameClass}>{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>
-                    <span style={levelStyle}>{player.level.replace('조','')}</span>|
-                    {`${todayWins}승 ${todayLosses}패`}
+                    <span style={levelStyle}>{player.level.replace('조','')}</span>
                 </div>
             </div>
             {isAdmin && onAction && (
@@ -851,12 +841,10 @@ export default function App() {
     const [seasonConfig, setSeasonConfig] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
-    const [modal, setModal] = useState({ type: null, data: null });
+   const [modal, setModal] = useState({ type: null, data: null });
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-    const [currentPage, setCurrentPage] = useState('main');
     const [courtMove, setCourtMove] = useState({ sourceIndex: null });
-    const [resetNotification, setResetNotification] = useState(null);
     const [selectedAutoMatchSlot, setSelectedAutoMatchSlot] = useState(null);
     const [isSeasonModalDismissed, setIsSeasonModalDismissed] = useState(false); // 세션 내 공지 닫기 상태 추가
 
@@ -922,33 +910,6 @@ export default function App() {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-
-    useEffect(() => {
-        if (!currentUser || !isAdmin) {
-            if (resetNotification) setResetNotification(null);
-            return;
-        }
-
-        const adminId = currentUser.id;
-        const notifDocRef = doc(notificationsRef, adminId);
-
-        const unsubscribe = onSnapshot(notifDocRef, (doc) => {
-            if (doc.exists()) {
-                const data = doc.data();
-                if (data.status === 'pending' || data.status === 'error') {
-                    setResetNotification({ id: doc.id, ...data });
-                } else {
-                    setResetNotification(null);
-                }
-            } else {
-                setResetNotification(null);
-            }
-        });
-
-        return () => unsubscribe();
-
-    }, [currentUser, isAdmin, resetNotification]);
-
     useEffect(() => {
         const initializeApp = async () => {
             await readyPromise;
@@ -992,7 +953,7 @@ export default function App() {
         };
     }, []);
 
-  useEffect(() => {
+useEffect(() => {
         // [개선] 데이터 로딩 완료 시 이미지 미리 불러오기 (Pre-loading)
         if (!isLoading && seasonConfig?.announcementType === 'photo' && seasonConfig?.announcementPhotoUrl) {
             const img = new Image();
@@ -1000,7 +961,14 @@ export default function App() {
         }
 
         // 이전 답변에서 드린 닫기 오류 해결 로직 포함 (isSeasonModalDismissed)
-        if (isLoading || !seasonConfig || (modal && modal.type) || resetNotification || isSeasonModalDismissed) return;
+        if (isLoading || !seasonConfig || (modal && modal.type) || isSeasonModalDismissed) return;
+        
+        const today = new Date().toDateString();
+        const lastSeen = localStorage.getItem(`seen-${seasonConfig.seasonId}`);
+        if (lastSeen !== today) {
+            setModal({ type: 'season', data: seasonConfig });
+        }
+    }, [isLoading, seasonConfig, isSeasonModalDismissed]);
         
         const today = new Date().toDateString();
         const lastSeen = localStorage.getItem(`seen-${seasonConfig.seasonId}`);
@@ -1108,7 +1076,7 @@ export default function App() {
             let docSnap = await getDoc(playerDocRef);
             let playerData;
 
-            if (docSnap.exists()) {
+           if (docSnap.exists()) {
                 const existingData = docSnap.data();
                 playerData = {
                     ...existingData,
@@ -1116,10 +1084,6 @@ export default function App() {
                     gender,
                     isGuest,
                     status: 'active',
-                    todayWins: existingData.todayWins || 0,
-                    todayLosses: existingData.todayLosses || 0,
-                    todayWinStreak: existingData.todayWinStreak || 0,
-                    todayWinStreakCount: existingData.todayWinStreakCount || 0,
                     todayRecentGames: existingData.todayRecentGames || [],
                     isResting: existingData.isResting || false, // 입장 시 isResting 초기화 안함
                 };
@@ -1128,9 +1092,7 @@ export default function App() {
                     id, name, level, gender, isGuest,
                     entryTime: new Date().toISOString(), isResting: false,
                     status: 'active',
-                    wins: 0, losses: 0, rp: 0, winStreak: 0, winStreakCount: 0,
-                    attendanceCount: 0, achievements: [],
-                    todayWins: 0, todayLosses: 0, todayWinStreak: 0, todayWinStreakCount: 0, todayRecentGames: [],
+                    todayRecentGames: [],
                 };
             }
 
@@ -1426,110 +1388,71 @@ export default function App() {
         }
     }, [gameState, updateGameState, inProgressPlayerIds]);
 
-    const processMatchResult = useCallback(async (courtIndex, winningTeam) => {
-        const court = gameState.inProgressCourts[courtIndex];
-        if (!court) return;
-        const allMatchPlayerIds = court.players;
-
-        const batch = writeBatch(db);
-        const now = new Date().toISOString();
-
-        const winners = winningTeam;
-        const losers = allMatchPlayerIds.filter(pId => !winningTeam.includes(pId));
-
-        allMatchPlayerIds.forEach(pId => {
-            const player = allPlayers[pId];
-            if(!player) return;
-
-            const isWinner = winningTeam.includes(pId);
-            const newWinStreak = isWinner ? (player.todayWinStreak || 0) + 1 : 0;
-
-            let newWinStreakCount = player.todayWinStreakCount || 0;
-            if (isWinner && newWinStreak >= 3) {
-                newWinStreakCount += 1;
-            }
-
-            const updatedData = {
-                todayWins: (player.todayWins || 0) + (isWinner ? 1 : 0),
-                todayLosses: (player.todayLosses || 0) + (isWinner ? 0 : 1),
-                todayWinStreak: newWinStreak,
-                todayWinStreakCount: newWinStreakCount,
-            };
-
-            const gameRecord = {
-                result: isWinner ? '승' : '패',
-                timestamp: now,
-                partners: (isWinner ? winners : losers).filter(id => id !== pId),
-                opponents: isWinner ? losers : winners
-            };
-
-            // [자동매칭] 기록이 올바르게 저장되도록 수정 (최신 10개)
-            const recentGames = (player.todayRecentGames || []).slice(0, 9);
-            updatedData.todayRecentGames = [gameRecord, ...recentGames];
-
-            batch.update(doc(playersRef, pId), updatedData);
-        });
-
-        const updateFunction = (currentState) => {
-            const newState = JSON.parse(JSON.stringify(currentState));
-            newState.inProgressCourts[courtIndex] = null;
-            return { newState };
-        };
-        try {
-            await batch.commit();
-            await updateGameState(updateFunction);
-        } catch(e) {
-            console.error(e);
-            setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
-        }
-        setModal({ type: null, data: null });
-    }, [gameState, allPlayers, updateGameState]);
-
-    // [신규] 경기 취소(무효화) 처리 함수
-    const handleCancelMatch = useCallback(async (courtIndex) => {
-        setModal({ type: 'confirm', data: {
-            title: '경기 취소',
-            body: '경기를 무효화하고 코트를 비우시겠습니까? 선수들의 기록은 변경되지 않습니다.',
-            onConfirm: async () => {
-                await updateGameState(currentState => {
-                    const newState = JSON.parse(JSON.stringify(currentState));
-                    newState.inProgressCourts[courtIndex] = null;
-                    return { newState };
-                }, '경기 취소에 실패했습니다.');
-                setModal({ type: null, data: null });
-            }
-        }});
-    }, [updateGameState]);
-
-    const handleEndMatch = useCallback(async (courtIndex) => {
+   const handleEndMatch = useCallback(async (courtIndex) => {
         const court = gameState.inProgressCourts[courtIndex];
         if (!court || !court.players || court.players.some(p=>!p)) return;
 
-        const matchPlayers = court.players
-            .map(pid => allPlayers[pid])
-            .filter(Boolean);
-
-        if (matchPlayers.length !== PLAYERS_PER_MATCH) {
-             setModal({
-                type: 'alert',
-                data: {
-                    title: '오류',
-                    body: '경기에 참여한 선수 중 일부의 정보가 없습니다. 관리자에게 문의하세요.'
-                }
-            });
-            return;
-        }
-
         setModal({
-            type: 'resultInput',
+            type: 'confirm',
             data: {
-                courtIndex,
-                players: matchPlayers,
-                onResultSubmit: processMatchResult,
-                onCancelMatch: handleCancelMatch, // [수정] 취소 함수 전달
+                title: '경기 종료',
+                body: '경기를 종료하고 코트를 비우시겠습니까? (선수들의 매칭 히스토리가 기록됩니다.)',
+                onConfirm: async () => {
+                    const allMatchPlayerIds = court.players;
+                    const batch = writeBatch(db);
+                    const now = new Date().toISOString();
+
+                    // 편의상 0,1번을 한 팀, 2,3번을 다른 팀으로 간주하여 히스토리 저장
+                    const teamA = [allMatchPlayerIds[0], allMatchPlayerIds[1]].filter(Boolean);
+                    const teamB = [allMatchPlayerIds[2], allMatchPlayerIds[3]].filter(Boolean);
+
+                    allMatchPlayerIds.forEach(pId => {
+                        const player = allPlayers[pId];
+                        if(!player) return;
+
+                        let partners = [];
+                        let opponents = [];
+
+                        if (teamA.includes(pId)) {
+                            partners = teamA.filter(id => id !== pId);
+                            opponents = teamB;
+                        } else if (teamB.includes(pId)) {
+                            partners = teamB.filter(id => id !== pId);
+                            opponents = teamA;
+                        }
+
+                        const gameRecord = {
+                            timestamp: now,
+                            partners: partners,
+                            opponents: opponents
+                        };
+
+                        const recentGames = (player.todayRecentGames || []).slice(0, 9);
+                        const updatedData = {
+                            todayRecentGames: [gameRecord, ...recentGames]
+                        };
+
+                        batch.update(doc(playersRef, pId), updatedData);
+                    });
+
+                    const updateFunction = (currentState) => {
+                        const newState = JSON.parse(JSON.stringify(currentState));
+                        newState.inProgressCourts[courtIndex] = null;
+                        return { newState };
+                    };
+
+                    try {
+                        await batch.commit();
+                        await updateGameState(updateFunction);
+                    } catch(e) {
+                        console.error(e);
+                        setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
+                    }
+                    setModal({ type: null, data: null });
+                }
             }
         });
-    }, [gameState, allPlayers, processMatchResult, handleCancelMatch]);
+    }, [gameState, allPlayers, updateGameState]);
 
     // [자동 매칭] 스케줄러 실행 로직
     const runMatchScheduler = useCallback(async () => {
@@ -1701,7 +1624,7 @@ export default function App() {
     }, [isAdmin, handleSlotClick]);
 
 
-    const handleClearScheduledMatches = useCallback(() => {
+   const handleClearScheduledMatches = useCallback(() => {
         setModal({ type: 'confirm', data: {
             title: '전체 삭제',
             body: '모든 (수동) 예정 경기를 삭제할까요?',
@@ -1732,33 +1655,6 @@ export default function App() {
             }
         }});
     }, [updateGameState]);
-
-
-    const handleResetAllRankings = useCallback(async () => {
-        setModal({ type: 'alert', data: { title: '처리 중...', body: '랭킹 초기화 작업을 진행하고 있습니다.' } });
-        try {
-            const allPlayersSnapshot = await getDocs(query(playersRef, where("isGuest", "==", false)));
-            const batch = writeBatch(db);
-
-            allPlayersSnapshot.forEach(playerDoc => {
-                batch.update(playerDoc.ref, {
-                    wins: 0,
-                    losses: 0,
-                    rp: 0,
-                    attendanceCount: 0,
-                    winStreak: 0,
-                    winStreakCount: 0,
-                    recentGames: []
-                });
-            });
-
-            await batch.commit();
-            setModal({ type: 'alert', data: { title: '성공', body: '모든 누적 랭킹 정보가 성공적으로 초기화되었습니다.' } });
-        } catch (error) {
-            console.error("Ranking reset failed:", error);
-            setModal({ type: 'alert', data: { title: '오류', body: '랭킹 초기화에 실패했습니다.' } });
-        }
-    }, []);
 
     const handleSystemReset = useCallback(() => {
         setModal({ type: 'confirm', data: {
@@ -1805,7 +1701,7 @@ export default function App() {
     // [수정] handleSettingsUpdate를 App 컴포넌트 내부에서 정의 (SettingsModal로 props 전달)
   const handleSettingsUpdate = useCallback(async (settings) => {
         try {
-            const { scheduled, courts, announcement, pointSystemInfo, autoMatchConfig } = settings;
+            const { scheduled, courts, announcement, autoMatchConfig } = settings;
             // autoMatchConfig 내부에 포함된 announcementType과 photoFile 추출
             const { announcementType, photoFile } = autoMatchConfig;
             let finalPhotoUrl = seasonConfig.announcementPhotoUrl || "";
@@ -1853,8 +1749,7 @@ export default function App() {
                 pureAutoMatchConfig.announcementPhotoUrl = finalPhotoUrl;
 
                 transaction.set(configRef, { 
-                    announcement, 
-                    pointSystemInfo, 
+                    announcement,
                     autoMatchConfig: pureAutoMatchConfig,
                     announcementType: announcementType || 'text', // 루트 레벨 저장
                     announcementPhotoUrl: finalPhotoUrl // 루트 레벨 저장
@@ -1894,43 +1789,20 @@ export default function App() {
         return <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
     }
 
-    if (!currentUser) {
+  if (!currentUser) {
         return <EntryPage onEnter={handleEnter} />;
     }
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-            {resetNotification && (
-                <ConfirmationModal
-                    title={resetNotification.status === 'error' ? "⚠️ 저장 오류" : "🏆 시즌 마감"}
-                    body={resetNotification.message}
-                    onConfirm={async () => {
-                        if (resetNotification.status === 'pending') {
-                            await handleResetAllRankings();
-                        }
-                        await updateDoc(doc(notificationsRef, resetNotification.id), { status: 'acknowledged' });
-                        setResetNotification(null);
-                    }}
-                    onCancel={async () => {
-                        await updateDoc(doc(notificationsRef, resetNotification.id), { status: 'acknowledged' });
-                        setResetNotification(null);
-                    }}
-                />
-            )}
-
            {modal?.type === 'season' && <SeasonModal {...modal.data} onClose={() => {
                 setIsSeasonModalDismissed(true); // 현재 세션에서 공지를 닫았음을 기록
                 setModal({ type: null, data: null });
             }} />}
-            {modal?.type === 'resultInput' && <ResultInputModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
-            {modal?.type === 'profile' && <ProfileModal player={modal.data.player} onClose={() => setModal({ type: null, data: null })} />}
-            {modal?.type === 'adminEditPlayer' && <AdminEditPlayerModal player={modal.data.player} mode={modal.data.mode} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} setModal={setModal} />}
-            {modal?.type === 'pointSystemInfo' && <PointSystemModal content={modal.data.content} onClose={() => setModal({ type: null, data: null })} />}
+            {modal?.type === 'adminEditPlayer' && <AdminEditPlayerModal player={modal.data.player} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} setModal={setModal} />}
             {modal?.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
-            {modal?.type === 'rankingHistory' && <RankingHistoryModal onCancel={() => setModal({ type: null, data: null })} />}
-            {/* [자동매칭] AutoMatchSetupModal은 더 이상 사용하지 않음 (설정으로 통합) */}
 
           {isSettingsOpen && <SettingsModal
             isAdmin={isAdmin}
@@ -1963,11 +1835,6 @@ export default function App() {
                             <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white text-lg px-1">
                                 <i className="fas fa-cog"></i>
                             </button>
-                            {/* [자동매칭] 로봇 버튼은 설정으로 통합되어 제거
-                            <button onClick={() => setModal({ type: 'autoMatchSetup' })} className="text-gray-400 hover:text-white text-lg px-1">
-                                <i className="fas fa-robot"></i>
-                            </button>
-                            */}
                         </>
                     )}
                     <button
@@ -1980,53 +1847,46 @@ export default function App() {
                     >
                         {currentUser.isResting ? '복귀' : '휴식'}
                     </button>
-                    <button onClick={() => setCurrentPage(p => p === 'main' ? 'ranking' : 'main')} className="arcade-button py-1.5 px-2.5 rounded-md text-xs font-bold bg-gray-700 hover:bg-gray-600 text-yellow-300 transition-colors whitespace-nowrap">
-                        {currentPage === 'main' ? '⭐ 콕스타' : '🕹️ 현황판'}
-                    </button>
                 </div>
             </header>
 
             <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto">
-                {currentPage === 'main' ? (
-                    isMobile ? (
-                        <>
-                            <div className="flex-shrink-0 flex justify-around border-b border-gray-700 mb-2 sticky top-0 bg-black z-10">
-                                <button
-                                    onClick={() => setActiveTab('matching')}
-                                    className={`py-2 px-4 font-bold ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
-                                >
-                                    경기 예정
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab('inProgress')}
-                                    className={`py-2 px-4 font-bold ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
-                                >
-                                    경기 진행
-                                </button>
-                            </div>
-                            <div className="flex flex-col gap-3">
-                                {activeTab === 'matching' && (
-                                    <>
-                                        <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                                        <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
-                                        <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
-                                    </>
-                                )}
-                                {activeTab === 'inProgress' && (
-                                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
-                                )}
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                            <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
-                            <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
-                            <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
-                        </>
-                    )
+                {isMobile ? (
+                    <>
+                        <div className="flex-shrink-0 flex justify-around border-b border-gray-700 mb-2 sticky top-0 bg-black z-10">
+                            <button
+                                onClick={() => setActiveTab('matching')}
+                                className={`py-2 px-4 font-bold ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
+                            >
+                                경기 예정
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('inProgress')}
+                                className={`py-2 px-4 font-bold ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
+                            >
+                                경기 진행
+                            </button>
+                        </div>
+                        <div className="flex flex-col gap-3">
+                            {activeTab === 'matching' && (
+                                <>
+                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
+                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
+                                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
+                                </>
+                            )}
+                            {activeTab === 'inProgress' && (
+                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
+                            )}
+                        </div>
+                    </>
                 ) : (
-                    <RankingPage players={allPlayers} currentUser={currentUser} isAdmin={isAdmin} onProfileClick={(player, rankingPeriod) => { setModal({ type: 'adminEditPlayer', data: { player, mode: rankingPeriod }})}} onInfoClick={() => setModal({type: 'pointSystemInfo', data: { content: seasonConfig.pointSystemInfo }})} onHistoryClick={() => setModal({ type: 'rankingHistory' })} setModal={setModal} />
+                    <>
+                        <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
+                        <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
+                        <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
+                        <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
+                    </>
                 )}
             </main>
             <style>{`
@@ -2126,153 +1986,7 @@ function EntryPage({ onEnter }) {
     );
 }
 
-function RankingPage({ players, currentUser, isAdmin, onProfileClick, onInfoClick, onHistoryClick }) {
-    const [rankingPeriod, setRankingPeriod] = useState('monthly');
 
-    const rankedPlayers = useMemo(() => {
-        let playersToRank = Object.values(players).filter(p => !p.isGuest);
-
-        if (rankingPeriod === 'today') {
-            playersToRank = playersToRank
-                .map(p => {
-                    const todayWins = p.todayWins || 0;
-                    const todayLosses = p.todayLosses || 0;
-                    const todayWinStreakCount = p.todayWinStreakCount || 0;
-                    const todayRp = (todayWins * RP_CONFIG.WIN) + (todayLosses * RP_CONFIG.LOSS) + (todayWinStreakCount * RP_CONFIG.WIN_STREAK_BONUS);
-                    return { ...p, todayRp, todayTotalGames: todayWins + todayLosses };
-                })
-                .filter(p => p.todayTotalGames > 0)
-                .sort((a, b) => b.todayRp - a.todayRp);
-        } else {
-            playersToRank = playersToRank
-                .filter(p => (p.wins || 0) > 0 || (p.losses || 0) > 0 || (p.attendanceCount || 0) > 0)
-                .sort((a, b) => (b.rp || 0) - (a.rp || 0));
-        }
-
-        return playersToRank.map((p, index) => ({ ...p, rank: index + 1 }));
-    }, [players, rankingPeriod]);
-
-    const getRankStyle = (rank) => {
-        switch (rank) {
-            case 1: return { container: 'bg-gradient-to-br from-yellow-300 to-yellow-500 border-yellow-400 shadow-lg shadow-yellow-500/30', rankText: 'text-yellow-800', nameText: 'text-white', infoText: 'text-yellow-100', medal: '🥇' };
-            case 2: return { container: 'bg-gradient-to-br from-gray-300 to-gray-400 border-gray-200 shadow-lg shadow-gray-500/30', rankText: 'text-gray-700', nameText: 'text-gray-800', infoText: 'text-gray-600', medal: '🥈' };
-            case 3: return { container: 'bg-gradient-to-br from-orange-400 to-yellow-600 border-orange-500 shadow-lg shadow-orange-500/30', rankText: 'text-orange-900', nameText: 'text-white', infoText: 'text-orange-100', medal: '🥉' };
-            default: return { container: 'bg-gray-800', rankText: 'text-white', nameText: 'text-white', infoText: 'text-gray-400', medal: '' };
-        }
-    };
-
-    return (
-        <div className="p-2">
-            <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-yellow-400 arcade-font flicker-text">⭐ COCKS STAR</h2>
-                <div>
-                     {isAdmin && <button onClick={onHistoryClick} className="arcade-button text-xs bg-gray-700 text-cyan-300 py-2 px-3 rounded-md mr-2">기록</button>}
-                    <button onClick={onInfoClick} className="arcade-button text-xs bg-gray-700 text-yellow-300 py-2 px-3 rounded-md">점수?</button>
-                </div>
-            </div>
-
-            <div className="flex justify-center gap-2 mb-4">
-                <button
-                    onClick={() => setRankingPeriod('today')}
-                    className={`arcade-button py-2 px-4 rounded-md text-xs font-bold transition-colors ${rankingPeriod === 'today' ? 'bg-yellow-500 text-black' : 'bg-gray-700 text-gray-300'}`}
-                >
-                    오늘
-                </button>
-                <button
-                    onClick={() => setRankingPeriod('monthly')}
-                    className={`arcade-button py-2 px-4 rounded-md text-xs font-bold transition-colors ${rankingPeriod === 'monthly' ? 'bg-yellow-500 text-black' : 'bg-gray-700 text-gray-300'}`}
-                >
-                    이번달
-                </button>
-            </div>
-
-            <div className="space-y-2">
-                {rankedPlayers.map(p => {
-                    const isMonthly = rankingPeriod === 'monthly';
-                    const wins = isMonthly ? (p.wins || 0) : (p.todayWins || 0);
-                    const losses = isMonthly ? (p.losses || 0) : (p.todayLosses || 0);
-                    const rp = isMonthly ? (p.rp || 0) : (p.todayRp || 0);
-                    const attendanceCount = p.attendanceCount || 0;
-                    const winStreakCount = isMonthly ? (p.winStreakCount || 0) : (p.todayWinStreakCount || 0);
-
-                    const totalGames = wins + losses;
-                    const winRate = totalGames > 0 ? ((wins / totalGames) * 100).toFixed(0) + '%' : '-';
-                    const isCurrentUser = p.id === currentUser.id;
-                    const style = getRankStyle(p.rank);
-
-                    const currentUserHighlight = isCurrentUser ? 'ring-2 ring-offset-2 ring-offset-black ring-blue-400' : '';
-
-                    return (
-                        <div key={p.id}
-                            className={`p-3 rounded-lg flex items-center gap-4 border ${style.container} ${currentUserHighlight} transition-all duration-300 transform hover:scale-105 cursor-pointer`}
-                            onClick={() => onProfileClick(p, rankingPeriod)}
-                        >
-                            <span className={`text-xl font-bold w-12 text-center arcade-font ${style.rankText}`}>{style.medal || p.rank}</span>
-                            <div className="flex-1 min-w-0">
-                                <p className={`font-bold truncate ${style.nameText}`}>{p.name}</p>
-                                <p className={`text-xs ${style.infoText}`}>
-                                    <span className={`font-bold ${p.rank > 3 && isMonthly ? 'text-green-400' : ''}`}>{rp} RP</span> | {wins}승 {losses}패 ({winRate}) | {winStreakCount}연승
-                                    {isMonthly && ` | ${attendanceCount}참`}
-                                </p>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
-function ProfileModal({ player, onClose }) {
-    const getAchievementIcon = (ach) => {
-        if (ach === '첫 승리') return '🏆';
-        if (ach === '10승 클럽') return '🔟';
-        if (ach === '불꽃 연승') return '🔥';
-        return '🌟';
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg flex flex-col gap-4">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h3 className="text-2xl font-bold text-yellow-400">{player.name}</h3>
-                        <p className="text-gray-400">{player.level} / {player.gender}</p>
-                    </div>
-                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white">&times;</button>
-                </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                        <p className="text-sm text-gray-400">랭킹</p>
-                        <p className="text-3xl font-bold arcade-font">{player.rank}</p>
-                    </div>
-                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                        <p className="text-sm text-gray-400">RP</p>
-                        <p className="text-3xl font-bold arcade-font">{player.rp || 0}</p>
-                    </div>
-                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                        <p className="text-sm text-gray-400">참석</p>
-                        <p className="text-3xl font-bold arcade-font">{player.attendanceCount || 0}</p>
-                    </div>
-                    <div className="bg-gray-700/50 p-3 rounded-lg">
-                        <p className="text-sm text-gray-400">연승횟수</p>
-                        <p className="text-3xl font-bold arcade-font">{player.winStreakCount || 0}</p>
-                    </div>
-                </div>
-
-                <div>
-                    <h4 className="font-bold mb-2 text-yellow-400">업적</h4>
-                    <div className="flex flex-wrap gap-2">
-                        {(player.achievements && player.achievements.length > 0) ? player.achievements.map(ach => (
-                            <span key={ach} className="bg-gray-700 text-sm py-1 px-3 rounded-full">{getAchievementIcon(ach)} {ach}</span>
-                        )) : <p className="text-sm text-gray-500">아직 달성한 업적이 없습니다.</p>}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 function SeasonModal({ announcement, seasonId, onClose, announcementType, announcementPhotoUrl }) {
     const handleClose = (isHideToday = false) => {
@@ -2442,124 +2156,27 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
     );
 }
 
-function ResultInputModal({ courtIndex, players, onResultSubmit, onCancelMatch, onClose }) {
-    const [winners, setWinners] = useState([]);
 
-    const handlePlayerClick = (playerId) => {
-        setWinners(prev => {
-            if (prev.includes(playerId)) {
-                return prev.filter(id => id !== playerId);
-            }
-            if (prev.length < 2) {
-                return [...prev, playerId];
-            }
-            return prev;
-        });
-    };
 
-    useEffect(() => {
-        if (winners.length === 2) {
-            const timer = setTimeout(() => {
-                onResultSubmit(courtIndex, winners);
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [winners, courtIndex, onResultSubmit]);
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-center shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font flicker-text">승리팀 선택</h3>
-                <p className="text-gray-300 mb-6">승리한 선수 2명을 선택하세요.</p>
-                <div className="grid grid-cols-4 gap-2">
-                    {players.map(p => (
-                        <PlayerCard
-                            key={p.id}
-                            player={p}
-                            context={{}}
-                            isMovable={true}
-                            onCardClick={() => handlePlayerClick(p.id)}
-                            isSelectedForWin={winners.includes(p.id)}
-                        />
-                    ))}
-                </div>
-                {/* [수정] 버튼 레이아웃 변경: 일반 닫기 버튼과 별도로 하단에 경기 취소 링크형 버튼 추가 */}
-                <button onClick={onClose} className="mt-6 w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">창 닫기</button>
-                
-                <button 
-                    onClick={() => onCancelMatch(courtIndex)} 
-                    className="mt-4 w-full text-[11px] text-gray-500 hover:text-red-400 transition-colors underline decoration-dotted"
-                >
-                    실수로 경기를 시작했나요? 경기 취소하기
-                </button>
-            </div>
-        </div>
-    );
-}
-function PointSystemModal({ content, onClose }) {
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-left shadow-lg">
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-yellow-400 arcade-font">점수 시스템</h3>
-                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white">&times;</button>
-                </div>
-                <p className="text-gray-300 mb-6 whitespace-pre-wrap">{content}</p>
-                <button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button>
-            </div>
-        </div>
-    );
-}
-
-function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
-    const isMonthlyMode = mode === 'monthly';
-    const [stats, setStats] = useState({
-        todayWins: player.todayWins || 0,
-        todayLosses: player.todayLosses || 0,
-        todayWinStreakCount: player.todayWinStreakCount || 0,
-        wins: player.wins || 0,
-        losses: player.losses || 0,
-        winStreakCount: player.winStreakCount || 0,
-        attendanceCount: player.attendanceCount || 0,
-    });
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setStats(prev => ({...prev, [name]: Number(value) }));
-    };
-
-    const handleSave = async () => {
-        let finalStats = {};
-        if (isMonthlyMode) {
-            finalStats.wins = stats.wins;
-            finalStats.losses = stats.losses;
-            finalStats.winStreakCount = stats.winStreakCount;
-            finalStats.attendanceCount = stats.attendanceCount;
-            finalStats.rp = (stats.wins * RP_CONFIG.WIN) +
-                          (stats.losses * RP_CONFIG.LOSS) +
-                          (stats.winStreakCount * RP_CONFIG.WIN_STREAK_BONUS) +
-                          (stats.attendanceCount * RP_CONFIG.ATTENDANCE);
-        } else {
-            finalStats.todayWins = stats.todayWins;
-            finalStats.todayLosses = stats.todayLosses;
-            finalStats.todayWinStreakCount = stats.todayWinStreakCount;
-        }
-        await updateDoc(doc(playersRef, player.id), finalStats);
+function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
+    const handleToggleRest = async () => {
+        await updateDoc(doc(playersRef, player.id), { isResting: !player.isResting });
         onClose();
     };
 
     const handleDeletePermanently = () => {
-        setModal({ type: 'confirm', data: { title: '선수 영구 삭제', body: `[경고] ${player.name} 선수를 랭킹에서 영구적으로 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`,
+        setModal({ type: 'confirm', data: { title: '선수 완전 삭제', body: `[경고] ${player.name} 선수를 완전히 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`,
             onConfirm: async () => {
                 await deleteDoc(doc(playersRef, player.id));
                 onClose();
+                setModal({ type: null, data: null });
             }
         }});
     };
 
     const RecentGamesList = ({ games }) => {
         if (!games || games.length === 0) {
-            return <p className="text-sm text-gray-500 text-center">오늘 경기 기록이 없습니다.</p>;
+            return <p className="text-sm text-gray-500 text-center">오늘 매칭 기록이 없습니다.</p>;
         }
 
         const getPlayerName = (id) => allPlayers[id]?.name || '알수없음';
@@ -2572,9 +2189,8 @@ function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
                     const teamText = partners ? `(팀: ${partners})` : '';
 
                     return (
-                        <li key={i} className={`flex justify-between p-2 rounded ${game.result === '승' ? 'bg-blue-900/50' : 'bg-red-900/50'}`}>
+                        <li key={i} className="flex justify-between p-2 rounded bg-gray-700/50">
                             <span className="truncate">vs {opponents} {teamText}</span>
-                            <span className={`font-bold shrink-0 ml-2 ${game.result === '승' ? 'text-blue-400' : 'text-red-400'}`}>{game.result}</span>
                         </li>
                     )
                 })}
@@ -2585,36 +2201,23 @@ function AdminEditPlayerModal({ player, mode, allPlayers, onClose, setModal }) {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg">
-                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">{player.name} 기록 수정</h3>
-                <div className="space-y-4">
-                    {isMonthlyMode ? (
-                        <>
-                            <p className="text-sm text-center text-cyan-300 arcade-font">- 이번달 기록 -</p>
-                            <div className="flex items-center justify-between"><label className="font-semibold">승</label><input type="number" name="wins" value={stats.wins} onChange={handleChange} className="w-2/3 bg-gray-700 p-2 rounded-lg text-right"/></div>
-                            <div className="flex items-center justify-between"><label className="font-semibold">패</label><input type="number" name="losses" value={stats.losses} onChange={handleChange} className="w-2/3 bg-gray-700 p-2 rounded-lg text-right"/></div>
-                            <div className="flex items-center justify-between"><label className="font-semibold">연승횟수</label><input type="number" name="winStreakCount" value={stats.winStreakCount} onChange={handleChange} className="w-2/3 bg-gray-700 p-2 rounded-lg text-right"/></div>
-                            <div className="flex items-center justify-between"><label className="font-semibold">참석</label><input type="number" name="attendanceCount" value={stats.attendanceCount} onChange={handleChange} className="w-2/3 bg-gray-700 p-2 rounded-lg text-right"/></div>
-                        </>
-                    ) : (
-                        <>
-                            <p className="text-sm text-center text-yellow-300 arcade-font">- 오늘 기록 -</p>
-                            <div className="flex items-center justify-between"><label className="font-semibold">승</label><input type="number" name="todayWins" value={stats.todayWins} onChange={handleChange} className="w-2/3 bg-gray-700 p-2 rounded-lg text-right"/></div>
-                            <div className="flex items-center justify-between"><label className="font-semibold">패</label><input type="number" name="todayLosses" value={stats.todayLosses} onChange={handleChange} className="w-2/3 bg-gray-700 p-2 rounded-lg text-right"/></div>
-                            <div className="flex items-center justify-between"><label className="font-semibold">연승횟수</label><input type="number" name="todayWinStreakCount" value={stats.todayWinStreakCount} onChange={handleChange} className="w-2/3 bg-gray-700 p-2 rounded-lg text-right"/></div>
-                            <hr className="border-gray-600"/>
-                             <h4 className="font-bold text-yellow-400 text-center">오늘의 전적</h4>
-                            <RecentGamesList games={player.todayRecentGames} />
-                        </>
-                    )}
+                <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-bold text-yellow-400 arcade-font">{player.name} 정보 관리</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white">&times;</button>
                 </div>
-                {isMonthlyMode && (
-                    <div className="mt-4 flex flex-col gap-2">
-                        <button onClick={handleDeletePermanently} className="w-full arcade-button bg-red-700 hover:bg-red-800 text-white font-bold py-2 rounded-lg">랭킹에서 영구 삭제</button>
-                    </div>
-                )}
-                <div className="mt-4 flex gap-4">
-                    <button onClick={onClose} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg">취소</button>
-                    <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">저장</button>
+                
+                <div className="space-y-4">
+                    <button onClick={handleToggleRest} className={`w-full arcade-button font-bold py-2 rounded-lg ${player.isResting ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-600 text-white hover:bg-gray-500'}`}>
+                        {player.isResting ? '휴식 해제 (복귀)' : '휴식 상태로 전환'}
+                    </button>
+                    
+                    <hr className="border-gray-600"/>
+                    <h4 className="font-bold text-yellow-400 text-center">오늘의 매칭 히스토리</h4>
+                    <RecentGamesList games={player.todayRecentGames} />
+                </div>
+                
+                <div className="mt-6 flex flex-col gap-2">
+                    <button onClick={handleDeletePermanently} className="w-full text-xs arcade-button bg-red-900/50 hover:bg-red-800 text-red-300 font-bold py-2 rounded-lg">선수 완전 삭제</button>
                 </div>
             </div>
         </div>
@@ -2626,7 +2229,6 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
-    const [pointSystemInfo, setPointSystemInfo] = useState(seasonConfig.pointSystemInfo);
     // 자동매칭 설정 상태 (수정됨)
   const [autoMatchConfig, setAutoMatchConfig] = useState({
         ...(seasonConfig.autoMatchConfig || {}),
@@ -2634,39 +2236,11 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         announcementType: seasonConfig.announcementType || 'text',
         announcementPhotoUrl: seasonConfig.announcementPhotoUrl || ''
     });
-    const [isTesting, setIsTesting] = useState(false);
 
     if (!isAdmin) return null;
     
     const handleSave = () => {
-        onSave({ scheduled, courts, announcement, pointSystemInfo, autoMatchConfig });
-    };
-
-    const handleTest = async (functionName, confirmTitle, confirmBody) => {
-        setModal({ type: 'confirm', data: {
-            title: confirmTitle,
-            body: confirmBody,
-            onConfirm: async () => {
-                setIsTesting(true);
-                setModal({ type: 'alert', data: { title: '처리 중...', body: '테스트 함수를 실행하고 있습니다.' } });
-                try {
-                    const testFunction = httpsCallable(functions, functionName);
-                    const result = await testFunction();
-                    setModal({ type: 'alert', data: {
-                        title: '테스트 완료',
-                        body: result.data.message
-                    }});
-                } catch (error) {
-                    console.error("Test function call failed:", error);
-                    setModal({ type: 'alert', data: {
-                        title: '테스트 실패',
-                        body: `Cloud Function 호출에 실패했습니다: ${error.message}`
-                    }});
-                } finally {
-                    setIsTesting(false);
-                }
-            }
-        }});
+        onSave({ scheduled, courts, announcement, autoMatchConfig });
     };
 
     const handleAutoMatchConfigChange = (e) => {
@@ -2877,31 +2451,12 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     </div>
 )}
                     </div>
-                     <div className="bg-gray-700 p-3 rounded-lg">
-                        <label className="font-semibold mb-2 block">점수 획득 설명</label>
-                        <textarea value={pointSystemInfo} onChange={(e) => setPointSystemInfo(e.target.value)} rows="5" className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
-                    </div>
 
                     {/* --- 고급 기능 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg space-y-2">
                         <label className="font-semibold mb-2 block text-center">고급 기능</label>
-                        <button
-                            onClick={() => handleTest('testDailyBatch', '일일 정산 테스트', '현재 선수들의 "오늘" 기록을 "이번달" 기록에 합산하고 초기화하는 일일 정산 작업을 테스트합니다. 실행하시겠습니까?')}
-                            disabled={isTesting}
-                            className="w-full arcade-button bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
-                        >
-                            {isTesting ? '테스트 중...' : '일일 정산 테스트'}
-                        </button>
-                        <button
-                            onClick={() => handleTest('testMonthlyArchive', '월간 랭킹 저장 테스트', '현재 랭킹을 기준으로 "지난달" 랭킹 저장 및 알림 기능을 테스트합니다. 실제 데이터가 생성됩니다. 실행하시겠습니까?')}
-                            disabled={isTesting}
-                            className="w-full arcade-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
-                        >
-                            {isTesting ? '테스트 중...' : '월간 랭킹 저장 테스트'}
-                        </button>
                          <button
                             onClick={onSystemReset}
-                            disabled={isTesting}
                             className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
                         >
                             시스템 초기화
@@ -2956,90 +2511,7 @@ function CourtSelectionModal({ courts, onSelect, onCancel }) {
 
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 
-function RankingHistoryModal({ onCancel }) {
-    const [availableMonths, setAvailableMonths] = useState([]);
-    const [selectedMonth, setSelectedMonth] = useState('');
-    const [rankingData, setRankingData] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        const fetchMonths = async () => {
-            const querySnapshot = await getDocs(query(monthlyRankingsRef));
-            const months = querySnapshot.docs.map(doc => doc.id).sort((a, b) => b.localeCompare(a));
-            setAvailableMonths(months);
-            setIsLoading(false);
-        };
-        fetchMonths();
-    }, []);
-
-    useEffect(() => {
-        if (!selectedMonth) return;
-
-        const fetchRanking = async () => {
-            setIsLoading(true);
-            const docRef = doc(monthlyRankingsRef, selectedMonth);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                setRankingData(docSnap.data().ranking);
-            } else {
-                setRankingData([]);
-            }
-            setIsLoading(false);
-        };
-        fetchRanking();
-    }, [selectedMonth]);
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-        <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-bold text-yellow-400 arcade-font">랭킹 기록</h3>
-            <button onClick={onCancel} className="text-2xl text-gray-500 hover:text-white">&times;</button>
-          </div>
-
-          <div className="mb-4">
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="w-full p-2 bg-gray-700 rounded-md arcade-button"
-            >
-              <option value="">월 선택...</option>
-              {availableMonths.map(month => <option key={month} value={month}>{month}</option>)}
-            </select>
-          </div>
-
-          <div className="max-h-96 overflow-y-auto">
-            {isLoading ? (
-              <p>로딩 중...</p>
-            ) : rankingData.length > 0 ? (
-               <table className="w-full text-sm text-left text-gray-300">
-                    <thead className="text-xs text-yellow-400 uppercase bg-gray-700/50 sticky top-0">
-                        <tr>
-                            <th scope="col" className="px-4 py-3 text-center arcade-font">RANK</th>
-                            <th scope="col" className="px-6 py-3 arcade-font">NAME</th>
-                            <th scope="col" className="px-6 py-3 text-center arcade-font">RP</th>
-                            <th scope="col" className="px-6 py-3 text-center arcade-font">W/L</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rankingData.map(p => (
-                            <tr key={p.id} className="border-b border-gray-700">
-                                <td className="px-4 py-3 font-bold text-center arcade-font">{p.rank}</td>
-                                <td className="px-6 py-3 font-bold whitespace-nowrap">{p.name}</td>
-                                <td className="px-6 py-3 text-center font-bold text-green-400">{p.rp || 0}</td>
-                                <td className="px-6 py-3 text-center">{p.wins || 0}승 {p.losses || 0}패</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            ) : selectedMonth && (
-              <p>{selectedMonth}의 랭킹 데이터가 없습니다.</p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-}
 
 // [자동매칭] 이 모달은 더 이상 사용되지 않습니다.
 /*
