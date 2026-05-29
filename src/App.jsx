@@ -1481,9 +1481,10 @@ useEffect(() => {
             const maleCount = activePlayersList.filter(p => p.gender === '남').length;
             const femaleCount = activePlayersList.filter(p => p.gender === '여').length;
 
-            const getDynamicMinScore = (totalPlayers) => {
-                if (totalPlayers < 8) return 0;
-                if (totalPlayers >= 8 && totalPlayers < 12) return 50; // 3명 연속 중복 방지, 2명 중복 허용 커트라인
+          const getDynamicMinScore = (totalPlayers) => {
+                if (totalPlayers < 8) return -100;
+                if (totalPlayers >= 8 && totalPlayers < 12) return 0;
+                if (totalPlayers >= 12 && totalPlayers < 16) return 40;
                 return 80;
             };
 
@@ -1538,10 +1539,10 @@ useEffect(() => {
     useEffect(() => {
         const isAutoMatchEnabled = isAdmin && seasonConfig?.autoMatchConfig?.isEnabled;
 
-        if (isAutoMatchEnabled) {
+       if (isAutoMatchEnabled) {
             if (!schedulerIntervalRef.current) {
-                // [수정] 7초마다 스케줄러 실행
-                schedulerIntervalRef.current = setInterval(runMatchScheduler, 7000);
+                // [수정] 3초마다 스케줄러 실행
+                schedulerIntervalRef.current = setInterval(runMatchScheduler, 3000);
             }
         } else {
             if (schedulerIntervalRef.current) {
@@ -2320,15 +2321,12 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
         const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
 
-      // [수정] 전체 인원수에 따른 직관적인 커트라인 계산 함수
+     // [수정] 전체 인원수에 따른 직관적인 커트라인 계산 함수
         const getMinScore = (totalPlayers) => {
-            if (totalPlayers < 8) {
-                return 0;  // 사람이 없으니 겹쳐도 무조건 매칭
-            } else if (totalPlayers >= 8 && totalPlayers < 12) {
-                return 50; // 4명 중 2명 중복은 허용, 3명 연속 중복은 방지하는 커트라인
-            } else {
-                return 80; // 인원이 많을 때는 3코트 분량 이상이므로 새로운 조합 위주로 매칭
-            }
+            if (totalPlayers < 8) return -100; // 생존 모드 (회전율 최우선)
+            if (totalPlayers >= 8 && totalPlayers < 12) return 0; // 현실적 타협 구간 (10명 기준 최적화)
+            if (totalPlayers >= 12 && totalPlayers < 16) return 40; // 쾌적 모드
+            return 80; // 엄격한 다양성 모드
         };
 
         return {
