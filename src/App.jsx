@@ -968,14 +968,7 @@ useEffect(() => {
         if (lastSeen !== today) {
             setModal({ type: 'season', data: seasonConfig });
         }
-    }, [isLoading, seasonConfig, isSeasonModalDismissed]);
-        
-        const today = new Date().toDateString();
-        const lastSeen = localStorage.getItem(`seen-${seasonConfig.seasonId}`);
-        if (lastSeen !== today) {
-            setModal({ type: 'season', data: seasonConfig });
-        }
-    }, [isLoading, seasonConfig, resetNotification, isSeasonModalDismissed]);
+    }, [isLoading, seasonConfig, isSeasonModalDismissed, modal]);
 
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
