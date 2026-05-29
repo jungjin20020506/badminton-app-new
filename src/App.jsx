@@ -1649,7 +1649,7 @@ useEffect(() => {
         }});
     }, [updateGameState]);
 
-    const handleSystemReset = useCallback(() => {
+   const handleSystemReset = useCallback(() => {
         setModal({ type: 'confirm', data: {
             title: '시스템 초기화',
             body: '[경고] 모든 선수가 대기 명단으로 이동하고, 진행/예정/자동매칭 경기가 모두 사라집니다. 선수 기록은 유지됩니다. 계속하시겠습니까?',
@@ -1666,6 +1666,36 @@ useEffect(() => {
             }
         }});
     }, [updateGameState]);
+
+    const handleGenerateRobots = useCallback(async (maleCount, femaleCount) => {
+        setModal({ type: 'alert', data: { title: '생성 중', body: '테스트 로봇을 생성하고 있습니다...' } });
+        try {
+            const batch = writeBatch(db);
+            const now = new Date().toISOString();
+
+            for (let i = 0; i < maleCount; i++) {
+                const id = `Test_M_${Date.now()}_${i}`;
+                const playerDocRef = doc(playersRef, id);
+                batch.set(playerDocRef, {
+                    id, name: `로봇남${i+1}`, level: 'C조', gender: '남', isGuest: true,
+                    entryTime: now, isResting: false, status: 'active', todayRecentGames: []
+                });
+            }
+            for (let i = 0; i < femaleCount; i++) {
+                const id = `Test_F_${Date.now()}_${i}`;
+                const playerDocRef = doc(playersRef, id);
+                batch.set(playerDocRef, {
+                    id, name: `로봇여${i+1}`, level: 'D조', gender: '여', isGuest: true,
+                    entryTime: now, isResting: false, status: 'active', todayRecentGames: []
+                });
+            }
+            await batch.commit();
+            setModal({ type: 'alert', data: { title: '완료', body: `테스트 로봇 (남 ${maleCount}명, 여 ${femaleCount}명) 생성 완료!` }});
+        } catch (error) {
+            console.error("Robot generation failed: ", error);
+            setModal({ type: 'alert', data: { title: '오류', body: '로봇 생성 중 문제가 발생했습니다.' }});
+        }
+    }, []);
 
     const handleMoveOrSwapCourt = useCallback(async (sourceIndex, targetIndex) => {
         if (sourceIndex === targetIndex) return;
@@ -1807,6 +1837,7 @@ useEffect(() => {
             onCancel={() => setIsSettingsOpen(false)}
             setModal={setModal}
             onSystemReset={handleSystemReset}
+            onGenerateRobots={handleGenerateRobots}
         />}
 
             <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
@@ -2218,10 +2249,12 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
 }
 
 // [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onGenerateRobots }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
+    const [robotMaleCount, setRobotMaleCount] = useState(0);
+    const [robotFemaleCount, setRobotFemaleCount] = useState(0);
     // 자동매칭 설정 상태 (수정됨)
   const [autoMatchConfig, setAutoMatchConfig] = useState({
         ...(seasonConfig.autoMatchConfig || {}),
@@ -2445,9 +2478,46 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 )}
                     </div>
 
-                    {/* --- 고급 기능 --- */}
+                  {/* --- 고급 기능 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg space-y-2">
                         <label className="font-semibold mb-2 block text-center">고급 기능</label>
+                        
+                        {/* 테스트 로봇 생성 섹션 */}
+                        <div className="bg-gray-800 p-2 rounded border border-gray-600 mb-4">
+                            <p className="text-sm font-semibold text-center mb-2 text-cyan-400">🤖 테스트 로봇 생성 (개발용)</p>
+                            <div className="flex justify-around gap-2 mb-2">
+                                <div className="flex-1 text-center">
+                                    <label className="block text-xs mb-1 text-gray-400">👨 남자 수</label>
+                                    <input 
+                                        type="number" min="0" 
+                                        value={robotMaleCount} 
+                                        onChange={(e) => setRobotMaleCount(Number(e.target.value))} 
+                                        className="w-full bg-gray-600 p-1.5 rounded text-center text-white text-sm" 
+                                    />
+                                </div>
+                                <div className="flex-1 text-center">
+                                    <label className="block text-xs mb-1 text-gray-400">👩 여자 수</label>
+                                    <input 
+                                        type="number" min="0" 
+                                        value={robotFemaleCount} 
+                                        onChange={(e) => setRobotFemaleCount(Number(e.target.value))} 
+                                        className="w-full bg-gray-600 p-1.5 rounded text-center text-white text-sm" 
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    onGenerateRobots(robotMaleCount, robotFemaleCount);
+                                    setRobotMaleCount(0);
+                                    setRobotFemaleCount(0);
+                                }}
+                                className="w-full arcade-button bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                disabled={robotMaleCount === 0 && robotFemaleCount === 0}
+                            >
+                                로봇 생성하기
+                            </button>
+                        </div>
+
                          <button
                             onClick={onSystemReset}
                             className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
