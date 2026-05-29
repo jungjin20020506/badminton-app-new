@@ -511,6 +511,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                 <div className={playerNameClass}>{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>
                     <span style={levelStyle}>{player.level.replace('조','')}</span>
+                    <span className="ml-1 text-gray-300 font-bold">{player.todayRecentGames ? player.todayRecentGames.length : 0}G</span>
                 </div>
             </div>
             {isAdmin && onAction && (
@@ -1469,17 +1470,30 @@ useEffect(() => {
                 !autoMatchedPlayerIds.has(p.id) &&
                 !p.isResting // <-- 휴식 선수 제외
             );
-            const femalePool = waitingPlayers.filter(p =>
+           const femalePool = waitingPlayers.filter(p =>
                 p.gender === '여' &&
                 !autoMatchedPlayerIds.has(p.id) &&
                 !p.isResting // <-- 휴식 선수 제외
             );
 
-            const bestMaleMatches = findBestMatches(malePool, allPlayers, config.minMaleScore);
-            const bestFemaleMatches = findBestMatches(femalePool, allPlayers, config.minFemaleScore);
+            // [수정] 수동 모드가 아닐 경우 현재 인원수를 기준으로 자동 점수 계산
+            const activePlayersList = Object.values(allPlayers).filter(p => p.status === 'active' && !p.isResting && !p.isGuest);
+            const maleCount = activePlayersList.filter(p => p.gender === '남').length;
+            const femaleCount = activePlayersList.filter(p => p.gender === '여').length;
+
+            const getDynamicMinScore = (totalPlayers) => {
+                if (totalPlayers < 8) return 0;
+                if (totalPlayers >= 8 && totalPlayers < 12) return 50; // 3명 연속 중복 방지, 2명 중복 허용 커트라인
+                return 80;
+            };
+
+            const appliedMinMaleScore = config.isManualConfig ? config.minMaleScore : getDynamicMinScore(maleCount);
+            const appliedMinFemaleScore = config.isManualConfig ? config.minFemaleScore : getDynamicMinScore(femaleCount);
+
+            const bestMaleMatches = findBestMatches(malePool, allPlayers, appliedMinMaleScore);
+            const bestFemaleMatches = findBestMatches(femalePool, allPlayers, appliedMinFemaleScore);
 
             const newMatches = [...bestMaleMatches, ...bestFemaleMatches];
-
            // App.jsx (수정된 버전)
 
             if (newMatches.length > 0) {
@@ -2208,20 +2222,27 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
         return (
             <ul className="text-sm space-y-1 max-h-32 overflow-y-auto pr-2">
                 {games.map((game, i) => {
-                    const partners = game.partners.map(getPlayerName).join(', ');
-                    const opponents = game.opponents.map(getPlayerName).join(', ');
-                    const teamText = partners ? `(팀: ${partners})` : '';
-
+                    const allPlayersInGame = [player.id, ...game.partners, ...game.opponents];
+                    
                     return (
-                        <li key={i} className="flex justify-between p-2 rounded bg-gray-700/50">
-                            <span className="truncate">vs {opponents} {teamText}</span>
+                        <li key={i} className="flex flex-col p-2 rounded bg-gray-700/50">
+                            <div className="flex flex-wrap gap-1">
+                                {allPlayersInGame.map((id, idx) => {
+                                    const name = getPlayerName(id);
+                                    const isTargetPlayer = id === player.id;
+                                    return (
+                                        <span key={idx} className={isTargetPlayer ? "text-yellow-400 font-bold" : "text-gray-300"} style={isTargetPlayer ? { textShadow: '0 0 8px rgba(250, 204, 21, 0.8)' } : {}}>
+                                            {name}{idx < allPlayersInGame.length - 1 ? ', ' : ''}
+                                        </span>
+                                    );
+                                })}
+                            </div>
                         </li>
                     )
                 })}
             </ul>
         );
     };
-
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-md text-white shadow-lg">
@@ -2299,14 +2320,14 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
         const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
 
-        // [수정] 전체 인원수에 따른 직관적인 커트라인 계산 함수
+      // [수정] 전체 인원수에 따른 직관적인 커트라인 계산 함수
         const getMinScore = (totalPlayers) => {
             if (totalPlayers < 8) {
                 return 0;  // 사람이 없으니 겹쳐도 무조건 매칭
             } else if (totalPlayers >= 8 && totalPlayers < 12) {
-                return 60; // 2코트 분량. 겹치면 남들 끝날때까지 대기
+                return 50; // 4명 중 2명 중복은 허용, 3명 연속 중복은 방지하는 커트라인
             } else {
-                return 90; // 3코트 분량 이상. 무조건 완벽한 뉴페이스랑만 매칭
+                return 80; // 인원이 많을 때는 3코트 분량 이상이므로 새로운 조합 위주로 매칭
             }
         };
 
