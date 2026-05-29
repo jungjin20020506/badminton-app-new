@@ -1476,8 +1476,8 @@ useEffect(() => {
                 !p.isResting // <-- 휴식 선수 제외
             );
 
-            // [수정] 수동 모드가 아닐 경우 현재 인원수를 기준으로 자동 점수 계산
-            const activePlayersList = Object.values(allPlayers).filter(p => p.status === 'active' && !p.isResting && !p.isGuest);
+            // [수정] 수동 모드가 아닐 경우 현재 인원수를 기준으로 자동 점수 계산 (게스트 포함)
+            const activePlayersList = Object.values(allPlayers).filter(p => p.status === 'active' && !p.isResting);
             const maleCount = activePlayersList.filter(p => p.gender === '남').length;
             const femaleCount = activePlayersList.filter(p => p.gender === '여').length;
 
@@ -2313,10 +2313,10 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         }));
     };
 
-  // [자동매칭] 전체 인원수 기반 추천 점수 계산 로직 (수정됨)
+// [자동매칭] 전체 인원수 기반 추천 점수 계산 로직 (수정됨)
     const { malePlayerCount, femalePlayerCount, recommendedMaleScore, recommendedFemaleScore } = useMemo(() => {
-        // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식/게스트 제외 (대기+진행+예정 모두 포함)
-        const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting && !p.isGuest);
+        // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식 제외 (대기+진행+예정 모두 포함, 게스트 포함)
+        const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting);
         const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
         const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
 
