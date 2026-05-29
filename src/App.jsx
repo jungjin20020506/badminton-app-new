@@ -2692,43 +2692,31 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         }));
     };
 
-    // [자동매칭] CI 및 추천 점수 계산 로직 (수정됨)
-   const { malePlayerCount, femalePlayerCount, recommendedMaleScore, recommendedFemaleScore, dynamicMaleCourts, dynamicFemaleCourts } = useMemo(() => {
-        // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식/게스트 제외
+  // [자동매칭] 전체 인원수 기반 추천 점수 계산 로직 (수정됨)
+    const { malePlayerCount, femalePlayerCount, recommendedMaleScore, recommendedFemaleScore } = useMemo(() => {
+        // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식/게스트 제외 (대기+진행+예정 모두 포함)
         const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting && !p.isGuest);
         const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
         const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
-        const totalPlayerCount = malePlayerCount + femalePlayerCount;
-        const totalCourts = courtCount; // GamsState의 numInProgressCourts (전체 코트 수)
 
-        let dynamicMaleCourts = 0;
-        let dynamicFemaleCourts = 0;
-
-        // [수정] 전체 코트 수를 기준으로 남녀 비율에 따라 동적으로 코트 수 할당
-        if (totalPlayerCount > 0) {
-            const maleRatio = malePlayerCount / totalPlayerCount;
-            dynamicMaleCourts = totalCourts * maleRatio;
-            dynamicFemaleCourts = totalCourts * (1 - maleRatio);
-        }
-
-        // [수정] CI 계산식: (성별 선수 수) / (성별로 할당된 코트 * 4명)
-        // CI = 1.5 -> 50% 혼잡 (1.5배수)
-        const calcCI = (count, courts) => (courts > 0) ? (count / (courts * 4)) : 0;
-        // [수정] 최소점수 계산식: CI가 1.5일 때 50점. CI가 오르면(혼잡) 점수(컷)도 오름.
-        const calcMinScore = (ci) => Math.round(50 + ((ci - 1.5) * 100));
-
-        const maleCI = calcCI(malePlayerCount, dynamicMaleCourts);
-        const femaleCI = calcCI(femalePlayerCount, dynamicFemaleCourts);
+        // [수정] 전체 인원수에 따른 직관적인 커트라인 계산 함수
+        const getMinScore = (totalPlayers) => {
+            if (totalPlayers < 8) {
+                return 0;  // 사람이 없으니 겹쳐도 무조건 매칭
+            } else if (totalPlayers >= 8 && totalPlayers < 12) {
+                return 60; // 2코트 분량. 겹치면 남들 끝날때까지 대기
+            } else {
+                return 90; // 3코트 분량 이상. 무조건 완벽한 뉴페이스랑만 매칭
+            }
+        };
 
         return {
-            malePlayerCount, // [수정] UI 표시를 위해 반환
-            femalePlayerCount, // [수정] UI 표시를 위해 반환
-            recommendedMaleScore: calcMinScore(maleCI),
-            recommendedFemaleScore: calcMinScore(femaleCI),
-            dynamicMaleCourts: dynamicMaleCourts, // UI 표시를 위해 반환
-            dynamicFemaleCourts: dynamicFemaleCourts // UI 표시를 위해 반환
+            malePlayerCount,
+            femalePlayerCount,
+            recommendedMaleScore: getMinScore(malePlayerCount),
+            recommendedFemaleScore: getMinScore(femalePlayerCount)
         }
-    }, [activePlayers, courtCount]); // [수정] 의존성 배열 변경
+    }, [activePlayers]); // courtCount 의존성 제거
 
 
     // [신규] 수동 설정이 아닐 경우, 추천 점수를 autoMatchConfig 상태에 자동으로 반영
@@ -2776,19 +2764,16 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                         {autoMatchConfig.isEnabled && (
                             <div className="mt-4 pt-4 border-t border-gray-600 space-y-4">
 
-                                {/* [수정] 동적 코트 수 및 추천 점수 표시 UI */}
+                              {/* [수정] 전체 인원수 및 추천 점수 표시 UI */}
                                <div className="bg-gray-800 p-2 rounded">
                                 <p className="text-sm text-center text-gray-400">
-                                    계산 기준 (활성): 남 {malePlayerCount}명 / 여 {femalePlayerCount}명
+                                    현재 활성 인원: 남 {malePlayerCount}명 / 여 {femalePlayerCount}명
                                 </p>
-                                    <p className="text-sm text-center text-gray-400">
-                                        (자동 배분 코트: 남 {dynamicMaleCourts.toFixed(1)} / 여 {dynamicFemaleCourts.toFixed(1)})
-                                    </p>
                                     <p className="text-sm text-center text-yellow-400 mt-1">
                                         추천 최소 점수: {recommendedMaleScore}점 (남) / {recommendedFemaleScore}점 (여)
                                     </p>
                                 </div>
-
+                                
                                 {/* [수정됨] 수동 설정 체크박스 및 입력란 수정 */}
                                 <div>
                                    <div className="flex justify-between items-center mb-2">
