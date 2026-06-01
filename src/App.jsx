@@ -841,6 +841,44 @@ export default function App() {
     const [gameState, setGameState] = useState(null);
     const [seasonConfig, setSeasonConfig] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
+
+    // --- [앱 설치 및 인앱 브라우저 감지 상태] ---
+    const [isInAppBrowser, setIsInAppBrowser] = useState(false);
+    const [deferredPrompt, setDeferredPrompt] = useState(null);
+    const [showInstallBanner, setShowInstallBanner] = useState(false);
+
+    useEffect(() => {
+        // 1. 인앱 브라우저 감지 (카카오톡, 라인, 인스타그램 등)
+        const userAgent = navigator.userAgent.toLowerCase();
+        const inAppKeywords = ['kakao', 'line', 'instagram', 'naver', 'everytime'];
+        const isIab = inAppKeywords.some(keyword => userAgent.includes(keyword));
+        setIsInAppBrowser(isIab);
+
+        // 2. PWA 앱 설치 이벤트 감지
+        const handleBeforeInstallPrompt = (e) => {
+            e.preventDefault();
+            setDeferredPrompt(e);
+            setShowInstallBanner(true); // 설치 배너 표시
+        };
+
+        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+        return () => {
+            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        };
+    }, []);
+
+    const handleInstallClick = async () => {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') {
+                setShowInstallBanner(false);
+            }
+            setDeferredPrompt(null);
+        }
+    };
+    // ----------------------------------------
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
    const [modal, setModal] = useState({ type: null, data: null });
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1860,8 +1898,48 @@ useEffect(() => {
     }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
 
 
-    if (isLoading) {
+   if (isLoading) {
         return <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
+    }
+
+    // 인앱 브라우저 접속 시 강제 안내 화면 (외부 브라우저 유도)
+    if (isInAppBrowser) {
+        return (
+            <div className="bg-black text-white min-h-screen flex flex-col items-center justify-center font-sans p-6 text-center" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+                <div className="bg-gray-800 p-8 rounded-2xl shadow-[0_0_20px_rgba(255,224,0,0.2)] w-full max-w-sm border border-yellow-500/30">
+                    <div className="text-5xl mb-4">🚀</div>
+                    <h2 className="text-xl font-bold text-yellow-400 mb-2">앗! 전용 브라우저가 필요해요</h2>
+                    <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+                        카카오톡 등 현재 화면에서는<br/>콕스라이팅의 실시간 매칭이 끊길 수 있어요.<br/><br/>
+                        <span className="text-white font-bold bg-red-500/20 px-2 py-1 rounded">오류 없는 쾌적한 경기 진행</span>을 위해<br/>
+                        아래 버튼을 눌러 외부 브라우저로 접속해주세요!
+                    </p>
+                    <button 
+                        onClick={() => {
+                            const targetUrl = window.location.href;
+                            // 안드로이드 카카오톡 외부 브라우저 열기 인텐트
+                            if (navigator.userAgent.toLowerCase().includes('android') && navigator.userAgent.toLowerCase().includes('kakao')) {
+                                window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(targetUrl)}`;
+                            } else {
+                                // 아이폰 또는 기타 브라우저는 클립보드 복사 유도
+                                navigator.clipboard.writeText(targetUrl).then(() => {
+                                    alert("링크가 복사되었습니다! 사파리(Safari)나 크롬(Chrome) 주소창에 붙여넣어주세요.");
+                                });
+                            }
+                        }}
+                        className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg text-sm"
+                    >
+                        {navigator.userAgent.toLowerCase().includes('android') ? '외부 브라우저로 열기' : '링크 복사해서 열기'}
+                    </button>
+                    {/* 아이폰 사용자를 위한 추가 안내 */}
+                    {!navigator.userAgent.toLowerCase().includes('android') && (
+                        <p className="text-gray-500 text-[10px] mt-4">
+                            우측 하단 [⋯] 버튼을 누르고<br/>'다른 브라우저로 열기'를 선택하셔도 됩니다.
+                        </p>
+                    )}
+                </div>
+            </div>
+        );
     }
 
   if (!currentUser) {
@@ -1870,6 +1948,21 @@ useEffect(() => {
 
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+            
+            {/* --- PWA 앱 설치 유도 배너 --- */}
+            {showInstallBanner && (
+                <div className="bg-yellow-500 text-black p-3 flex items-center justify-between shadow-lg sticky top-0 z-[60]">
+                    <div className="flex-1 pr-2">
+                        <p className="font-bold text-sm">⚡ 콕스라이팅 앱으로 설치하기</p>
+                        <p className="text-[10px] font-medium opacity-80 leading-tight mt-0.5">매번 링크 찾을 필요 없이, 1초 만에 바로 입장하세요! (저장 용량 거의 없음)</p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                        <button onClick={() => setShowInstallBanner(false)} className="px-2 py-1 text-xs text-black/60 font-bold hover:text-black">나중에</button>
+                        <button onClick={handleInstallClick} className="bg-black text-yellow-500 px-3 py-1.5 rounded text-xs font-bold shadow-sm active:scale-95 transition-transform">설치</button>
+                    </div>
+                </div>
+            )}
+
            {modal?.type === 'season' && <SeasonModal {...modal.data} onClose={() => {
                 setIsSeasonModalDismissed(true); // 현재 세션에서 공지를 닫았음을 기록
                 setModal({ type: null, data: null });
