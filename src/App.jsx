@@ -2395,9 +2395,28 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
 
 
 function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
+    const currentPlayer = allPlayers[player.id] || player;
+
     const handleToggleRest = async () => {
-        await updateDoc(doc(playersRef, player.id), { isResting: !player.isResting });
+        await updateDoc(doc(playersRef, player.id), { isResting: !currentPlayer.isResting });
         onClose();
+    };
+
+    const handleAdjustGameCount = async (delta) => {
+        const currentGames = currentPlayer.todayRecentGames || [];
+        let newGames = [...currentGames];
+        
+        if (delta > 0) {
+            newGames.unshift({ timestamp: new Date().toISOString(), partners: [], opponents: [], isManual: true });
+        } else if (delta < 0 && newGames.length > 0) {
+            newGames.shift();
+        }
+        
+        try {
+            await updateDoc(doc(playersRef, player.id), { todayRecentGames: newGames });
+        } catch (error) {
+            console.error("Game count adjustment failed:", error);
+        }
     };
 
     const handleDeletePermanently = () => {
@@ -2420,24 +2439,37 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
         return (
             <ul className="text-sm space-y-1 max-h-32 overflow-y-auto pr-2">
                 {games.map((game, i) => {
-                    const allPlayersInGame = [player.id, ...game.partners, ...game.opponents];
-                    
-                    return (
-                        <li key={i} className="flex flex-col p-2 rounded bg-gray-700/50">
-                            <div className="flex flex-wrap gap-1">
-                                {allPlayersInGame.map((id, idx) => {
-                                    const name = getPlayerName(id);
-                                    const isTargetPlayer = id === player.id;
-                                    return (
-                                        <span key={idx} className={isTargetPlayer ? "text-yellow-400 font-bold" : "text-gray-300"} style={isTargetPlayer ? { textShadow: '0 0 8px rgba(250, 204, 21, 0.8)' } : {}}>
-                                            {name}{idx < allPlayersInGame.length - 1 ? ', ' : ''}
-                                        </span>
-                                    );
-                                })}
-                            </div>
-                        </li>
-                    )
-                })}
+                            if (game.isManual) {
+                                return (
+                                    <li key={i} className="flex flex-col p-2 rounded bg-gray-700/50">
+                                        <div className="flex flex-wrap gap-1 items-center">
+                                            <span className="text-yellow-400 font-bold" style={{ textShadow: '0 0 8px rgba(250, 204, 21, 0.8)' }}>
+                                                {getPlayerName(player.id)}
+                                            </span>
+                                            <span className="text-gray-400 text-xs ml-2">(수동 조작됨)</span>
+                                        </div>
+                                    </li>
+                                );
+                            }
+
+                            const allPlayersInGame = [player.id, ...game.partners, ...game.opponents];
+                            
+                            return (
+                                <li key={i} className="flex flex-col p-2 rounded bg-gray-700/50">
+                                    <div className="flex flex-wrap gap-1">
+                                        {allPlayersInGame.map((id, idx) => {
+                                            const name = getPlayerName(id);
+                                            const isTargetPlayer = id === player.id;
+                                            return (
+                                                <span key={idx} className={isTargetPlayer ? "text-yellow-400 font-bold" : "text-gray-300"} style={isTargetPlayer ? { textShadow: '0 0 8px rgba(250, 204, 21, 0.8)' } : {}}>
+                                                    {name}{idx < allPlayersInGame.length - 1 ? ', ' : ''}
+                                                </span>
+                                            );
+                                        })}
+                                    </div>
+                                </li>
+                            )
+                        })}
             </ul>
         );
     };
@@ -2450,14 +2482,23 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
                 </div>
                 
                 <div className="space-y-4">
-                    <button onClick={handleToggleRest} className={`w-full arcade-button font-bold py-2 rounded-lg ${player.isResting ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-600 text-white hover:bg-gray-500'}`}>
-                        {player.isResting ? '휴식 해제 (복귀)' : '휴식 상태로 전환'}
-                    </button>
-                    
-                    <hr className="border-gray-600"/>
-                    <h4 className="font-bold text-yellow-400 text-center">오늘의 매칭 히스토리</h4>
-                    <RecentGamesList games={player.todayRecentGames} />
-                </div>
+                            <button onClick={handleToggleRest} className={`w-full arcade-button font-bold py-2 rounded-lg ${currentPlayer.isResting ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-gray-600 text-white hover:bg-gray-500'}`}>
+                                {currentPlayer.isResting ? '휴식 해제 (복귀)' : '휴식 상태로 전환'}
+                            </button>
+
+                            <div className="flex items-center justify-between bg-gray-700/50 p-2 rounded-lg">
+                                <span className="font-bold text-gray-300">현재 게임 수 조작</span>
+                                <div className="flex items-center gap-3">
+                                    <button onClick={() => handleAdjustGameCount(-1)} className="w-8 h-8 bg-gray-600 hover:bg-gray-500 rounded text-xl font-bold flex items-center justify-center">-</button>
+                                    <span className="text-xl font-bold text-yellow-400 w-8 text-center">{(currentPlayer.todayRecentGames || []).length}</span>
+                                    <button onClick={() => handleAdjustGameCount(1)} className="w-8 h-8 bg-gray-600 hover:bg-gray-500 rounded text-xl font-bold flex items-center justify-center">+</button>
+                                </div>
+                            </div>
+                            
+                            <hr className="border-gray-600"/>
+                            <h4 className="font-bold text-yellow-400 text-center">오늘의 매칭 히스토리</h4>
+                            <RecentGamesList games={currentPlayer.todayRecentGames} />
+                        </div>
                 
                 <div className="mt-6 flex flex-col gap-2">
                     <button onClick={handleDeletePermanently} className="w-full text-xs arcade-button bg-red-900/50 hover:bg-red-800 text-red-300 font-bold py-2 rounded-lg">선수 완전 삭제</button>
