@@ -1162,7 +1162,7 @@ useEffect(() => {
                     if (permission === 'granted') {
                         // VAPID 키는 Firebase Console (프로젝트 설정 > 클라우드 메시징 > 웹 구성)에서 발급받아야 합니다.
                         const currentToken = await getToken(messaging, {
-                            vapidKey: "YOUR_PUBLIC_VAPID_KEY_HERE" // TODO: 향후 발급받은 키로 교체하세요!
+                            vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY" // TODO: 향후 발급받은 키로 교체하세요!
                         });
                         if (currentToken) {
                             const currentTokens = playerData.fcmTokens || [];
