@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"; // Storage 임포트 추가
+import { getMessaging, getToken, onMessage } from "firebase/messaging"; // FCM 푸시 알림 기능 추가
 // ===================================================================================
 // Firebase & Service Logic (하나의 파일로 통합)
 // ===================================================================================
@@ -25,6 +26,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app); // Storage 초기화
+
+// FCM 푸시 알림 객체 초기화 (브라우저가 지원하는 경우에만)
+let messaging = null;
+if (typeof window !== "undefined" && "Notification" in window) {
+    try {
+        messaging = getMessaging(app);
+    } catch (e) {
+        console.log("FCM 초기화 에러:", e);
+    }
+}
 
 // ============ [4번 전략 적용] 오프라인 지속성 활성화 ============
 // db 객체를 만든 직후, 다른 Firestore 작업을 하기 전에 호출합니다.
@@ -940,13 +951,29 @@ export default function App() {
         );
     }, [gameState]);
 
-    // [모바일 UI 개선] 화면 크기 변경을 감지하는 로직입니다.
+   // [모바일 UI 개선] 화면 크기 변경을 감지하는 로직입니다.
     useEffect(() => {
         const handleResize = () => {
             setIsMobile(window.innerWidth < 768);
         };
         window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
+
+        // [푸시 알림] 앱이 켜져 있을 때 (Foreground) 알림을 받았을 경우 처리
+        let unsubscribeMessaging = null;
+        if (messaging) {
+            unsubscribeMessaging = onMessage(messaging, (payload) => {
+                if (Notification.permission === 'granted') {
+                    new Notification(payload.notification.title, {
+                        body: payload.notification.body,
+                    });
+                }
+            });
+        }
+
+        return () => {
+            window.removeEventListener('resize', handleResize);
+            if (unsubscribeMessaging) unsubscribeMessaging();
+        };
     }, []);
 
     useEffect(() => {
@@ -1108,7 +1135,7 @@ useEffect(() => {
             let docSnap = await getDoc(playerDocRef);
             let playerData;
 
-           if (docSnap.exists()) {
+          if (docSnap.exists()) {
                 const existingData = docSnap.data();
                 playerData = {
                     ...existingData,
@@ -1126,6 +1153,27 @@ useEffect(() => {
                     status: 'active',
                     todayRecentGames: [],
                 };
+            }
+
+            // [푸시 알림] 권한 요청 및 FCM 토큰 저장
+            if (messaging) {
+                try {
+                    const permission = await Notification.requestPermission();
+                    if (permission === 'granted') {
+                        // VAPID 키는 Firebase Console (프로젝트 설정 > 클라우드 메시징 > 웹 구성)에서 발급받아야 합니다.
+                        const currentToken = await getToken(messaging, {
+                            vapidKey: "YOUR_PUBLIC_VAPID_KEY_HERE" // TODO: 향후 발급받은 키로 교체하세요!
+                        });
+                        if (currentToken) {
+                            const currentTokens = playerData.fcmTokens || [];
+                            if (!currentTokens.includes(currentToken)) {
+                                playerData.fcmTokens = [...currentTokens, currentToken];
+                            }
+                        }
+                    }
+                } catch (tokenError) {
+                    console.log("FCM 토큰 발급 오류:", tokenError);
+                }
             }
 
             await setDoc(playerDocRef, playerData, { merge: true });
@@ -1410,6 +1458,24 @@ useEffect(() => {
             };
 
             await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다. 다른 관리자가 먼저 시작했을 수 있습니다.');
+            
+            // [푸시 알림] 서버(Cloud Functions)로 경기 시작 알림 발송 요청
+            const playersToNotify = matchType === 'schedule' 
+                ? gameState.scheduledMatches[String(matchIndex)] 
+                : gameState.autoMatches[String(matchIndex)];
+                
+            if (playersToNotify && playersToNotify.length > 0) {
+                try {
+                    const sendMatchNotification = httpsCallable(functions, 'sendMatchNotification');
+                    sendMatchNotification({
+                        playerIds: playersToNotify,
+                        courtIndex: courtIndex
+                    }).catch(err => console.log("푸시 알림 함수 호출 실패:", err));
+                } catch (error) {
+                    console.error(error);
+                }
+            }
+
             setModal({type:null, data:null});
         };
 
