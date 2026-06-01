@@ -3,27 +3,28 @@ const { onCall } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getMessaging } = require("firebase-admin/messaging"); // [추가됨] 푸시 알림 발송을 위한 도구
 
 initializeApp();
 
 const RP_CONFIG = { WIN: 30, LOSS: 10, ATTENDANCE: 20, WIN_STREAK_BONUS: 20 };
 const ADMIN_ID = "정형진"; 
 
-// [MODIFIED] 'runDailyBatchUpdate' 함수 로직 수정
+// ============================================================================
+// 1. 일일 정산 로직 (기존 코드 유지)
+// ============================================================================
 async function runDailyBatchUpdate() {
   logger.log("매일 선수 데이터 정산 작업을 시작합니다.");
 
   const db = getFirestore();
   const playersRef = db.collection("players");
   
-  // 1. 'status'와 관계없이 모든 플레이어 문서를 가져옵니다.
   const allPlayersSnapshot = await playersRef.get();
   if (allPlayersSnapshot.empty) {
     logger.log("등록된 선수가 없어 함수를 종료합니다.");
     return "등록된 선수가 없습니다.";
   }
 
-  // 2. 오늘 경기 기록(todayWins 또는 todayLosses)이 있는 선수만 필터링합니다.
   const playersToUpdate = [];
   allPlayersSnapshot.forEach(doc => {
     const player = doc.data();
@@ -34,7 +35,6 @@ async function runDailyBatchUpdate() {
     }
   });
 
-  // 3. 업데이트할 선수가 없으면 작업을 종료합니다.
   if (playersToUpdate.length === 0) {
     logger.log("오늘 경기 기록이 있는 선수가 없어 정산을 종료합니다.");
     return "정산할 선수가 없습니다.";
@@ -42,7 +42,6 @@ async function runDailyBatchUpdate() {
 
   const batch = db.batch();
   
-  // 4. 필터링된 선수들에 대해서만 배치 업데이트를 실행합니다.
   playersToUpdate.forEach(playerDoc => {
     const player = playerDoc.data;
     const playerRef = playerDoc.ref;
@@ -94,7 +93,6 @@ async function runDailyBatchUpdate() {
   return `일일 정산 작업이 성공적으로 완료되었습니다. (${playersToUpdate.length}명 처리)`;
 }
 
-
 exports.dailyBatchUpdate = onSchedule({
   schedule: "10 22 * * *",
   timeZone: "Asia/Seoul",
@@ -119,6 +117,9 @@ exports.testDailyBatch = onCall({ cors: true }, async (request) => {
 });
 
 
+// ============================================================================
+// 2. 월간 랭킹 보관 로직 (기존 코드 유지)
+// ============================================================================
 async function archiveMonthlyRanking(db, isTest = false) {
   const playersRef = db.collection("players");
   
@@ -195,5 +196,64 @@ exports.testMonthlyArchive = onCall({ cors: true }, async (request) => {
     } catch (error) {
         logger.error("월간 랭킹 '테스트' 중 오류 발생:", error);
         throw new functions.https.HttpsError('internal', '테스트 함수 실행 중 서버에서 오류가 발생했습니다.');
+    }
+});
+
+
+// ============================================================================
+// 3. [신규 추가] 경기 시작 푸시 알림 로직
+// ============================================================================
+exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
+    const data = request.data;
+    // 프론트엔드에서 넘겨준 '경기장에 들어가는 선수 4명의 ID 배열'
+    const playerIds = data.playerIds || [];
+    const courtIndex = data.courtIndex;
+
+    if (playerIds.length === 0) {
+        return { success: false, message: "알림을 보낼 선수가 없습니다." };
+    }
+
+    const db = getFirestore();
+    const tokens = [];
+
+    try {
+        // 1. 경기장에 들어가는 4명의 선수 정보를 DB(Firestore)에서 조회합니다.
+        const promises = playerIds.filter(id => id).map(id => db.collection('players').doc(id).get());
+        const snapshots = await Promise.all(promises);
+
+        snapshots.forEach(snap => {
+            if (snap.exists) {
+                const playerData = snap.data();
+                // 해당 선수의 휴대폰 고유 주소(토큰)가 저장되어 있다면 리스트에 담습니다.
+                if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
+                    tokens.push(...playerData.fcmTokens);
+                }
+            }
+        });
+
+        // 2. 만약 4명 모두 알림을 허용하지 않았거나 주소가 없다면 종료합니다.
+        if (tokens.length === 0) {
+            logger.log("전송할 휴대폰 주소(토큰)가 없어 알림을 보내지 않습니다.");
+            return { success: false, message: "전송할 토큰 없음" };
+        }
+
+        // 3. 선수들 휴대폰에 띄울 메시지 내용을 만듭니다.
+        const message = {
+            notification: {
+                title: '🏸 콕스타 경기 시작!',
+                body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
+            },
+            tokens: tokens, // 모아둔 휴대폰 주소 리스트를 통째로 넣습니다.
+        };
+
+        // 4. 구글 알림 센터(Firebase)에 "이 메시지를 저 주소들로 배달해주세요!" 라고 요청합니다.
+        const response = await getMessaging().sendEachForMulticast(message);
+        
+        logger.log(`푸시 알림 전송 결과: ${response.successCount}건 성공, ${response.failureCount}건 실패`);
+        return { success: true, successCount: response.successCount };
+        
+    } catch (error) {
+        logger.error("푸시 알림 전송 중 에러 발생:", error);
+        throw new functions.https.HttpsError('internal', '알림 배달 중 문제가 발생했습니다.');
     }
 });
