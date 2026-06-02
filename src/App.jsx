@@ -864,21 +864,29 @@ export default function App() {
     const [deferredPrompt, setDeferredPrompt] = useState(null);
     const [showInstallBanner, setShowInstallBanner] = useState(false);
 
-    useEffect(() => {
+   useEffect(() => {
         // 1. 인앱 브라우저 감지 (카카오톡, 라인, 인스타그램 등)
         const userAgent = navigator.userAgent.toLowerCase();
         const inAppKeywords = ['kakao', 'line', 'instagram', 'naver', 'everytime'];
         const isIab = inAppKeywords.some(keyword => userAgent.includes(keyword));
         setIsInAppBrowser(isIab);
 
-        // 2. PWA 앱 설치 이벤트 감지
+        // 2. PWA 앱 설치 이벤트 감지 (안드로이드/데스크탑 크롬)
         const handleBeforeInstallPrompt = (e) => {
             e.preventDefault();
             setDeferredPrompt(e);
-            setShowInstallBanner(true); // 설치 배너 표시
+            setShowInstallBanner(true);
         };
-
         window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+        // 3. iOS Safari PWA 설치 유도 (beforeinstallprompt가 작동안함)
+        const isIos = /iphone|ipad|ipod/.test(userAgent);
+        const isSafari = /safari/.test(userAgent) && !/chrome|crios|crmo/.test(userAgent);
+        const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+        
+        if (isIos && isSafari && !isStandalone) {
+            setShowInstallBanner(true); // iOS 사용자에게도 배너 표시
+        }
 
         return () => {
             window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
