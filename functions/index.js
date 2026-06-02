@@ -217,6 +217,8 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
     const tokens = [];
 
     try {
+        const tokenToDocRef = {};
+
         // 1. 경기장에 들어가는 4명의 선수 정보를 DB(Firestore)에서 조회합니다.
         const promises = playerIds.filter(id => id).map(id => db.collection('players').doc(id).get());
         const snapshots = await Promise.all(promises);
@@ -226,7 +228,10 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
                 const playerData = snap.data();
                 // 해당 선수의 휴대폰 고유 주소(토큰)가 저장되어 있다면 리스트에 담습니다.
                 if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
-                    tokens.push(...playerData.fcmTokens);
+                    playerData.fcmTokens.forEach(token => {
+                        tokens.push(token);
+                        tokenToDocRef[token] = snap.ref; // [수정] 토큰 삭제를 위해 선수 문서 주소 매핑
+                    });
                 }
             }
         });
@@ -243,12 +248,42 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
                 title: '🏸 콕스타 경기 시작!',
                 body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
             },
+            // [수정] 백그라운드 절전모드(Doze) 무시하고 즉시 깨우기 위한 우선순위 속성 추가
+            android: { priority: 'high' },
+            apns: { payload: { aps: { contentAvailable: true } } },
             tokens: tokens, // 모아둔 휴대폰 주소 리스트를 통째로 넣습니다.
         };
 
         // 4. 구글 알림 센터(Firebase)에 "이 메시지를 저 주소들로 배달해주세요!" 라고 요청합니다.
         const response = await getMessaging().sendEachForMulticast(message);
         
+        // [수정] 5. 발송 실패(에러)난 만료된 쓰레기 토큰 추적 및 DB에서 자동 삭제
+        if (response.failureCount > 0) {
+            const failedTokensToRemove = [];
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    const errorCode = resp.error.code;
+                    if (errorCode === 'messaging/invalid-registration-token' || 
+                        errorCode === 'messaging/registration-token-not-registered') {
+                        
+                        const badToken = tokens[idx];
+                        const playerRef = tokenToDocRef[badToken];
+                        if (playerRef) {
+                            // DB에서 해당 죽은 토큰만 쏙 빼서 삭제하도록 요청
+                            failedTokensToRemove.push(playerRef.update({
+                                fcmTokens: FieldValue.arrayRemove(badToken)
+                            }));
+                        }
+                    }
+                }
+            });
+            
+            if (failedTokensToRemove.length > 0) {
+                await Promise.all(failedTokensToRemove);
+                logger.log(`만료된 쓰레기 토큰 ${failedTokensToRemove.length}개를 DB에서 삭제 완료했습니다.`);
+            }
+        }
+
         logger.log(`푸시 알림 전송 결과: ${response.successCount}건 성공, ${response.failureCount}건 실패`);
         return { success: true, successCount: response.successCount };
         
