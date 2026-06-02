@@ -966,7 +966,7 @@ export default function App() {
     }, [gameState]);
 
    // [모바일 UI 개선] 화면 크기 변경을 감지하는 로직입니다.
-    useEffect(() => {
+   useEffect(() => {
         const handleResize = () => {
             setIsMobile(window.innerWidth < 768);
         };
@@ -981,6 +981,17 @@ export default function App() {
                         body: payload.notification.body,
                     });
                 }
+                // [수정] 포그라운드 자체 팝업 알림 및 진동 추가 (선수가 앱을 보고 있을 때 알림을 놓치지 않게 함)
+                if (navigator.vibrate) {
+                    navigator.vibrate([200, 100, 200, 100, 200]); // 징-징-징 강한 진동
+                }
+                setModal({ 
+                    type: 'alert', 
+                    data: { 
+                        title: payload.notification.title || '새로운 알림', 
+                        body: payload.notification.body || '코트로 이동해주세요!' 
+                    }
+                });
             });
         }
 
@@ -1455,6 +1466,12 @@ useEffect(() => {
         }
 
         const start = async (courtIndex) => {
+            // [수정] 매칭 인원 중 게스트가 있는지 확인
+            const currentMatchPlayers = matchType === 'schedule' 
+                ? gameState.scheduledMatches[String(matchIndex)] 
+                : gameState.autoMatches[String(matchIndex)];
+            const hasGuest = currentMatchPlayers && currentMatchPlayers.some(pId => pId && allPlayers[pId]?.isGuest);
+
             const updateFunction = (currentState) => {
                 const newState = JSON.parse(JSON.stringify(currentState));
                 let playersToMove = [];
@@ -1512,9 +1529,19 @@ useEffect(() => {
                 }
             }
 
-            setModal({type:null, data:null});
+            // [수정] 게스트가 있다면 관리자에게 육성 안내 요청 모달 띄우기
+            if (hasGuest) {
+                setModal({
+                    type: 'alert', 
+                    data: { 
+                        title: '🗣️ 육성 안내 필요', 
+                        body: '해당 코트에 게스트 선수가 포함되어 있습니다. 알림을 받지 못하는 게스트를 위해 육성으로 코트 번호를 안내해 주세요!' 
+                    }
+                });
+            } else {
+                setModal({type:null, data:null});
+            }
         };
-
         if (emptyCourts.length === 1) {
             start(emptyCourts[0]);
         } else {
@@ -2051,17 +2078,43 @@ useEffect(() => {
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
-           {/* --- PWA 앱 설치 유도 배너 --- */}
+          {/* --- PWA 앱 설치 유도 배너 (iOS 및 안드로이드 강력 대응) --- */}
             {showInstallBanner && (
-                <div className="bg-yellow-500 text-black p-3 flex items-center justify-between shadow-lg sticky top-0 z-[60]">
-                    <div className="flex-1 pr-2">
-                        <p className="font-bold text-sm">⚡ 콕스라이팅 앱으로 설치하기</p>
-                        <p className="text-[10px] font-medium opacity-80 leading-tight mt-0.5">매번 링크 찾을 필요 없이, 1초 만에 바로 입장하세요! (저장 용량 거의 없음)</p>
+                <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-black p-3 flex flex-col shadow-xl sticky top-0 z-[60] border-b-2 border-yellow-700">
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="flex-1 pr-2">
+                            <p className="font-extrabold text-sm flex items-center gap-1">
+                                <span className="animate-bounce">⚡</span> 콕스라이팅 전용 앱 설치
+                            </p>
+                            <p className="text-[11px] font-bold opacity-90 leading-tight mt-0.5">
+                                푸시 알림을 받고 경기에 늦지 않으려면 <span className="underline decoration-red-500">반드시 앱을 설치</span>해야 합니다!
+                            </p>
+                        </div>
+                        <div className="flex flex-shrink-0">
+                            <button onClick={() => setShowInstallBanner(false)} className="p-1 text-black/50 hover:text-black transition-colors">
+                                <i className="fas fa-times fa-lg"></i>
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                        <button onClick={() => setShowInstallBanner(false)} className="px-2 py-1 text-xs text-black/60 font-bold hover:text-black">나중에</button>
-                        <button onClick={handleInstallClick} className="bg-black text-yellow-500 px-3 py-1.5 rounded text-xs font-bold shadow-sm active:scale-95 transition-transform">설치</button>
-                    </div>
+                    
+                    {deferredPrompt ? (
+                        /* 안드로이드 / 크롬 설치 버튼 */
+                        <button onClick={handleInstallClick} className="w-full bg-black text-yellow-500 py-2.5 rounded-lg text-sm font-black shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2">
+                            <i className="fas fa-download animate-pulse"></i> 1초 만에 바로 설치하기
+                        </button>
+                    ) : (
+                        /* iOS 사파리 안내 (아이폰 사용자를 위한 시각적 설명) */
+                        <div className="bg-black/10 rounded-lg p-2.5 text-[11px] font-bold text-black flex flex-col gap-1 border border-black/20 shadow-inner">
+                            <p className="text-xs mb-1">🍎 <span className="text-red-700 font-extrabold">아이폰(iOS)</span> 3초 설치 방법:</p>
+                            <p className="flex items-center gap-1.5 mt-1">
+                                1. 화면 맨 아래의 <span className="bg-white px-2 py-0.5 rounded-md shadow-sm flex items-center border border-gray-200 text-blue-500"><i className="fas fa-external-link-alt mr-1"></i> 공유</span> 버튼 누르기
+                            </p>
+                            <p className="flex items-center gap-1.5 mt-1">
+                                2. 메뉴를 내려서 <span className="bg-white px-2 py-0.5 rounded-md shadow-sm flex items-center border border-gray-200"><i className="fas fa-plus-square text-gray-500 mr-1"></i> 홈 화면에 추가</span> 누르기
+                            </p>
+                            <p className="text-red-700 mt-1.5 bg-red-100 p-1 rounded">※ 반드시 <span className="underline">사파리(Safari)</span> 앱에서 열어주세요!</p>
+                        </div>
+                    )}
                 </div>
             )}
 
