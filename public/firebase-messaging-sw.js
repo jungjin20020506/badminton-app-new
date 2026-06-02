@@ -22,9 +22,9 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] 백그라운드 메시지 수신: ', payload);
   
-  const notificationTitle = payload.notification.title;
+  const notificationTitle = payload.data.title;
   const notificationOptions = {
-    body: payload.notification.body,
+    body: payload.data.body,
     icon: '/pwa-192x192.png' // 앱의 로고 이미지 경로 (public 폴더 기준)
   };
 
