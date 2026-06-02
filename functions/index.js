@@ -248,6 +248,11 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
                 title: '🏸 콕스타 경기 시작!',
                 body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
             },
+            webpush: {
+                notification: {
+                    icon: '/pwa-192x192.png'
+                }
+            },
             // [수정] 백그라운드 절전모드(Doze) 무시하고 즉시 깨우기 위한 우선순위 속성 추가
             android: { priority: 'high' },
             apns: { payload: { aps: { contentAvailable: true } } },
