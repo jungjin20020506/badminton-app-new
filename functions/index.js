@@ -260,11 +260,10 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
             return { success: false, message: "전송할 토큰 없음" };
         }
 
-        const message = {
+       const message = {
             notification: {
                 title: '🏸 콕스타 경기 시작!',
                 body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
-                image: '/pwa-512x512.png',
             },
             webpush: {
                 notification: { icon: '/pwa-192x192.png', badge: '/pwa-192x192.png' }
@@ -361,7 +360,6 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
             notification: {
                 title: '⏳ 경기대기 1번입니다!',
                 body: `${typeLabel} 1번으로 배정되었습니다. 곧 경기가 시작되니 코트 주변에서 몸 풀고 준비해 주세요!`,
-                image: '/pwa-512x512.png',
             },
             webpush: {
                 notification: { icon: '/pwa-192x192.png', badge: '/pwa-192x192.png' }
@@ -370,7 +368,6 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
             apns: { payload: { aps: { contentAvailable: true } } },
             tokens: uniqueTokens,
         };
-
         const response = await getMessaging().sendEachForMulticast(message);
         
         if (response.failureCount > 0) {
