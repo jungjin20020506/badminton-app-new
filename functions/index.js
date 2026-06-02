@@ -247,10 +247,12 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
             notification: {
                 title: '🏸 콕스타 경기 시작!',
                 body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
+                image: '/pwa-512x512.png', // [디자인 수정] 알림창 아래에 크게 뜨는 이미지 추가
             },
             webpush: {
                 notification: {
-                    icon: '/pwa-192x192.png'
+                    icon: '/pwa-192x192.png',
+                    badge: '/pwa-192x192.png' // [디자인 수정] 안드로이드 상단바 B로고를 콕스타 아이콘으로 대체
                 }
             },
             // [수정] 백그라운드 절전모드(Doze) 무시하고 즉시 깨우기 위한 우선순위 속성 추가
@@ -295,5 +297,85 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
     } catch (error) {
         logger.error("푸시 알림 전송 중 에러 발생:", error);
         throw new functions.https.HttpsError('internal', '알림 배달 중 문제가 발생했습니다.');
+    }
+});
+
+// ============================================================================
+// 4. [신규 추가] 경기 대기 1번 푸시 알림 로직
+// ============================================================================
+exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
+    const data = request.data;
+    const playerIds = data.playerIds || [];
+    const matchType = data.matchType; // 'schedule' 또는 'auto'
+
+    if (playerIds.length === 0) {
+        return { success: false, message: "알림을 보낼 선수가 없습니다." };
+    }
+
+    const db = getFirestore();
+    const tokens = [];
+
+    try {
+        const tokenToDocRef = {};
+        const promises = playerIds.filter(id => id).map(id => db.collection('players').doc(id).get());
+        const snapshots = await Promise.all(promises);
+
+        snapshots.forEach(snap => {
+            if (snap.exists) {
+                const playerData = snap.data();
+                if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
+                    playerData.fcmTokens.forEach(token => {
+                        tokens.push(token);
+                        tokenToDocRef[token] = snap.ref;
+                    });
+                }
+            }
+        });
+
+        if (tokens.length === 0) return { success: false, message: "전송할 토큰 없음" };
+
+        const typeLabel = matchType === 'auto' ? '자동매칭' : '경기예정';
+        
+        const message = {
+            notification: {
+                title: '⏳ 경기대기 1번입니다!',
+                body: `${typeLabel} 1번으로 배정되었습니다. 곧 경기가 시작되니 코트 주변에서 몸 풀고 준비해 주세요!`,
+                image: '/pwa-512x512.png',
+            },
+            webpush: {
+                notification: {
+                    icon: '/pwa-192x192.png',
+                    badge: '/pwa-192x192.png'
+                }
+            },
+            android: { priority: 'high' },
+            apns: { payload: { aps: { contentAvailable: true } } },
+            tokens: tokens,
+        };
+
+        const response = await getMessaging().sendEachForMulticast(message);
+        
+        if (response.failureCount > 0) {
+            const failedTokensToRemove = [];
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    const errorCode = resp.error.code;
+                    if (errorCode === 'messaging/invalid-registration-token' || 
+                        errorCode === 'messaging/registration-token-not-registered') {
+                        const badToken = tokens[idx];
+                        const playerRef = tokenToDocRef[badToken];
+                        if (playerRef) {
+                            failedTokensToRemove.push(playerRef.update({ fcmTokens: FieldValue.arrayRemove(badToken) }));
+                        }
+                    }
+                }
+            });
+            if (failedTokensToRemove.length > 0) await Promise.all(failedTokensToRemove);
+        }
+
+        return { success: true, successCount: response.successCount };
+    } catch (error) {
+        logger.error("대기 알림 전송 에러:", error);
+        throw new functions.https.HttpsError('internal', '대기 알림 문제 발생');
     }
 });
