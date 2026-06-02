@@ -1077,8 +1077,10 @@ useEffect(() => {
             setShowNotiIntroModal(false);
 
             if (permission === 'granted' && currentUser) {
+                const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
                 const currentToken = await getToken(messaging, {
-                    vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY"
+                    vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY",
+                    serviceWorkerRegistration: registration
                 });
                 if (currentToken) {
                     const playerDocRef = doc(playersRef, currentUser.id);
@@ -1100,15 +1102,40 @@ useEffect(() => {
         }
     }, [currentUser]);
 
-    // 로그인된 사용자이고 권한이 아직 'default'라면 유도 모달 띄우기
+    // 권한 체크 및 접속 시마다 백그라운드에서 자동으로 토큰을 갱신/유지하는 로직
     useEffect(() => {
-        if (currentUser && "Notification" in window) {
-            if (Notification.permission === 'default') {
-                setShowNotiIntroModal(true);
-            } else {
-                setNotiPermission(Notification.permission);
+        const checkAndSaveToken = async () => {
+            if (currentUser && "Notification" in window) {
+                if (Notification.permission === 'default') {
+                    setShowNotiIntroModal(true);
+                } else {
+                    setNotiPermission(Notification.permission);
+                    if (Notification.permission === 'granted' && messaging) {
+                        try {
+                            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                            const currentToken = await getToken(messaging, {
+                                vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY",
+                                serviceWorkerRegistration: registration
+                            });
+                            if (currentToken) {
+                                const playerDocRef = doc(playersRef, currentUser.id);
+                                const playerDoc = await getDoc(playerDocRef);
+                                if (playerDoc.exists()) {
+                                    const playerData = playerDoc.data();
+                                    const currentTokens = playerData.fcmTokens || [];
+                                    if (!currentTokens.includes(currentToken)) {
+                                        await updateDoc(playerDocRef, { fcmTokens: [...currentTokens, currentToken] });
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error("자동 토큰 갱신 에러:", error);
+                        }
+                    }
+                }
             }
-        }
+        };
+        checkAndSaveToken();
     }, [currentUser]);
 
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
