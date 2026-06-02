@@ -290,12 +290,131 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
             if (failedTokensToRemove.length > 0) await Promise.all(failedTokensToRemove);
         }
 
-        return { success: true, successCount: response.successCount };
-        
+       return { success: true, successCount: response.successCount };
     } catch (error) {
-        logger.error("푸시 알림 전송 중 에러 발생:", error);
+        logger.error("대기 알림 전송 에러:", error);
         // [수정] 올바른 에러 클래스(HttpsError) 사용하여 서버 크래시 및 CORS 에러 원천 차단
-        throw new HttpsError('internal', '알림 배달 중 문제가 발생했습니다: ' + error.message);
+        throw new HttpsError('internal', '대기 알림 문제 발생: ' + error.message);
+    }
+});
+
+// ============================================================================
+// 5. 매일 새벽 2시 경기방 및 선수 일일 히스토리 강제 초기화 로직
+// ============================================================================
+exports.dailyRoomCleanup = onSchedule({
+    schedule: "0 2 * * *",
+    timeZone: "Asia/Seoul",
+}, async (event) => {
+    logger.log("새벽 2시 경기방 및 선수 일일 히스토리 강제 초기화 작업을 시작합니다.");
+    const db = getFirestore();
+    
+    try {
+        // 1. 경기방 (gameState) 초기화: 경기예정, 경기진행, 경기대기 내보내기
+        const gameStateRef = db.collection("gameState").doc("live");
+        const gameStateDoc = await gameStateRef.get();
+        
+        if (gameStateDoc.exists) {
+            const data = gameStateDoc.data();
+            const numInProgressCourts = data.numInProgressCourts || 4;
+            
+            await gameStateRef.update({
+                inProgressCourts: Array(numInProgressCourts).fill(null), // 경기진행 비우기
+                scheduledMatches: {}, // 경기예정 비우기
+                autoQueue: [] // 경기대기(대기열) 비우기
+            });
+            logger.log("경기방(경기진행, 경기예정, 경기대기) 모든 선수 내보내기 완료.");
+        }
+
+        // 2. 모든 선수의 일일 히스토리 및 게임수 강제 초기화
+        const playersRef = db.collection("players");
+        const allPlayersSnapshot = await playersRef.get();
+        
+        if (!allPlayersSnapshot.empty) {
+            const batches = [];
+            let currentBatch = db.batch();
+            let count = 0;
+            
+            allPlayersSnapshot.forEach(doc => {
+                currentBatch.update(doc.ref, {
+                    todayWins: 0,
+                    todayLosses: 0,
+                    todayWinStreakCount: 0,
+                    todayRecentGames: []
+                });
+                count++;
+                
+                // Firestore batch 제한(500개)을 피하기 위해 400개 단위로 분할 처리
+                if (count % 400 === 0) {
+                    batches.push(currentBatch.commit());
+                    currentBatch = db.batch();
+                }
+            });
+            
+            if (count % 400 !== 0) {
+                batches.push(currentBatch.commit());
+            }
+            
+            await Promise.all(batches);
+            logger.log(`총 ${count}명의 선수 일일 데이터 및 히스토리 초기화 완료.`);
+        }
+    } catch (error) {
+        logger.error("새벽 2시 초기화 작업 중 에러 발생:", error);
+    }
+    return null;
+});
+
+// 관리자 화면 등에서 즉시 비우기를 실행해볼 수 있는 테스트용 함수 (선택사항)
+exports.testDailyRoomCleanup = onCall({ cors: true }, async (request) => {
+    logger.log("새벽 2시 초기화 로직 '테스트'를 시작합니다.");
+    const db = getFirestore();
+    
+    try {
+        const gameStateRef = db.collection("gameState").doc("live");
+        const gameStateDoc = await gameStateRef.get();
+        
+        if (gameStateDoc.exists) {
+            const data = gameStateDoc.data();
+            const numInProgressCourts = data.numInProgressCourts || 4;
+            
+            await gameStateRef.update({
+                inProgressCourts: Array(numInProgressCourts).fill(null),
+                scheduledMatches: {},
+                autoQueue: []
+            });
+        }
+
+        const playersRef = db.collection("players");
+        const allPlayersSnapshot = await playersRef.get();
+        let count = 0;
+        
+        if (!allPlayersSnapshot.empty) {
+            const batches = [];
+            let currentBatch = db.batch();
+            
+            allPlayersSnapshot.forEach(doc => {
+                currentBatch.update(doc.ref, {
+                    todayWins: 0,
+                    todayLosses: 0,
+                    todayWinStreakCount: 0,
+                    todayRecentGames: []
+                });
+                count++;
+                
+                if (count % 400 === 0) {
+                    batches.push(currentBatch.commit());
+                    currentBatch = db.batch();
+                }
+            });
+            
+            if (count % 400 !== 0) {
+                batches.push(currentBatch.commit());
+            }
+            await Promise.all(batches);
+        }
+        return { success: true, message: `경기방이 비워지고 ${count}명의 선수 데이터가 초기화되었습니다.` };
+    } catch (error) {
+        logger.error("초기화 테스트 중 에러 발생:", error);
+        throw new HttpsError('internal', '초기화 테스트 중 문제가 발생했습니다: ' + error.message);
     }
 });
 
