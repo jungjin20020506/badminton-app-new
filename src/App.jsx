@@ -1051,8 +1051,11 @@ useEffect(() => {
             img.src = seasonConfig.announcementPhotoUrl;
         }
 
-        // 이전 답변에서 드린 닫기 오류 해결 로직 포함 (isSeasonModalDismissed)
+       // 이전 답변에서 드린 닫기 오류 해결 로직 포함 (isSeasonModalDismissed)
         if (isLoading || !seasonConfig || (modal && modal.type) || isSeasonModalDismissed) return;
+        
+        // [추가] 공지사항 타입이 '없음(none)'일 경우 모달을 띄우지 않고 바로 통과
+        if (seasonConfig.announcementType === 'none') return;
         
         const today = new Date().toDateString();
         const lastSeen = localStorage.getItem(`seen-${seasonConfig.seasonId}`);
@@ -2361,7 +2364,13 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
         <h3 className="text-xs font-medium text-white/40 tracking-[0.2em] uppercase">Season Announcement</h3>
     </div>
     
-    {(announcementType === 'text' || !announcementType) ? (
+    {announcementType === 'simple' ? (
+        <div className="bg-[#151515] p-5 rounded-xl border border-yellow-500/20 shadow-[0_0_15px_rgba(255,224,0,0.1)] min-h-[250px] flex items-center justify-center text-center">
+            <p className="text-white text-base font-sans whitespace-pre-wrap leading-relaxed break-keep">
+                {announcement || "등록된 공지사항이 없습니다."}
+            </p>
+        </div>
+    ) : (announcementType === 'text' || !announcementType) ? (
         <div className="poster-wrapper">
             <style>{`
                 .poster-wrapper {
@@ -2493,7 +2502,7 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
                 </div>
             </div>
         </div>
-    ) : (
+    ) : announcementType === 'photo' ? (
         <img 
             src={announcementPhotoUrl} 
             alt="공지사항" 
@@ -2501,7 +2510,7 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
             fetchpriority="high"
             loading="eager"
         />
-    )}
+    ) : null}
 </div>
                 <div className="bg-[#111] p-4 flex flex-col gap-2 border-t border-white/5">
                     <button onClick={() => handleClose(false)} className="w-full py-3.5 bg-white text-black font-bold rounded-xl hover:bg-yellow-400 transition-all active:scale-95 text-sm">확인했습니다</button>
@@ -2832,30 +2841,46 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
                    <div className="bg-gray-700 p-3 rounded-lg space-y-3">
                         <label className="font-semibold block text-center border-b border-gray-600 pb-2">시즌 공지 설정</label>
-                    <div className="flex justify-center gap-4 mb-2">
-    <label className="flex items-center gap-2 cursor-pointer">
+                   <div className="flex flex-wrap justify-center gap-3 mb-2 text-sm">
+    <label className="flex items-center gap-1.5 cursor-pointer">
+        <input type="radio" name="announcementType" value="none" checked={autoMatchConfig.announcementType === 'none'} 
+            onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
+        <span>없음</span>
+    </label>
+    <label className="flex items-center gap-1.5 cursor-pointer">
+        <input type="radio" name="announcementType" value="simple" checked={autoMatchConfig.announcementType === 'simple'} 
+            onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
+        <span>일반 텍스트</span>
+    </label>
+    <label className="flex items-center gap-1.5 cursor-pointer">
         <input type="radio" name="announcementType" value="text" checked={(autoMatchConfig.announcementType || 'text') === 'text'} 
             onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
-        <span>일반(포스터)</span>
+        <span>포스터</span>
     </label>
-    <label className="flex items-center gap-2 cursor-pointer">
+    <label className="flex items-center gap-1.5 cursor-pointer">
         <input type="radio" name="announcementType" value="photo" checked={autoMatchConfig.announcementType === 'photo'} 
             onChange={(e) => setAutoMatchConfig(prev => ({...prev, announcementType: e.target.value}))} />
         <span>사진 업로드</span>
     </label>
 </div>
 
-{(autoMatchConfig.announcementType || 'text') === 'text' ? (
-    <div className="space-y-2">
-        <textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" placeholder="공지 내용을 입력하세요 (포스터 내에 표시됩니다)"
-            className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
-        <p className="text-[10px] text-center text-gray-500">입력한 내용이 '사용자 지정 포스터' 디자인에 자동으로 삽입됩니다.</p>
+{autoMatchConfig.announcementType === 'none' ? (
+    <div className="text-center text-sm text-gray-400 py-3 bg-gray-800 rounded">
+        접속 시 공지사항 창을 띄우지 않고 바로 방으로 입장합니다.
     </div>
-) : (
+) : autoMatchConfig.announcementType === 'photo' ? (
     <div className="space-y-2">
         <input type="file" accept="image/*" onChange={(e) => setAutoMatchConfig(prev => ({...prev, photoFile: e.target.files[0]}))}
             className="w-full text-xs text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-yellow-500 file:text-black hover:file:bg-yellow-600" />
         {seasonConfig.announcementPhotoUrl && <p className="text-[10px] text-gray-500 text-center">기존 사진이 등록되어 있습니다. 변경 시 덮어씌워집니다.</p>}
+    </div>
+) : (
+    <div className="space-y-2">
+        <textarea value={announcement} onChange={(e) => setAnnouncement(e.target.value)} rows="3" placeholder="공지 내용을 입력하세요"
+            className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400"></textarea>
+        <p className="text-[10px] text-center text-gray-500">
+            {autoMatchConfig.announcementType === 'simple' ? '입력한 내용이 모달 창에 깔끔한 일반 텍스트 형태로 표시됩니다.' : '입력한 내용이 \'사용자 지정 포스터\' 디자인에 자동으로 삽입됩니다.'}
+        </p>
     </div>
 )}
                     </div>
