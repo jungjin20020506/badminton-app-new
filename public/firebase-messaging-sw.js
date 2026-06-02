@@ -22,5 +22,14 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] 백그라운드 메시지 수신: ', payload);
   
-  // OS 시스템 차원에서 자동으로 띄워주므로 이중 알림 호출(showNotification) 제거
+  const notificationTitle = payload.notification?.title || payload.data?.title || '🏸 콕스라이팅 알림';
+  const notificationOptions = {
+    body: payload.notification?.body || payload.data?.body || '앱을 확인해주세요.',
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
+    vibrate: [200, 100, 200, 100, 200],
+    requireInteraction: true // 사용자가 알림을 확인하거나 지울 때까지 계속 유지
+  };
+
+  self.registration.showNotification(notificationTitle, notificationOptions);
 });
