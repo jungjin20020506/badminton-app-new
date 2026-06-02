@@ -1438,6 +1438,30 @@ useEffect(() => {
         };
 
         await updateGameState(updateFunction, '선수를 경기에 배정하는 데 실패했습니다.');
+        
+        // [추가] 관리자가 수동으로 대기 1번(인덱스 0)에 선수 4명을 꽉 채웠다면 대기 알림 발송
+        if (context.matchIndex === 0) {
+            setTimeout(() => {
+                const updatedGameState = firebaseService.getGameState();
+                if (updatedGameState) {
+                    const checkMatch = context.location === 'schedule' 
+                        ? updatedGameState.scheduledMatches['0'] 
+                        : updatedGameState.autoMatches['0'];
+                    if (checkMatch && checkMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
+                        try {
+                            const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
+                            sendWaitingNotification({
+                                playerIds: checkMatch,
+                                matchType: context.location
+                            }).catch(err => console.log("대기 1번 알림 함수 호출 실패:", err));
+                        } catch (error) {
+                            console.error(error);
+                        }
+                    }
+                }
+            }, 1000); // DB 동기화를 위해 약간의 지연 시간 부여
+        }
+
         setSelectedPlayerIds([]);
     }, [isAdmin, selectedPlayerIds, activePlayers, updateGameState]);
 
@@ -1526,6 +1550,27 @@ useEffect(() => {
                     console.error(error);
                 }
             }
+
+            // [추가] 앞 경기가 시작되어 새로운 팀이 대기 1번(인덱스 0)으로 올라왔다면 대기 알림 발송
+            setTimeout(() => {
+                const updatedGameState = firebaseService.getGameState();
+                if (updatedGameState) {
+                    const nextMatch = matchType === 'schedule' 
+                        ? updatedGameState.scheduledMatches['0'] 
+                        : updatedGameState.autoMatches['0'];
+                    if (nextMatch && nextMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
+                        try {
+                            const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
+                            sendWaitingNotification({
+                                playerIds: nextMatch,
+                                matchType: matchType
+                            }).catch(err => console.log("대기 1번 알림 함수 호출 실패:", err));
+                        } catch (error) {
+                            console.error(error);
+                        }
+                    }
+                }
+            }, 1000); // DB 동기화를 위해 약간의 지연 시간 부여
 
            setModal({type: null, data: null});
         };
@@ -1649,9 +1694,12 @@ useEffect(() => {
             const bestFemaleMatches = findBestMatches(femalePool, allPlayers, appliedMinFemaleScore);
 
             const newMatches = [...bestMaleMatches, ...bestFemaleMatches];
-           // App.jsx (수정된 버전)
+          // App.jsx (수정된 버전)
 
             if (newMatches.length > 0) {
+                // [추가] 기존에 자동매칭 목록이 비어있었는지 체크 (방금 대기 1번이 생성되었는지 확인용)
+                const wasAutoMatchesEmpty = Object.keys(gameState.autoMatches || {}).length === 0;
+
                 const updateFunction = (currentState) => {
                     const newState = JSON.parse(JSON.stringify(currentState));
                     
@@ -1677,10 +1725,31 @@ useEffect(() => {
                             // (드물지만) newMatches 배열 내의 다음 매치에서도 중복되지 않도록 합니다.
                             match.forEach(p => currentAutoMatchedIds.add(p.id));
                         }
-                    }
+                   }
                     return { newState };
                 };
                 await updateGameState(updateFunction, "자동 매칭 생성에 실패했습니다.");
+
+                // [추가] 자동매칭이 원래 0개였다가 방금 생성되었다면 대기 1번(인덱스 0) 알림 발송
+                if (wasAutoMatchesEmpty) {
+                    setTimeout(() => {
+                        const updatedGameState = firebaseService.getGameState();
+                        if (updatedGameState && updatedGameState.autoMatches['0']) {
+                            const auto0 = updatedGameState.autoMatches['0'];
+                            if (auto0.filter(p => p).length === PLAYERS_PER_MATCH) {
+                                try {
+                                    const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
+                                    sendWaitingNotification({
+                                        playerIds: auto0,
+                                        matchType: 'auto'
+                                    }).catch(err => console.log("대기 1번 알림 함수 호출 실패:", err));
+                                } catch (error) {
+                                    console.error(error);
+                                }
+                            }
+                        }
+                    }, 1000); // DB 동기화를 위해 약간의 지연 시간 부여
+                }
             }
         } catch (error) {
             console.error("Auto-match scheduler error:", error);
