@@ -979,6 +979,7 @@ export default function App() {
                 if (Notification.permission === 'granted') {
                     new Notification(payload.notification.title, {
                         body: payload.notification.body,
+                        icon: '/pwa-192x192.png'
                     });
                 }
                 // [수정] 포그라운드 자체 팝업 알림 및 진동 추가 (선수가 앱을 보고 있을 때 알림을 놓치지 않게 함)
@@ -1468,13 +1469,7 @@ useEffect(() => {
             return;
         }
 
-        const start = async (courtIndex) => {
-            // [수정] 매칭 인원 중 게스트가 있는지 확인
-            const currentMatchPlayers = matchType === 'schedule' 
-                ? gameState.scheduledMatches[String(matchIndex)] 
-                : gameState.autoMatches[String(matchIndex)];
-            const hasGuest = currentMatchPlayers && currentMatchPlayers.some(pId => pId && allPlayers[pId]?.isGuest);
-
+       const start = async (courtIndex) => {
             const updateFunction = (currentState) => {
                 const newState = JSON.parse(JSON.stringify(currentState));
                 let playersToMove = [];
@@ -1532,18 +1527,7 @@ useEffect(() => {
                 }
             }
 
-            // [수정] 게스트가 있다면 관리자에게 육성 안내 요청 모달 띄우기
-            if (hasGuest) {
-                setModal({
-                    type: 'alert', 
-                    data: { 
-                        title: '🗣️ 육성 안내 필요', 
-                        body: '해당 코트에 게스트 선수가 포함되어 있습니다. 알림을 받지 못하는 게스트를 위해 육성으로 코트 번호를 안내해 주세요!' 
-                    }
-                });
-            } else {
-                setModal({type:null, data:null});
-            }
+           setModal({type: null, data: null});
         };
         if (emptyCourts.length === 1) {
             start(emptyCourts[0]);
