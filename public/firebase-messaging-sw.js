@@ -25,7 +25,7 @@ messaging.onBackgroundMessage((payload) => {
   const notificationTitle = payload.notification.title;
   const notificationOptions = {
     body: payload.notification.body,
-    icon: '/logo192.png' // 앱의 로고 이미지 경로 (public 폴더 기준)
+    icon: '/pwa-192x192.png' // 앱의 로고 이미지 경로 (public 폴더 기준)
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
