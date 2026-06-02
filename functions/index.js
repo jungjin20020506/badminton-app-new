@@ -1,5 +1,5 @@
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onCall } = require("firebase-functions/v2/https");
+const { onCall, HttpsError } = require("firebase-functions/v2/https"); // [수정] HttpsError 모듈 가져오기 추가
 const { logger } = require("firebase-functions");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
@@ -112,7 +112,7 @@ exports.testDailyBatch = onCall({ cors: true }, async (request) => {
       return { success: true, message: message };
   } catch (error) {
       logger.error("일일 정산 '테스트' 중 오류 발생:", error);
-      throw new functions.https.HttpsError('internal', '테스트 함수 실행 중 서버에서 오류가 발생했습니다.');
+      throw new HttpsError('internal', '테스트 함수 실행 중 서버에서 오류가 발생했습니다.'); // [수정] 올바른 에러 클래스 사용
   }
 });
 
@@ -209,46 +209,50 @@ const recentNotifications = new Set();
 // 3. 경기 시작 푸시 알림 로직
 // ============================================================================
 exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
-    const data = request.data;
-    const playerIds = data.playerIds || [];
-    const courtIndex = data.courtIndex;
+    // [수정] 빈 데이터 참조로 인한 서버 크래시 방지
+    const data = request.data || {};
+    const playerIds = Array.isArray(data.playerIds) ? data.playerIds : [];
+    const courtIndex = data.courtIndex || 0;
 
     if (playerIds.length === 0) {
         return { success: false, message: "알림을 보낼 선수가 없습니다." };
     }
 
-    // [수정] 여러 관리자 기기에서 동시 요청 시 중복 발송 방지 (1분 캐싱)
     const matchKey = `match_${courtIndex}_${[...playerIds].sort().join('_')}`;
     if (recentNotifications.has(matchKey)) {
         logger.log("중복된 경기 시작 알림 요청 방어 완료:", matchKey);
         return { success: true, message: "중복 알림 무시됨" };
     }
     recentNotifications.add(matchKey);
-    setTimeout(() => recentNotifications.delete(matchKey), 60000); // 1분 뒤 캐시 삭제
+    setTimeout(() => recentNotifications.delete(matchKey), 60000); 
 
     const db = getFirestore();
     const tokens = [];
 
     try {
         const tokenToDocRef = {};
-        const promises = playerIds.filter(id => id).map(id => db.collection('players').doc(id).get());
-        const snapshots = await Promise.all(promises);
+        // [수정] 빈 문자열, null 등 유효하지 않은 ID 완벽 필터링
+        const validIds = playerIds.filter(id => id && typeof id === 'string' && id.trim() !== '');
+        
+        if (validIds.length > 0) {
+            const promises = validIds.map(id => db.collection('players').doc(id).get());
+            const snapshots = await Promise.all(promises);
 
-        snapshots.forEach(snap => {
-            if (snap.exists) {
-                const playerData = snap.data();
-                if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
-                    playerData.fcmTokens.forEach(token => {
-                        if (token) { // 유효한 토큰만 추가
-                            tokens.push(token);
-                            tokenToDocRef[token] = snap.ref;
-                        }
-                    });
+            snapshots.forEach(snap => {
+                if (snap.exists) {
+                    const playerData = snap.data();
+                    if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
+                        playerData.fcmTokens.forEach(token => {
+                            if (token && typeof token === 'string') { 
+                                tokens.push(token);
+                                tokenToDocRef[token] = snap.ref;
+                            }
+                        });
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        // [수정] 토큰 중복 제거 (FCM 에러 및 CORS 발생 원인 원천 차단)
         const uniqueTokens = [...new Set(tokens)];
 
         if (uniqueTokens.length === 0) {
@@ -263,10 +267,7 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
                 image: '/pwa-512x512.png',
             },
             webpush: {
-                notification: {
-                    icon: '/pwa-192x192.png',
-                    badge: '/pwa-192x192.png'
-                }
+                notification: { icon: '/pwa-192x192.png', badge: '/pwa-192x192.png' }
             },
             android: { priority: 'high' },
             apns: { payload: { aps: { contentAvailable: true } } },
@@ -279,33 +280,27 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
             const failedTokensToRemove = [];
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
-                    const errorCode = resp.error.code;
+                    const errorCode = resp.error?.code;
                     if (errorCode === 'messaging/invalid-registration-token' || 
                         errorCode === 'messaging/registration-token-not-registered') {
                         
                         const badToken = uniqueTokens[idx];
                         const playerRef = tokenToDocRef[badToken];
                         if (playerRef) {
-                            failedTokensToRemove.push(playerRef.update({
-                                fcmTokens: FieldValue.arrayRemove(badToken)
-                            }));
+                            failedTokensToRemove.push(playerRef.update({ fcmTokens: FieldValue.arrayRemove(badToken) }));
                         }
                     }
                 }
             });
-            
-            if (failedTokensToRemove.length > 0) {
-                await Promise.all(failedTokensToRemove);
-                logger.log(`만료된 쓰레기 토큰 ${failedTokensToRemove.length}개를 DB에서 삭제 완료했습니다.`);
-            }
+            if (failedTokensToRemove.length > 0) await Promise.all(failedTokensToRemove);
         }
 
-        logger.log(`푸시 알림 전송 결과: ${response.successCount}건 성공, ${response.failureCount}건 실패`);
         return { success: true, successCount: response.successCount };
         
     } catch (error) {
         logger.error("푸시 알림 전송 중 에러 발생:", error);
-        throw new functions.https.HttpsError('internal', '알림 배달 중 문제가 발생했습니다.');
+        // [수정] 올바른 에러 클래스(HttpsError) 사용하여 서버 크래시 및 CORS 에러 원천 차단
+        throw new HttpsError('internal', '알림 배달 중 문제가 발생했습니다: ' + error.message);
     }
 });
 
@@ -313,46 +308,49 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
 // 4. 경기 대기 1번 푸시 알림 로직
 // ============================================================================
 exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
-    const data = request.data;
-    const playerIds = data.playerIds || [];
+    // [수정] 빈 데이터 참조로 인한 서버 크래시 방지
+    const data = request.data || {};
+    const playerIds = Array.isArray(data.playerIds) ? data.playerIds : [];
     const matchType = data.matchType || 'schedule'; 
 
     if (playerIds.length === 0) {
         return { success: false, message: "알림을 보낼 선수가 없습니다." };
     }
 
-    // [수정] 여러 관리자 기기에서 동시 요청 시 중복 발송 방지 (1분 캐싱)
     const matchKey = `waiting_${matchType}_${[...playerIds].sort().join('_')}`;
     if (recentNotifications.has(matchKey)) {
         logger.log("중복된 대기 1번 알림 요청 방어 완료:", matchKey);
         return { success: true, message: "중복 알림 무시됨" };
     }
     recentNotifications.add(matchKey);
-    setTimeout(() => recentNotifications.delete(matchKey), 60000); // 1분 뒤 캐시 삭제
+    setTimeout(() => recentNotifications.delete(matchKey), 60000);
 
     const db = getFirestore();
     const tokens = [];
 
     try {
         const tokenToDocRef = {};
-        const promises = playerIds.filter(id => id).map(id => db.collection('players').doc(id).get());
-        const snapshots = await Promise.all(promises);
+        const validIds = playerIds.filter(id => id && typeof id === 'string' && id.trim() !== '');
 
-        snapshots.forEach(snap => {
-            if (snap.exists) {
-                const playerData = snap.data();
-                if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
-                    playerData.fcmTokens.forEach(token => {
-                        if (token) { // 유효한 토큰만 추가
-                            tokens.push(token);
-                            tokenToDocRef[token] = snap.ref;
-                        }
-                    });
+        if (validIds.length > 0) {
+            const promises = validIds.map(id => db.collection('players').doc(id).get());
+            const snapshots = await Promise.all(promises);
+
+            snapshots.forEach(snap => {
+                if (snap.exists) {
+                    const playerData = snap.data();
+                    if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
+                        playerData.fcmTokens.forEach(token => {
+                            if (token && typeof token === 'string') {
+                                tokens.push(token);
+                                tokenToDocRef[token] = snap.ref;
+                            }
+                        });
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        // [수정] 토큰 중복 제거 (FCM 에러 및 CORS 발생 원인 원천 차단)
         const uniqueTokens = [...new Set(tokens)];
 
         if (uniqueTokens.length === 0) return { success: false, message: "전송할 토큰 없음" };
@@ -366,10 +364,7 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
                 image: '/pwa-512x512.png',
             },
             webpush: {
-                notification: {
-                    icon: '/pwa-192x192.png',
-                    badge: '/pwa-192x192.png'
-                }
+                notification: { icon: '/pwa-192x192.png', badge: '/pwa-192x192.png' }
             },
             android: { priority: 'high' },
             apns: { payload: { aps: { contentAvailable: true } } },
@@ -382,7 +377,7 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
             const failedTokensToRemove = [];
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
-                    const errorCode = resp.error.code;
+                    const errorCode = resp.error?.code;
                     if (errorCode === 'messaging/invalid-registration-token' || 
                         errorCode === 'messaging/registration-token-not-registered') {
                         const badToken = uniqueTokens[idx];
@@ -399,6 +394,7 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
         return { success: true, successCount: response.successCount };
     } catch (error) {
         logger.error("대기 알림 전송 에러:", error);
-        throw new functions.https.HttpsError('internal', '대기 알림 문제 발생');
+        // [수정] 올바른 에러 클래스(HttpsError) 사용하여 서버 크래시 및 CORS 에러 원천 차단
+        throw new HttpsError('internal', '대기 알림 문제 발생: ' + error.message);
     }
 });
