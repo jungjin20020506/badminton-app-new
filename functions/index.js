@@ -203,7 +203,7 @@ exports.testMonthlyArchive = onCall({ cors: true }, async (request) => {
 // ============================================================================
 // 중복 알림 방지를 위한 전역 캐시 (Cloud Functions 메모리 활용)
 // ============================================================================
-const recentNotifications = new Set();
+const recentNotifications = new Map();
 
 // ============================================================================
 // 3. 경기 시작 푸시 알림 로직
@@ -219,12 +219,16 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
     }
 
     const matchKey = `match_${courtIndex}_${[...playerIds].sort().join('_')}`;
+    const now = Date.now();
+
     if (recentNotifications.has(matchKey)) {
-        logger.log("중복된 경기 시작 알림 요청 방어 완료:", matchKey);
-        return { success: true, message: "중복 알림 무시됨" };
+        const lastSentTime = recentNotifications.get(matchKey);
+        if (now - lastSentTime < 60000) {
+            logger.log("중복된 경기 시작 알림 요청 방어 완료:", matchKey);
+            return { success: true, message: "중복 알림 무시됨" };
+        }
     }
-    recentNotifications.add(matchKey);
-    setTimeout(() => recentNotifications.delete(matchKey), 60000); 
+    recentNotifications.set(matchKey, now);
 
     const db = getFirestore();
     const tokens = [];
@@ -261,6 +265,10 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
         }
 
        const message = {
+            notification: {
+                title: '🏸 경기 시작!',
+                body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
+            },
             data: {
                 title: '🏸 경기 시작!',
                 body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
@@ -432,13 +440,16 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
     }
 
     const matchKey = `waiting_${matchType}_${[...playerIds].sort().join('_')}`;
-    if (recentNotifications.has(matchKey)) {
-        logger.log("중복된 대기 1번 알림 요청 방어 완료:", matchKey);
-        return { success: true, message: "중복 알림 무시됨" };
-    }
-    recentNotifications.add(matchKey);
-    setTimeout(() => recentNotifications.delete(matchKey), 60000);
+    const now = Date.now();
 
+    if (recentNotifications.has(matchKey)) {
+        const lastSentTime = recentNotifications.get(matchKey);
+        if (now - lastSentTime < 60000) {
+            logger.log("중복된 대기 1번 알림 요청 방어 완료:", matchKey);
+            return { success: true, message: "중복 알림 무시됨" };
+        }
+    }
+    recentNotifications.set(matchKey, now);
     const db = getFirestore();
     const tokens = [];
 
@@ -472,6 +483,10 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
         const typeLabel = matchType === 'auto' ? '자동매칭' : '경기예정';
         
         const message = {
+            notification: {
+                title: '⏳ 경기대기 1번입니다!',
+                body: `${typeLabel} 1번으로 배정되었습니다. 곧 경기가 시작되니 코트 주변에서 몸 풀고 준비해 주세요!`,
+            },
             data: {
                 title: '⏳ 경기대기 1번입니다!',
                 body: `${typeLabel} 1번으로 배정되었습니다. 곧 경기가 시작되니 코트 주변에서 몸 풀고 준비해 주세요!`,
