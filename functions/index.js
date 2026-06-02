@@ -209,7 +209,6 @@ const recentNotifications = new Map();
 // 3. 경기 시작 푸시 알림 로직
 // ============================================================================
 exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
-    // [수정] 빈 데이터 참조로 인한 서버 크래시 방지
     const data = request.data || {};
     const playerIds = Array.isArray(data.playerIds) ? data.playerIds : [];
     const courtIndex = data.courtIndex || 0;
@@ -218,17 +217,7 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
         return { success: false, message: "알림을 보낼 선수가 없습니다." };
     }
 
-    const matchKey = `match_${courtIndex}_${[...playerIds].sort().join('_')}`;
-    const now = Date.now();
-
-    if (recentNotifications.has(matchKey)) {
-        const lastSentTime = recentNotifications.get(matchKey);
-        if (now - lastSentTime < 60000) {
-            logger.log("중복된 경기 시작 알림 요청 방어 완료:", matchKey);
-            return { success: true, message: "중복 알림 무시됨" };
-        }
-    }
-    recentNotifications.set(matchKey, now);
+    // 중복 알림 방지 로직 완전 제거 (무조건 전송)
 
     const db = getFirestore();
     const tokens = [];
@@ -430,7 +419,6 @@ exports.testDailyRoomCleanup = onCall({ cors: true }, async (request) => {
 // 4. 경기 대기 1번 푸시 알림 로직
 // ============================================================================
 exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
-    // [수정] 빈 데이터 참조로 인한 서버 크래시 방지
     const data = request.data || {};
     const playerIds = Array.isArray(data.playerIds) ? data.playerIds : [];
     const matchType = data.matchType || 'schedule'; 
@@ -439,17 +427,8 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
         return { success: false, message: "알림을 보낼 선수가 없습니다." };
     }
 
-    const matchKey = `waiting_${matchType}_${[...playerIds].sort().join('_')}`;
-    const now = Date.now();
+    // 중복 알림 방지 로직 완전 제거 (무조건 전송)
 
-    if (recentNotifications.has(matchKey)) {
-        const lastSentTime = recentNotifications.get(matchKey);
-        if (now - lastSentTime < 60000) {
-            logger.log("중복된 대기 1번 알림 요청 방어 완료:", matchKey);
-            return { success: true, message: "중복 알림 무시됨" };
-        }
-    }
-    recentNotifications.set(matchKey, now);
     const db = getFirestore();
     const tokens = [];
 
