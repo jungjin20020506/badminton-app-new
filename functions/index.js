@@ -201,11 +201,15 @@ exports.testMonthlyArchive = onCall({ cors: true }, async (request) => {
 
 
 // ============================================================================
-// 3. [신규 추가] 경기 시작 푸시 알림 로직
+// 중복 알림 방지를 위한 전역 캐시 (Cloud Functions 메모리 활용)
+// ============================================================================
+const recentNotifications = new Set();
+
+// ============================================================================
+// 3. 경기 시작 푸시 알림 로직
 // ============================================================================
 exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
     const data = request.data;
-    // 프론트엔드에서 넘겨준 '경기장에 들어가는 선수 4명의 ID 배열'
     const playerIds = data.playerIds || [];
     const courtIndex = data.courtIndex;
 
@@ -213,58 +217,64 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
         return { success: false, message: "알림을 보낼 선수가 없습니다." };
     }
 
+    // [수정] 여러 관리자 기기에서 동시 요청 시 중복 발송 방지 (1분 캐싱)
+    const matchKey = `match_${courtIndex}_${[...playerIds].sort().join('_')}`;
+    if (recentNotifications.has(matchKey)) {
+        logger.log("중복된 경기 시작 알림 요청 방어 완료:", matchKey);
+        return { success: true, message: "중복 알림 무시됨" };
+    }
+    recentNotifications.add(matchKey);
+    setTimeout(() => recentNotifications.delete(matchKey), 60000); // 1분 뒤 캐시 삭제
+
     const db = getFirestore();
     const tokens = [];
 
     try {
         const tokenToDocRef = {};
-
-        // 1. 경기장에 들어가는 4명의 선수 정보를 DB(Firestore)에서 조회합니다.
         const promises = playerIds.filter(id => id).map(id => db.collection('players').doc(id).get());
         const snapshots = await Promise.all(promises);
 
         snapshots.forEach(snap => {
             if (snap.exists) {
                 const playerData = snap.data();
-                // 해당 선수의 휴대폰 고유 주소(토큰)가 저장되어 있다면 리스트에 담습니다.
                 if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
                     playerData.fcmTokens.forEach(token => {
-                        tokens.push(token);
-                        tokenToDocRef[token] = snap.ref; // [수정] 토큰 삭제를 위해 선수 문서 주소 매핑
+                        if (token) { // 유효한 토큰만 추가
+                            tokens.push(token);
+                            tokenToDocRef[token] = snap.ref;
+                        }
                     });
                 }
             }
         });
 
-        // 2. 만약 4명 모두 알림을 허용하지 않았거나 주소가 없다면 종료합니다.
-        if (tokens.length === 0) {
+        // [수정] 토큰 중복 제거 (FCM 에러 및 CORS 발생 원인 원천 차단)
+        const uniqueTokens = [...new Set(tokens)];
+
+        if (uniqueTokens.length === 0) {
             logger.log("전송할 휴대폰 주소(토큰)가 없어 알림을 보내지 않습니다.");
             return { success: false, message: "전송할 토큰 없음" };
         }
 
-        // 3. 선수들 휴대폰에 띄울 메시지 내용을 만듭니다.
         const message = {
             notification: {
                 title: '🏸 콕스타 경기 시작!',
                 body: `${courtIndex + 1}번 코트에서 경기가 시작되었습니다. 코트로 이동해주세요!`,
-                image: '/pwa-512x512.png', // [디자인 수정] 알림창 아래에 크게 뜨는 이미지 추가
+                image: '/pwa-512x512.png',
             },
             webpush: {
                 notification: {
                     icon: '/pwa-192x192.png',
-                    badge: '/pwa-192x192.png' // [디자인 수정] 안드로이드 상단바 B로고를 콕스타 아이콘으로 대체
+                    badge: '/pwa-192x192.png'
                 }
             },
-            // [수정] 백그라운드 절전모드(Doze) 무시하고 즉시 깨우기 위한 우선순위 속성 추가
             android: { priority: 'high' },
             apns: { payload: { aps: { contentAvailable: true } } },
-            tokens: tokens, // 모아둔 휴대폰 주소 리스트를 통째로 넣습니다.
+            tokens: uniqueTokens,
         };
 
-        // 4. 구글 알림 센터(Firebase)에 "이 메시지를 저 주소들로 배달해주세요!" 라고 요청합니다.
         const response = await getMessaging().sendEachForMulticast(message);
         
-        // [수정] 5. 발송 실패(에러)난 만료된 쓰레기 토큰 추적 및 DB에서 자동 삭제
         if (response.failureCount > 0) {
             const failedTokensToRemove = [];
             response.responses.forEach((resp, idx) => {
@@ -273,10 +283,9 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
                     if (errorCode === 'messaging/invalid-registration-token' || 
                         errorCode === 'messaging/registration-token-not-registered') {
                         
-                        const badToken = tokens[idx];
+                        const badToken = uniqueTokens[idx];
                         const playerRef = tokenToDocRef[badToken];
                         if (playerRef) {
-                            // DB에서 해당 죽은 토큰만 쏙 빼서 삭제하도록 요청
                             failedTokensToRemove.push(playerRef.update({
                                 fcmTokens: FieldValue.arrayRemove(badToken)
                             }));
@@ -301,16 +310,25 @@ exports.sendMatchNotification = onCall({ cors: true }, async (request) => {
 });
 
 // ============================================================================
-// 4. [신규 추가] 경기 대기 1번 푸시 알림 로직
+// 4. 경기 대기 1번 푸시 알림 로직
 // ============================================================================
 exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
     const data = request.data;
     const playerIds = data.playerIds || [];
-    const matchType = data.matchType; // 'schedule' 또는 'auto'
+    const matchType = data.matchType || 'schedule'; 
 
     if (playerIds.length === 0) {
         return { success: false, message: "알림을 보낼 선수가 없습니다." };
     }
+
+    // [수정] 여러 관리자 기기에서 동시 요청 시 중복 발송 방지 (1분 캐싱)
+    const matchKey = `waiting_${matchType}_${[...playerIds].sort().join('_')}`;
+    if (recentNotifications.has(matchKey)) {
+        logger.log("중복된 대기 1번 알림 요청 방어 완료:", matchKey);
+        return { success: true, message: "중복 알림 무시됨" };
+    }
+    recentNotifications.add(matchKey);
+    setTimeout(() => recentNotifications.delete(matchKey), 60000); // 1분 뒤 캐시 삭제
 
     const db = getFirestore();
     const tokens = [];
@@ -325,14 +343,19 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
                 const playerData = snap.data();
                 if (playerData.fcmTokens && Array.isArray(playerData.fcmTokens)) {
                     playerData.fcmTokens.forEach(token => {
-                        tokens.push(token);
-                        tokenToDocRef[token] = snap.ref;
+                        if (token) { // 유효한 토큰만 추가
+                            tokens.push(token);
+                            tokenToDocRef[token] = snap.ref;
+                        }
                     });
                 }
             }
         });
 
-        if (tokens.length === 0) return { success: false, message: "전송할 토큰 없음" };
+        // [수정] 토큰 중복 제거 (FCM 에러 및 CORS 발생 원인 원천 차단)
+        const uniqueTokens = [...new Set(tokens)];
+
+        if (uniqueTokens.length === 0) return { success: false, message: "전송할 토큰 없음" };
 
         const typeLabel = matchType === 'auto' ? '자동매칭' : '경기예정';
         
@@ -350,7 +373,7 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
             },
             android: { priority: 'high' },
             apns: { payload: { aps: { contentAvailable: true } } },
-            tokens: tokens,
+            tokens: uniqueTokens,
         };
 
         const response = await getMessaging().sendEachForMulticast(message);
@@ -362,7 +385,7 @@ exports.sendWaitingNotification = onCall({ cors: true }, async (request) => {
                     const errorCode = resp.error.code;
                     if (errorCode === 'messaging/invalid-registration-token' || 
                         errorCode === 'messaging/registration-token-not-registered') {
-                        const badToken = tokens[idx];
+                        const badToken = uniqueTokens[idx];
                         const playerRef = tokenToDocRef[badToken];
                         if (playerRef) {
                             failedTokensToRemove.push(playerRef.update({ fcmTokens: FieldValue.arrayRemove(badToken) }));
