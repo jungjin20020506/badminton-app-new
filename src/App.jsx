@@ -976,9 +976,12 @@ export default function App() {
         let unsubscribeMessaging = null;
         if (messaging) {
             unsubscribeMessaging = onMessage(messaging, (payload) => {
+                const title = payload.notification?.title || payload.data?.title || '새로운 알림';
+                const body = payload.notification?.body || payload.data?.body || '코트로 이동해주세요!';
+
                 if (Notification.permission === 'granted') {
-                    new Notification(payload.notification.title, {
-                        body: payload.notification.body,
+                    new Notification(title, {
+                        body: body,
                         icon: '/pwa-192x192.png'
                     });
                 }
@@ -989,8 +992,8 @@ export default function App() {
                 setModal({ 
                     type: 'alert', 
                     data: { 
-                        title: payload.notification.title || '새로운 알림', 
-                        body: payload.notification.body || '코트로 이동해주세요!' 
+                        title: title, 
+                        body: body 
                     }
                 });
             });
