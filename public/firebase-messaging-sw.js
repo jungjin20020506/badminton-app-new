@@ -22,11 +22,5 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] 백그라운드 메시지 수신: ', payload);
   
-  const notificationTitle = payload.data.title;
-  const notificationOptions = {
-    body: payload.data.body,
-    icon: '/pwa-192x192.png' // 앱의 로고 이미지 경로 (public 폴더 기준)
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // OS 시스템 차원에서 자동으로 띄워주므로 이중 알림 호출(showNotification) 제거
 });
