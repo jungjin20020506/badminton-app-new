@@ -1889,8 +1889,8 @@ useEffect(() => {
 
    const handleSystemReset = useCallback(() => {
         setModal({ type: 'confirm', data: {
-            title: '시스템 초기화',
-            body: '[경고] 모든 선수가 대기 명단으로 이동하고, 진행/예정/자동매칭 경기가 모두 사라집니다. 선수 기록은 유지됩니다. 계속하시겠습니까?',
+            title: '모두 대기로 이동',
+            body: '[경고] 진행/예정/자동매칭 경기가 모두 사라지고 방 안의 선수들이 모두 대기 명단으로 이동합니다. 선수 기록은 유지됩니다. 계속하시겠습니까?',
             onConfirm: async () => {
                 const updateFunction = (currentState) => {
                     const newState = JSON.parse(JSON.stringify(currentState));
@@ -1899,11 +1899,36 @@ useEffect(() => {
                     newState.autoMatches = {};
                     return { newState };
                 };
-                await updateGameState(updateFunction, '시스템 초기화에 실패했습니다.');
-                setModal({ type: 'alert', data: { title: '완료', body: '시스템이 초기화되었습니다.' }});
+                await updateGameState(updateFunction, '이동 처리에 실패했습니다.');
+                setModal({ type: 'alert', data: { title: '완료', body: '모든 선수가 대기 명단으로 이동되었습니다.' }});
             }
         }});
     }, [updateGameState]);
+
+    const handleClearPlayerHistory = useCallback(() => {
+        setModal({ type: 'confirm', data: {
+            title: '선수 히스토리 삭제',
+            body: '[경고] 현재 활성화된 모든 선수의 오늘 경기 기록(히스토리 및 게임 수)이 완전히 삭제됩니다. (매일 새벽 2시 자동 초기화 기능과 동일) 계속하시겠습니까?',
+            onConfirm: async () => {
+                try {
+                    const batch = writeBatch(db);
+                    Object.values(activePlayers).forEach(player => {
+                        batch.update(doc(playersRef, player.id), {
+                            todayWins: 0,
+                            todayLosses: 0,
+                            todayWinStreakCount: 0,
+                            todayRecentGames: []
+                        });
+                    });
+                    await batch.commit();
+                    setModal({ type: 'alert', data: { title: '완료', body: '모든 선수의 히스토리가 초기화되었습니다.' }});
+                } catch (error) {
+                    console.error("히스토리 초기화 실패: ", error);
+                    setModal({ type: 'alert', data: { title: '오류', body: '선수 히스토리 초기화 중 문제가 발생했습니다.' }});
+                }
+            }
+        }});
+    }, [activePlayers]);
 
     const handleAdminAddPlayer = useCallback(async (formData) => {
         const { name, level, gender, isGuest } = formData;
@@ -2224,6 +2249,7 @@ useEffect(() => {
             onCancel={() => setIsSettingsOpen(false)}
             setModal={setModal}
             onSystemReset={handleSystemReset}
+            onClearPlayerHistory={handleClearPlayerHistory}
             onGenerateRobots={handleGenerateRobots}
             onAdminAddPlayer={handleAdminAddPlayer}
         />}
@@ -2691,7 +2717,7 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
 }
 
 // [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onGenerateRobots, onAdminAddPlayer }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
@@ -3037,9 +3063,15 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 
                          <button
                             onClick={onSystemReset}
-                            className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+                            className="w-full arcade-button bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 rounded-lg disabled:opacity-50 mb-2"
                         >
-                            시스템 초기화
+                            모두 대기로 이동
+                        </button>
+                        <button
+                            onClick={onClearPlayerHistory}
+                            className="w-full arcade-button bg-red-800 hover:bg-red-900 text-white font-bold py-2 rounded-lg disabled:opacity-50"
+                        >
+                            선수 히스토리 삭제
                         </button>
                     </div>
                 </div>
