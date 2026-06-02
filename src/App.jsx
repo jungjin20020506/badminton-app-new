@@ -853,6 +853,12 @@ export default function App() {
     const [seasonConfig, setSeasonConfig] = useState(null);
     const [currentUser, setCurrentUser] = useState(null);
 
+    // --- [알림 권한 및 유도 모달 상태] ---
+    const [notiPermission, setNotiPermission] = useState(
+        typeof window !== "undefined" && "Notification" in window ? Notification.permission : 'default'
+    );
+    const [showNotiIntroModal, setShowNotiIntroModal] = useState(false);
+
     // --- [앱 설치 및 인앱 브라우저 감지 상태] ---
     const [isInAppBrowser, setIsInAppBrowser] = useState(false);
     const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -1036,6 +1042,49 @@ useEffect(() => {
         }
     }, [isLoading, seasonConfig, isSeasonModalDismissed, modal]);
 
+    // [알림 권한] 커스텀 모달에서 "허용하기" 클릭 시 호출되는 함수
+    const requestNotificationPermission = useCallback(async () => {
+        if (!messaging) return;
+        try {
+            const permission = await Notification.requestPermission();
+            setNotiPermission(permission);
+            setShowNotiIntroModal(false);
+
+            if (permission === 'granted' && currentUser) {
+                const currentToken = await getToken(messaging, {
+                    vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY"
+                });
+                if (currentToken) {
+                    const playerDocRef = doc(playersRef, currentUser.id);
+                    const playerDoc = await getDoc(playerDocRef);
+                    if (playerDoc.exists()) {
+                        const playerData = playerDoc.data();
+                        const currentTokens = playerData.fcmTokens || [];
+                        if (!currentTokens.includes(currentToken)) {
+                            await updateDoc(playerDocRef, { fcmTokens: [...currentTokens, currentToken] });
+                        }
+                    }
+                }
+            } else if (permission === 'denied') {
+                alert("알림이 차단되었습니다. 브라우저 설정에서 알림 권한을 허용해주세요.");
+            }
+        } catch (error) {
+            console.error("FCM 권한 요청 오류:", error);
+            setShowNotiIntroModal(false);
+        }
+    }, [currentUser]);
+
+    // 로그인된 사용자이고 권한이 아직 'default'라면 유도 모달 띄우기
+    useEffect(() => {
+        if (currentUser && "Notification" in window) {
+            if (Notification.permission === 'default') {
+                setShowNotiIntroModal(true);
+            } else {
+                setNotiPermission(Notification.permission);
+            }
+        }
+    }, [currentUser]);
+
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
             await runTransaction(db, async (transaction) => {
@@ -1153,27 +1202,6 @@ useEffect(() => {
                     status: 'active',
                     todayRecentGames: [],
                 };
-            }
-
-            // [푸시 알림] 권한 요청 및 FCM 토큰 저장
-            if (messaging) {
-                try {
-                    const permission = await Notification.requestPermission();
-                    if (permission === 'granted') {
-                        // VAPID 키는 Firebase Console (프로젝트 설정 > 클라우드 메시징 > 웹 구성)에서 발급받아야 합니다.
-                        const currentToken = await getToken(messaging, {
-                            vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY" // TODO: 향후 발급받은 키로 교체하세요!
-                        });
-                        if (currentToken) {
-                            const currentTokens = playerData.fcmTokens || [];
-                            if (!currentTokens.includes(currentToken)) {
-                                playerData.fcmTokens = [...currentTokens, currentToken];
-                            }
-                        }
-                    }
-                } catch (tokenError) {
-                    console.log("FCM 토큰 발급 오류:", tokenError);
-                }
             }
 
             await setDoc(playerDocRef, playerData, { merge: true });
@@ -2015,7 +2043,7 @@ useEffect(() => {
     return (
         <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
-            {/* --- PWA 앱 설치 유도 배너 --- */}
+           {/* --- PWA 앱 설치 유도 배너 --- */}
             {showInstallBanner && (
                 <div className="bg-yellow-500 text-black p-3 flex items-center justify-between shadow-lg sticky top-0 z-[60]">
                     <div className="flex-1 pr-2">
@@ -2027,6 +2055,37 @@ useEffect(() => {
                         <button onClick={handleInstallClick} className="bg-black text-yellow-500 px-3 py-1.5 rounded text-xs font-bold shadow-sm active:scale-95 transition-transform">설치</button>
                     </div>
                 </div>
+            )}
+
+            {/* --- 알림 차단 경고 고정 배너 --- */}
+            {notiPermission !== 'granted' && (
+                <div className="bg-red-600 text-white p-3 flex items-center justify-between shadow-lg sticky top-0 z-[55]">
+                    <div className="flex-1 pr-2">
+                        <p className="font-bold text-[11px] leading-tight">⚠️ 알림을 허용해야만 차례가 되었을 때 방 입장 알림을 받을 수 있습니다.</p>
+                    </div>
+                    <div className="flex flex-shrink-0">
+                        <button 
+                            onClick={() => {
+                                if (notiPermission === 'default') {
+                                    setShowNotiIntroModal(true);
+                                } else {
+                                    alert("이미 권한이 차단되었습니다.\n주소창 좌측의 자물쇠 아이콘(또는 설정)을 눌러 알림 권한을 '허용'으로 변경해주세요.");
+                                }
+                            }} 
+                            className="bg-white text-red-600 px-2 py-1.5 rounded text-xs font-bold shadow-sm active:scale-95"
+                        >
+                            권한 설정
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* --- 알림 권한 유도 모달 --- */}
+            {showNotiIntroModal && (
+                <NotiIntroModal 
+                    onAllow={requestNotificationPermission} 
+                    onClose={() => setShowNotiIntroModal(false)} 
+                />
             )}
 
            {modal?.type === 'season' && <SeasonModal {...modal.data} onClose={() => {
@@ -2893,7 +2952,29 @@ function CourtSelectionModal({ courts, onSelect, onCancel }) {
 
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 
-
+function NotiIntroModal({ onAllow, onClose }) {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[70] p-4">
+            <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm text-center shadow-[0_0_20px_rgba(255,224,0,0.3)] border border-yellow-500/30">
+                <div className="text-5xl mb-4">🔔</div>
+                <h3 className="text-xl font-bold text-yellow-400 mb-2">경기 입장 알림 받기</h3>
+                <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+                    다음 차례가 되면 <strong>방 입장 알림</strong>을 보내드립니다.<br/>
+                    원활한 경기 진행을 위해<br/>
+                    <span className="text-white font-bold bg-red-500/20 px-2 py-1 rounded inline-block mt-2">반드시 알림을 '허용' 해주세요!</span>
+                </p>
+                <div className="flex gap-3 flex-col">
+                    <button onClick={onAllow} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg text-sm transition-transform active:scale-95">
+                        알림 허용하기
+                    </button>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-400 text-xs py-2 underline decoration-gray-600">
+                        나중에 설정하기
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // [자동매칭] 이 모달은 더 이상 사용되지 않습니다.
 /*
