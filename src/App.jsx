@@ -1471,25 +1471,27 @@ useEffect(() => {
         
         // [추가] 관리자가 수동으로 대기 1번(인덱스 0)에 선수 4명을 꽉 채웠다면 대기 알림 발송
         if (context.matchIndex === 0) {
-            setTimeout(() => {
-                const updatedGameState = firebaseService.getGameState();
-                if (updatedGameState) {
-                    const checkMatch = context.location === 'schedule' 
-                        ? updatedGameState.scheduledMatches['0'] 
-                        : updatedGameState.autoMatches['0'];
-                    if (checkMatch && checkMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
-                        try {
+            setTimeout(async () => {
+                try {
+                    const liveDoc = await getDoc(doc(db, "gameState", "live"));
+                    if (liveDoc.exists()) {
+                        const updatedGameState = liveDoc.data();
+                        const checkMatch = context.location === 'schedule' 
+                            ? updatedGameState.scheduledMatches['0'] 
+                            : updatedGameState.autoMatches['0'];
+                        
+                        if (checkMatch && checkMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
                             const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
-                            sendWaitingNotification({
+                            await sendWaitingNotification({
                                 playerIds: checkMatch,
                                 matchType: context.location
-                            }).catch(err => console.log("대기 1번 알림 함수 호출 실패:", err));
-                        } catch (error) {
-                            console.error(error);
+                            });
                         }
                     }
+                } catch (error) {
+                    console.error("대기 1번 알림 확인 중 오류:", error);
                 }
-            }, 1000); // DB 동기화를 위해 약간의 지연 시간 부여
+            }, 1500); // DB 확실한 동기화를 위해 1.5초 지연 및 직접 확인
         }
 
         setSelectedPlayerIds([]);
@@ -1582,25 +1584,27 @@ useEffect(() => {
             }
 
             // [추가] 앞 경기가 시작되어 새로운 팀이 대기 1번(인덱스 0)으로 올라왔다면 대기 알림 발송
-            setTimeout(() => {
-                const updatedGameState = firebaseService.getGameState();
-                if (updatedGameState) {
-                    const nextMatch = matchType === 'schedule' 
-                        ? updatedGameState.scheduledMatches['0'] 
-                        : updatedGameState.autoMatches['0'];
-                    if (nextMatch && nextMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
-                        try {
+            setTimeout(async () => {
+                try {
+                    const liveDoc = await getDoc(doc(db, "gameState", "live"));
+                    if (liveDoc.exists()) {
+                        const updatedGameState = liveDoc.data();
+                        const nextMatch = matchType === 'schedule' 
+                            ? updatedGameState.scheduledMatches['0'] 
+                            : updatedGameState.autoMatches['0'];
+                            
+                        if (nextMatch && nextMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
                             const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
-                            sendWaitingNotification({
+                            await sendWaitingNotification({
                                 playerIds: nextMatch,
                                 matchType: matchType
-                            }).catch(err => console.log("대기 1번 알림 함수 호출 실패:", err));
-                        } catch (error) {
-                            console.error(error);
+                            });
                         }
                     }
+                } catch (error) {
+                    console.error("대기 1번 알림 확인 중 오류:", error);
                 }
-            }, 1000); // DB 동기화를 위해 약간의 지연 시간 부여
+            }, 1500); // DB 확실한 동기화를 위해 1.5초 지연 및 직접 확인
 
            setModal({type: null, data: null});
         };
@@ -1760,25 +1764,28 @@ useEffect(() => {
                 };
                 await updateGameState(updateFunction, "자동 매칭 생성에 실패했습니다.");
 
-                // [추가] 자동매칭이 원래 0개였다가 방금 생성되었다면 대기 1번(인덱스 0) 알림 발송
+               // [추가] 자동매칭이 원래 0개였다가 방금 생성되었다면 대기 1번(인덱스 0) 알림 발송
                 if (wasAutoMatchesEmpty) {
-                    setTimeout(() => {
-                        const updatedGameState = firebaseService.getGameState();
-                        if (updatedGameState && updatedGameState.autoMatches['0']) {
-                            const auto0 = updatedGameState.autoMatches['0'];
-                            if (auto0.filter(p => p).length === PLAYERS_PER_MATCH) {
-                                try {
-                                    const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
-                                    sendWaitingNotification({
-                                        playerIds: auto0,
-                                        matchType: 'auto'
-                                    }).catch(err => console.log("대기 1번 알림 함수 호출 실패:", err));
-                                } catch (error) {
-                                    console.error(error);
+                    setTimeout(async () => {
+                        try {
+                            const liveDoc = await getDoc(doc(db, "gameState", "live"));
+                            if (liveDoc.exists()) {
+                                const updatedGameState = liveDoc.data();
+                                if (updatedGameState && updatedGameState.autoMatches['0']) {
+                                    const auto0 = updatedGameState.autoMatches['0'];
+                                    if (auto0.filter(p => p).length === PLAYERS_PER_MATCH) {
+                                        const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
+                                        await sendWaitingNotification({
+                                            playerIds: auto0,
+                                            matchType: 'auto'
+                                        });
+                                    }
                                 }
                             }
+                        } catch (error) {
+                            console.error("대기 1번 알림 확인 중 오류:", error);
                         }
-                    }, 1000); // DB 동기화를 위해 약간의 지연 시간 부여
+                    }, 1500); // DB 확실한 동기화를 위해 1.5초 지연 및 직접 확인
                 }
             }
         } catch (error) {
