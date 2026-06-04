@@ -306,7 +306,7 @@ exports.dailyRoomCleanup = onSchedule({
     const db = getFirestore();
     
     try {
-        // 1. 경기방 (gameState) 초기화: 경기예정, 경기진행, 경기대기 내보내기
+        // 1. 경기방 (gameState) 초기화: 경기예정, 경기진행, 자동매칭 비우기
         const gameStateRef = db.collection("gameState").doc("live");
         const gameStateDoc = await gameStateRef.get();
         
@@ -317,12 +317,12 @@ exports.dailyRoomCleanup = onSchedule({
             await gameStateRef.update({
                 inProgressCourts: Array(numInProgressCourts).fill(null), // 경기진행 비우기
                 scheduledMatches: {}, // 경기예정 비우기
-                autoQueue: [] // 경기대기(대기열) 비우기
+                autoMatches: {} // 경기대기(자동매칭) 비우기
             });
-            logger.log("경기방(경기진행, 경기예정, 경기대기) 모든 선수 내보내기 완료.");
+            logger.log("경기방(경기진행, 경기예정, 자동매칭) 모든 선수 내보내기 완료.");
         }
 
-        // 2. 모든 선수의 일일 히스토리 및 게임수 강제 초기화
+        // 2. 모든 선수의 일일 히스토리 강제 삭제 및 현황판 내보내기 처리
         const playersRef = db.collection("players");
         const allPlayersSnapshot = await playersRef.get();
         
@@ -333,6 +333,8 @@ exports.dailyRoomCleanup = onSchedule({
             
             allPlayersSnapshot.forEach(doc => {
                 currentBatch.update(doc.ref, {
+                    status: 'inactive', // 선수를 대기열에서 완전히 내보내기
+                    isResting: false,   // 휴식 상태 해제
                     todayWins: 0,
                     todayLosses: 0,
                     todayWinStreakCount: 0,
@@ -352,7 +354,7 @@ exports.dailyRoomCleanup = onSchedule({
             }
             
             await Promise.all(batches);
-            logger.log(`총 ${count}명의 선수 일일 데이터 및 히스토리 초기화 완료.`);
+            logger.log(`총 ${count}명의 선수 일일 데이터/히스토리 삭제 및 내보내기 완료.`);
         }
     } catch (error) {
         logger.error("새벽 2시 초기화 작업 중 에러 발생:", error);
@@ -376,7 +378,7 @@ exports.testDailyRoomCleanup = onCall({ cors: true }, async (request) => {
             await gameStateRef.update({
                 inProgressCourts: Array(numInProgressCourts).fill(null),
                 scheduledMatches: {},
-                autoQueue: []
+                autoMatches: {}
             });
         }
 
@@ -390,6 +392,8 @@ exports.testDailyRoomCleanup = onCall({ cors: true }, async (request) => {
             
             allPlayersSnapshot.forEach(doc => {
                 currentBatch.update(doc.ref, {
+                    status: 'inactive',
+                    isResting: false,
                     todayWins: 0,
                     todayLosses: 0,
                     todayWinStreakCount: 0,
@@ -408,7 +412,7 @@ exports.testDailyRoomCleanup = onCall({ cors: true }, async (request) => {
             }
             await Promise.all(batches);
         }
-        return { success: true, message: `경기방이 비워지고 ${count}명의 선수 데이터가 초기화되었습니다.` };
+        return { success: true, message: `경기방이 비워지고 ${count}명의 선수 히스토리 삭제 및 내보내기가 완료되었습니다.` };
     } catch (error) {
         logger.error("초기화 테스트 중 에러 발생:", error);
         throw new HttpsError('internal', '초기화 테스트 중 문제가 발생했습니다: ' + error.message);
