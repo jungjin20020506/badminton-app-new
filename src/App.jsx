@@ -1625,61 +1625,74 @@ useEffect(() => {
                 title: '경기 종료',
                 body: '경기를 종료하고 코트를 비우시겠습니까? (선수들의 매칭 히스토리가 기록됩니다.)',
                 onConfirm: async () => {
-                    const allMatchPlayerIds = court.players;
-                    const batch = writeBatch(db);
-                    const now = new Date().toISOString();
-
-                    // 편의상 0,1번을 한 팀, 2,3번을 다른 팀으로 간주하여 히스토리 저장
-                    const teamA = [allMatchPlayerIds[0], allMatchPlayerIds[1]].filter(Boolean);
-                    const teamB = [allMatchPlayerIds[2], allMatchPlayerIds[3]].filter(Boolean);
-
-                    allMatchPlayerIds.forEach(pId => {
-                        const player = allPlayers[pId];
-                        if(!player) return;
-
-                        let partners = [];
-                        let opponents = [];
-
-                        if (teamA.includes(pId)) {
-                            partners = teamA.filter(id => id !== pId);
-                            opponents = teamB;
-                        } else if (teamB.includes(pId)) {
-                            partners = teamB.filter(id => id !== pId);
-                            opponents = teamA;
-                        }
-
-                        const gameRecord = {
-                            timestamp: now,
-                            partners: partners,
-                            opponents: opponents
-                        };
-
-                        const recentGames = (player.todayRecentGames || []).slice(0, 9);
-                        const updatedData = {
-                            todayRecentGames: [gameRecord, ...recentGames]
-                        };
-
-                        batch.update(doc(playersRef, pId), updatedData);
-                    });
-
-                    const updateFunction = (currentState) => {
-                        const newState = JSON.parse(JSON.stringify(currentState));
-                        newState.inProgressCourts[courtIndex] = null;
-                        return { newState };
-                    };
-
+                    setModal({ type: null, data: null }); // 로딩 및 중복 클릭 방지를 위해 모달 먼저 닫기
+                    
                     try {
-                        await batch.commit();
-                        await updateGameState(updateFunction);
+                        await runTransaction(db, async (transaction) => {
+                            // 1. 최신 경기장 상태 가져오기
+                            const gameStateDoc = await transaction.get(gameStateRef);
+                            if (!gameStateDoc.exists()) throw new Error("게임 상태가 존재하지 않습니다.");
+                            
+                            const currentState = gameStateDoc.data();
+                            const currentCourt = currentState.inProgressCourts[courtIndex];
+                            
+                            // 2. 여러 관리자가 동시에 누른 경우, 이미 코트가 비워져있다면 중복 처리 방지
+                            if (!currentCourt || !currentCourt.players || currentCourt.players.some(p => !p)) {
+                                return; // 이미 다른 관리자에 의해 종료됨
+                            }
+
+                            const allMatchPlayerIds = currentCourt.players;
+                            const now = new Date().toISOString();
+
+                            const teamA = [allMatchPlayerIds[0], allMatchPlayerIds[1]].filter(Boolean);
+                            const teamB = [allMatchPlayerIds[2], allMatchPlayerIds[3]].filter(Boolean);
+
+                            // 3. 최신 선수 데이터 가져오기 (동시성 보장)
+                            const playerRefs = allMatchPlayerIds.map(pId => doc(playersRef, pId));
+                            const playerDocs = await Promise.all(playerRefs.map(ref => transaction.get(ref)));
+
+                            // 4. 선수별 히스토리 업데이트
+                            playerDocs.forEach((pDoc) => {
+                                if (!pDoc.exists()) return;
+                                const pId = pDoc.id;
+                                const pData = pDoc.data();
+
+                                let partners = [];
+                                let opponents = [];
+
+                                if (teamA.includes(pId)) {
+                                    partners = teamA.filter(id => id !== pId);
+                                    opponents = teamB;
+                                } else if (teamB.includes(pId)) {
+                                    partners = teamB.filter(id => id !== pId);
+                                    opponents = teamA;
+                                }
+
+                                const gameRecord = {
+                                    timestamp: now,
+                                    partners: partners,
+                                    opponents: opponents
+                                };
+
+                                const recentGames = (pData.todayRecentGames || []).slice(0, 9);
+                                transaction.update(pDoc.ref, {
+                                    todayRecentGames: [gameRecord, ...recentGames]
+                                });
+                            });
+
+                            // 5. 코트 비우기
+                            const newState = JSON.parse(JSON.stringify(currentState));
+                            newState.inProgressCourts[courtIndex] = null;
+                            transaction.set(gameStateRef, newState);
+                        });
                     } catch(e) {
                         console.error(e);
                         setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
                     }
-                    setModal({ type: null, data: null });
                 }
             }
         });
-    }, [gameState, allPlayers, updateGameState]);
+    }, [gameState, updateGameState]); // 트랜잭션 사용으로 allPlayers 의존성 제거됨
 
     // [자동 매칭] 스케줄러 실행 로직
     const runMatchScheduler = useCallback(async () => {
