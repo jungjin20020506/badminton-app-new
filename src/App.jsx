@@ -370,6 +370,12 @@ const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 
 const generateId = (name) => name.replace(/\s+/g, '_');
 
+const filterTodayGames = (games) => {
+    if (!games || games.length === 0) return [];
+    const today = new Date().toDateString();
+    return new Date(games[0].timestamp).toDateString() === today ? games : [];
+};
+
 const getLevelColor = (level, isGuest) => {
     if (isGuest) return '#00BFFF';
     switch (level) {
@@ -484,10 +490,9 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const cardStyle = {
         ...genderStyle,
         borderWidth: '1px',
-        borderStyle: 'solid',
+               borderStyle: 'solid',
         borderColor: 'transparent',
         transition: 'all 0.2s ease-in-out',
-        backgroundColor: '#2d3748',
         opacity: isPlaying ? 0.6 : 1,
     };
 
@@ -851,7 +856,18 @@ export default function App() {
     const [allPlayers, setAllPlayers] = useState({});
     const [gameState, setGameState] = useState(null);
     const [seasonConfig, setSeasonConfig] = useState(null);
-    const [currentUser, setCurrentUser] = useState(null);
+       const [currentUser, setCurrentUser] = useState(null);
+
+    const [isDarkMode, setIsDarkMode] = useState(() => {
+        return localStorage.getItem('badminton-theme') !== 'light';
+    });
+    const toggleTheme = useCallback(() => {
+        setIsDarkMode(prev => {
+            const next = !prev;
+            localStorage.setItem('badminton-theme', next ? 'dark' : 'light');
+            return next;
+        });
+    }, []);
 
     // --- [알림 권한 및 유도 모달 상태] ---
     const [notiPermission, setNotiPermission] = useState(
@@ -1245,7 +1261,7 @@ useEffect(() => {
                     gender,
                     isGuest,
                     status: 'active',
-                    todayRecentGames: existingData.todayRecentGames || [],
+                                                           todayRecentGames: filterTodayGames(existingData.todayRecentGames),
                     isResting: existingData.isResting || false, // 입장 시 isResting 초기화 안함
                 };
             } else {
@@ -1997,7 +2013,7 @@ useEffect(() => {
                     gender,
                     isGuest,
                     status: 'active',
-                    todayRecentGames: existingData.todayRecentGames || [],
+                                        todayRecentGames: filterTodayGames(existingData.todayRecentGames),
                     isResting: existingData.isResting || false,
                 };
             } else {
@@ -2158,8 +2174,8 @@ useEffect(() => {
     }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
 
 
-   if (isLoading) {
-        return <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
+     if (isLoading) {
+        return <div className={`${isDarkMode ? 'bg-black' : 'bg-gray-100 light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4`}><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
     }
 
     // 인앱 브라우저 접속 시 강제 안내 화면 (외부 브라우저 유도)
@@ -2202,12 +2218,12 @@ useEffect(() => {
         );
     }
 
-  if (!currentUser) {
-        return <EntryPage onEnter={handleEnter} />;
+   if (!currentUser) {
+        return <EntryPage onEnter={handleEnter} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />;
     }
 
     return (
-        <div className="bg-black text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+        <div className={`${isDarkMode ? 'bg-black' : 'light-mode'} text-white min-h-screen font-sans flex flex-col`} style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
           {/* --- PWA 앱 설치 유도 배너 (iOS 및 안드로이드 강력 대응) --- */}
             {showInstallBanner && (
@@ -2317,7 +2333,14 @@ useEffect(() => {
                        <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap">나가기</button>
                     </div>
                 </div>
-                <div className="flex items-center justify-end gap-1.5">
+                              <div className="flex items-center justify-end gap-1.5">
+                    <button
+                        onClick={toggleTheme}
+                        className="text-gray-400 hover:text-yellow-400 text-lg px-1 transition-colors"
+                        title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
+                    >
+                        <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
+                    </button>
                     {isAdmin && (
                         <>
                             <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white text-lg px-1">
@@ -2355,63 +2378,20 @@ useEffect(() => {
                                 경기 진행
                             </button>
                         </div>
-                        <div className="flex flex-col gap-3">
+                                              <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (
-                                <>
+                                <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
                                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
                                     <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
                                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
-                                </>
+                                </div>
                             )}
                             {activeTab === 'inProgress' && (
+                                <div key="tab-inprogress" className="tab-fade-in">
                                 <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
+                                </div>
                             )}
                         </div>
-                    </>
-                ) : (
-                    <>
-                        <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                        <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
-                        <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
-                        <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
-                    </>
-                )}
-            </main>
-            <style>{`
-                body, .player-card, div, button, span, h1, h2, h3, p {
-                    -webkit-user-select: none;
-                    -moz-user-select: none;
-                    -ms-user-select: none;
-                    user-select: none;
-                }
-                .arcade-font { font-family: 'Press Start 2P', cursive; }
-                .arcade-button {
-                    position: relative;
-                    border: 2px solid #222;
-                    box-shadow: inset -2px -2px 0px 0px #333, inset 2px 2px 0px 0px #FFF;
-                    white-space: nowrap;
-                }
-                .arcade-button:active {
-                    transform: translateY(2px);
-                    box-shadow: inset -1px -1px 0px 0px #333, inset 1px 1px 0px 0px #FFF;
-                }
-                @keyframes flicker {
-                  0%, 100% { opacity: 1; text-shadow: 0 0 8px #FFD700, 0 0 12px #22c55e; }
-                  50% { opacity: 0.8; text-shadow: 0 0 12px #FFD700, 0 0 18px #22c55e; }
-                }
-                .flicker-text {
-                  animation: flicker 1.5s infinite;
-                }
-                /* [UI 수정] 토글 스위치 스타일 (Tailwind CSS JIT 필요) */
-                input:checked + div {
-                    background-color: #22c55e; /* green-500 */
-                }
-                input:checked + div:after {
-                    transform: translateX(24px); /* w-6 */
-                    border-color: white;
-                }
-            `}</style>
-        </div>
     );
 }
 
