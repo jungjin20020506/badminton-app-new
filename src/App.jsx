@@ -930,6 +930,69 @@ export default function App() {
     // [디자인 개편] 상단 아바타 프로필 메뉴 열림 상태
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
+    // [당겨서 새로고침] PWA standalone 모드에는 브라우저 기본 새로고침이 없으므로 직접 구현
+    const mainScrollRef = useRef(null);
+    const [pullDistance, setPullDistance] = useState(0);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    useEffect(() => {
+        const el = mainScrollRef.current;
+        if (!el) return;
+        const THRESHOLD = 55;    // 이 거리 이상 당기면 새로고침 실행
+        const MAX_PULL = 100;    // 최대 당김 거리
+        let startY = 0;
+        let pulling = false;
+        let currentPull = 0;
+
+        const onTouchStart = (e) => {
+            if (isRefreshing) return;
+            // 스크롤이 최상단일 때만 당김 제스처 시작
+            if (el.scrollTop <= 0) {
+                startY = e.touches[0].clientY;
+                pulling = true;
+                currentPull = 0;
+            }
+        };
+        const onTouchMove = (e) => {
+            if (!pulling || isRefreshing) return;
+            const delta = e.touches[0].clientY - startY;
+            if (delta > 0 && el.scrollTop <= 0) {
+                e.preventDefault(); // 당기는 동안 콘텐츠 스크롤/바운스 방지
+                currentPull = Math.min(MAX_PULL, delta * 0.55); // 저항감 적용
+                setPullDistance(currentPull);
+            } else {
+                // 다시 위로 올리거나 아래로 스크롤하면 취소
+                pulling = false;
+                currentPull = 0;
+                setPullDistance(0);
+            }
+        };
+        const finishPull = () => {
+            if (!pulling) return;
+            pulling = false;
+            if (currentPull >= THRESHOLD) {
+                setIsRefreshing(true);
+                setPullDistance(THRESHOLD);
+                // 스피너를 잠깐 보여준 뒤 새로고침
+                setTimeout(() => window.location.reload(), 450);
+            } else {
+                setPullDistance(0);
+            }
+            currentPull = 0;
+        };
+
+        el.addEventListener('touchstart', onTouchStart, { passive: true });
+        el.addEventListener('touchmove', onTouchMove, { passive: false });
+        el.addEventListener('touchend', finishPull, { passive: true });
+        el.addEventListener('touchcancel', finishPull, { passive: true });
+        return () => {
+            el.removeEventListener('touchstart', onTouchStart);
+            el.removeEventListener('touchmove', onTouchMove);
+            el.removeEventListener('touchend', finishPull);
+            el.removeEventListener('touchcancel', finishPull);
+        };
+    }, [isRefreshing, isLoading, currentUser, isInAppBrowser]);
+
     const isAdmin = currentUser && ADMIN_NAMES.includes(currentUser.name);
     const autoMatches = gameState?.autoMatches || {};
     // [자동매칭] 자동매칭 스케줄러 참조
@@ -2400,7 +2463,24 @@ useEffect(() => {
                 </div>
             </header>
 
-            <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto" style={{ paddingBottom: isMobile ? 'calc(104px + env(safe-area-inset-bottom, 0px))' : '16px' }}>
+            {(pullDistance > 0 || isRefreshing) && (
+                <div
+                    className="ptr-indicator"
+                    style={{
+                        transform: `translateX(-50%) translateY(${Math.min(pullDistance, 64)}px)`,
+                        opacity: isRefreshing ? 1 : Math.min(1, pullDistance / 45),
+                    }}
+                >
+                    <div className={`ptr-circle ${isRefreshing ? 'refreshing' : ''}`}>
+                        <svg viewBox="0 0 24 24" style={!isRefreshing ? { transform: `rotate(${pullDistance * 3}deg)` } : undefined}>
+                            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+                            <path d="M21 3v6h-6" />
+                        </svg>
+                    </div>
+                </div>
+            )}
+
+            <main ref={mainScrollRef} className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto" style={{ paddingBottom: isMobile ? 'calc(104px + env(safe-area-inset-bottom, 0px))' : '16px' }}>
                 {isMobile ? (
                     <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (

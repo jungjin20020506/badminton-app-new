@@ -22,6 +22,30 @@ button, .cox-nav-btn, .cox-fab, .player-card, .player-slot, .cox-avatar-btn, .co
 input, textarea{ -webkit-user-select:text; user-select:text; touch-action:auto; }
 img{ max-width:100%; }
 
+/* ── 당겨서 새로고침(Pull-to-refresh) 인디케이터 ── */
+.ptr-indicator{
+  position:fixed; left:50%; z-index:60;
+  top:calc(env(safe-area-inset-top, 0px) + 6px);
+  margin-top:-44px;            /* 기본 위치는 화면 위로 숨김 */
+  pointer-events:none;
+  will-change:transform, opacity;
+}
+.ptr-circle{
+  width:40px; height:40px; border-radius:50%;
+  background:rgba(20,23,29,.92);
+  border:1px solid var(--line-strong);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  box-shadow:0 8px 22px -8px rgba(0,0,0,.6);
+  display:flex; align-items:center; justify-content:center;
+}
+.ptr-circle svg{
+  width:20px; height:20px; fill:none; stroke:var(--volt);
+  stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round;
+  transition:transform .05s linear;
+}
+.ptr-circle.refreshing svg{ animation:ptrspin .7s linear infinite; }
+@keyframes ptrspin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+
 /* ══════════════════════════════════════════════════════════════════
    COX DESIGN SYSTEM  ·  "Premium Sports Performance Dark UI"
    잉크 배경 + 형광 라임(볼트) 시그니처 컬러 + 전광판 타이포
