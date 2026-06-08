@@ -3,6 +3,26 @@
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════════
+   APP-LIKE BEHAVIOR  ·  네이티브 앱 느낌 / 확대·축소 차단 / 안전영역
+══════════════════════════════════════════════════════════════════ */
+html{
+  -webkit-text-size-adjust:100%;   /* iOS 자동 글자 확대 방지 */
+  text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
+}
+html,body{
+  touch-action:manipulation;        /* 더블탭 줌 비활성화 (클릭은 유지) */
+  overscroll-behavior-y:none;       /* 당겨서 새로고침/바운스 억제 */
+}
+*{ -webkit-tap-highlight-color:transparent; }
+/* 인터랙티브 요소가 텍스트로 선택되어 깨지는 현상 방지 (입력창은 예외) */
+button, .cox-nav-btn, .cox-fab, .player-card, .player-slot, .cox-avatar-btn, .cox-menu-item{
+  -webkit-user-select:none; user-select:none;
+}
+input, textarea{ -webkit-user-select:text; user-select:text; touch-action:auto; }
+img{ max-width:100%; }
+
+/* ══════════════════════════════════════════════════════════════════
    COX DESIGN SYSTEM  ·  "Premium Sports Performance Dark UI"
    잉크 배경 + 형광 라임(볼트) 시그니처 컬러 + 전광판 타이포
 ══════════════════════════════════════════════════════════════════ */
@@ -94,7 +114,8 @@ body::before{
 
 /* ─── 하단 글래스 네비게이션 + 라임 FAB ─── */
 .cox-bottomnav{
-  position:fixed; left:14px; right:14px; bottom:14px; z-index:45;
+  position:fixed; left:14px; right:14px; z-index:45;
+  bottom:calc(14px + env(safe-area-inset-bottom, 0px));
   height:64px; padding:0 22px;
   display:flex; align-items:center; justify-content:space-between;
   background:rgba(20,23,29,.82);
@@ -124,6 +145,138 @@ body::before{
 .cox-fab svg{ width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:2.2; }
 .cox-fab:active{ transform:scale(.93); }
 .cox-fab:hover{ filter:brightness(1.05); }
+
+/* ══════════════════════════════════════════════════════════════════
+   REFERENCE POLISH  ·  앱바 / 아바타 메뉴 / 통계바 / 섹션 헤더
+   첨부 레퍼런스(COX·MATCH) 톤으로 끌어올리는 컴포넌트
+══════════════════════════════════════════════════════════════════ */
+
+/* ── 상단 앱바 (인사말 + 전광판 타이틀 + 아바타) ── */
+.cox-appbar{
+  position:sticky; top:0; z-index:30;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  background:rgba(13,15,20,.72);
+  -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--line-strong);
+}
+.cox-appbar-brand{ min-width:0; flex:1; }
+.cox-hello{
+  display:flex; align-items:center; gap:7px;
+  font-size:11.5px; color:var(--dim); letter-spacing:.03em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cox-title{
+  font-family:'Anton','Noto Sans KR',sans-serif; font-weight:800;
+  font-size:24px; line-height:1; margin-top:4px; letter-spacing:.01em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cox-title em{ color:var(--volt); font-style:normal; }
+
+/* 아바타 버튼 (메뉴 트리거) */
+.cox-avatar-btn{
+  flex-shrink:0; width:44px; height:44px; border-radius:15px; border:none; cursor:pointer;
+  background:linear-gradient(140deg,var(--volt),#7fae1f); color:#0c0d11;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Noto Sans KR',sans-serif; font-weight:900; font-size:14px;
+  box-shadow:0 6px 18px -6px var(--volt);
+  transition:transform .12s, filter .15s;
+}
+.cox-avatar-btn.admin{ background:linear-gradient(140deg,#FFD45A,#E0A21F); box-shadow:0 6px 18px -6px #FFD45A; }
+.cox-avatar-btn:active{ transform:scale(.94); }
+
+/* 프로필 드롭다운 메뉴 */
+.cox-menu-backdrop{ position:fixed; inset:0; z-index:48; background:transparent; }
+.cox-menu{
+  position:absolute; top:calc(100% - 4px); right:14px; z-index:49; width:208px;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:18px;
+  padding:8px; box-shadow:0 24px 60px -18px rgba(0,0,0,.85);
+  animation:modalScaleIn .16s cubic-bezier(.2,.7,.2,1) both; transform-origin:top right;
+}
+.cox-menu-head{
+  padding:10px 12px 12px; margin-bottom:6px; border-bottom:1px solid var(--line);
+  display:flex; align-items:center; gap:10px;
+}
+.cox-menu-head .nm{ font-size:14px; font-weight:800; color:var(--text); }
+.cox-menu-head .rl{ font-size:11px; color:var(--dim); margin-top:1px; }
+.cox-menu-item{
+  width:100%; display:flex; align-items:center; gap:11px;
+  padding:11px 12px; border:none; border-radius:12px; cursor:pointer;
+  background:transparent; color:var(--text);
+  font-family:'Noto Sans KR',sans-serif; font-size:13.5px; font-weight:700; text-align:left;
+  transition:background .14s;
+}
+.cox-menu-item i{ width:18px; text-align:center; color:var(--dim); font-size:14px; }
+.cox-menu-item:hover{ background:var(--card-2); }
+.cox-menu-item:active{ background:var(--card-2); }
+.cox-menu-item.danger{ color:var(--coral); }
+.cox-menu-item.danger i{ color:var(--coral); }
+.cox-menu-item.accent{ color:var(--volt); }
+.cox-menu-item.accent i{ color:var(--volt); }
+
+/* ── 통계 요약 바 (출석 / 진행 / 대기) ── */
+.cox-statbar{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:2px 0 4px; }
+.cox-stat{
+  background:var(--card); border:1px solid var(--line); border-radius:16px;
+  padding:13px 12px; min-width:0;
+}
+.cox-stat .v{ font-family:'Anton','Noto Sans KR',sans-serif; font-size:26px; line-height:.9; }
+.cox-stat .v.volt{ color:var(--volt); }
+.cox-stat .v.coral{ color:var(--coral); }
+.cox-stat .k{ font-size:10.5px; color:var(--dim); margin-top:7px; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ── 섹션 헤더 라인 (라벨 + 액션) ── */
+.cox-secline{ display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+.cox-secline .lbl{
+  display:flex; align-items:center; gap:8px; min-width:0;
+  font-size:13px; font-weight:800; letter-spacing:.02em;
+}
+.cox-secline .lbl .tick{ width:3px; height:15px; border-radius:3px; background:var(--volt); flex-shrink:0; }
+.cox-secline .lbl .count{ color:var(--dim); font-weight:700; font-size:12px; }
+.cox-secline .lbl.cyan .tick{ background:#6FB3FF; }
+.cox-secline .lbl.green .tick{ background:var(--volt); }
+.cox-secline .lbl.coral .tick{ background:var(--coral); }
+.cox-pill-danger{
+  flex-shrink:0; background:rgba(255,106,82,.14); color:var(--coral);
+  border:1px solid rgba(255,106,82,.32); border-radius:10px;
+  padding:6px 11px; font-size:11px; font-weight:800; cursor:pointer;
+  white-space:nowrap; transition:transform .12s, filter .15s;
+}
+.cox-pill-danger:active{ transform:scale(.95); }
+
+/* ── 모바일 잘림/깨짐 방지 ── */
+main{ -webkit-overflow-scrolling:touch; }
+.cox-secline .lbl > span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* 라이트 모드 대응 */
+.light-mode .cox-appbar{
+  background:rgba(255,255,255,.92);
+  border-bottom-color:rgba(210,228,250,.85);
+}
+.light-mode .cox-hello{ color:#4F6882; }
+.light-mode .cox-title{ color:#0C1A2E; }
+.light-mode .cox-title em{ color:#3B82F6; }
+.light-mode .cox-stat{ background:#FFFFFF; border-color:#D2E4F8; box-shadow:0 1px 6px rgba(12,26,46,.06); }
+.light-mode .cox-stat .v{ color:#0C1A2E; }
+.light-mode .cox-stat .v.volt{ color:#047857; }
+.light-mode .cox-stat .v.coral{ color:#B91C1C; }
+.light-mode .cox-stat .k{ color:#4F6882; }
+.light-mode .cox-menu{ background:#FFFFFF; border-color:#D2E4F8; box-shadow:0 24px 60px -18px rgba(12,26,46,.25); }
+.light-mode .cox-menu-head{ border-bottom-color:#E2EEF9; }
+.light-mode .cox-menu-head .nm{ color:#0C1A2E; }
+.light-mode .cox-menu-head .rl{ color:#4F6882; }
+.light-mode .cox-menu-item{ color:#0C1A2E; }
+.light-mode .cox-menu-item i{ color:#7A96B3; }
+.light-mode .cox-menu-item:hover{ background:#EEF5FD; }
+.light-mode .cox-secline .lbl{ color:#0C1A2E; }
+.light-mode .cox-bottomnav{
+  background:rgba(255,255,255,.9);
+  border-color:#D2E4F8;
+  box-shadow:0 18px 40px -16px rgba(12,26,46,.28);
+}
+.light-mode .cox-nav-btn{ color:#7A96B3; }
+.light-mode .cox-nav-btn.active{ color:#047857; }
+.light-mode .cox-fab{ background:#CDFB47; color:#0c0d11; }
 
 /* ════════════════════════════════════════════════════════════
    DARK THEME — 기존 Tailwind 유틸리티를 COX 토큰으로 리매핑
