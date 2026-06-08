@@ -3,8 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- 모바일 앱처럼: 확대/축소 차단 + 노치 안전영역 대응 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#08090C" />
+
+    <!-- iOS/안드로이드 홈화면 설치 시 네이티브 앱 느낌 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="COCKSLIGHTING" />
     
     <!-- 브라우저 탭 제목 -->
     <title>⚡ COCKSLIGHTING</title>
@@ -30,6 +37,31 @@
     <div id="root"></div>
     <!-- Vite 프로젝트의 진입점(entry point) 스크립트 -->
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- 모바일에서 핀치 확대/더블탭 확대 차단 (iOS Safari는 user-scalable=no를 무시하므로 필요) -->
+    <script>
+      (function () {
+        // iOS 핀치 줌(제스처) 차단
+        ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (evt) {
+          document.addEventListener(evt, function (e) { e.preventDefault(); }, { passive: false });
+        });
+        // 두 손가락 이상 터치(핀치) 차단
+        document.addEventListener('touchmove', function (e) {
+          if (e.touches.length > 1) e.preventDefault();
+        }, { passive: false });
+        // 더블탭 확대 차단 (클릭은 유지)
+        var lastTouchEnd = 0;
+        document.addEventListener('touchend', function (e) {
+          var now = Date.now();
+          if (now - lastTouchEnd <= 300) e.preventDefault();
+          lastTouchEnd = now;
+        }, { passive: false });
+        // Ctrl/⌘ + 휠 확대 차단 (데스크톱 보조)
+        document.addEventListener('wheel', function (e) {
+          if (e.ctrlKey) e.preventDefault();
+        }, { passive: false });
+      })();
+    </script>
   </body>
 </html>
 

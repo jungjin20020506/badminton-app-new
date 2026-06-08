@@ -589,17 +589,16 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
     const totalWaiting = maleWaitingPlayers.length + femaleWaitingPlayers.length;
 
     return (
-        <section className="bg-gray-800/50 rounded-lg p-2">
-            <div className="flex justify-between items-center mb-2">
-                <h2 className="text-sm font-bold text-yellow-400 arcade-font flicker-text">
-                    대기 명단 ({totalWaiting})
-                </h2>
+        <section className="bg-gray-800/50 rounded-lg p-2.5">
+            <div className="cox-secline mb-2.5">
+                <div className="lbl">
+                    <span className="tick"></span>
+                    <span>대기 명단</span>
+                    <span className="count">{totalWaiting}</span>
+                </div>
                 {/* [신규 기능] 대기자 전체 내보내기 버튼 */}
                 {isAdmin && totalWaiting > 0 && (
-                    <button
-                        onClick={onClearAllWaitingPlayers}
-                        className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md"
-                    >
+                    <button onClick={onClearAllWaitingPlayers} className="cox-pill-danger">
                         전체 내보내기
                     </button>
                 )}
@@ -635,11 +634,13 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
 
     return (
         <section>
-            <div className="flex justify-between items-center mb-2 px-1">
-                {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
-                <h2 className="text-sm font-bold text-cyan-400 arcade-font">경기 예정</h2>
+            <div className="cox-secline mb-2.5 px-1">
+                <div className="lbl cyan">
+                    <span className="tick"></span>
+                    <span>경기 예정</span>
+                </div>
                 {isAdmin && hasMatches && (
-                    <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
+                    <button onClick={handleClearScheduledMatches} className="cox-pill-danger">전체삭제</button>
                 )}
             </div>
             <div id="scheduled-matches" className="flex flex-col gap-2">
@@ -697,13 +698,14 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
 
     return (
         <section>
-            <div className="flex justify-between items-center mb-2 px-1">
-                 {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
-                 <h2 className={`text-sm font-bold text-green-400 arcade-font ${isAutoMatchOn ? 'flicker-text' : ''}`}>
-                    🤖 자동 매칭 {isAutoMatchOn ? '(ON)' : '(OFF)'}
-                 </h2>
+            <div className="cox-secline mb-2.5 px-1">
+                 <div className={`lbl green ${isAutoMatchOn ? 'flicker-text' : ''}`}>
+                    <span className="tick"></span>
+                    <span>🤖 자동 매칭</span>
+                    <span className="count">{isAutoMatchOn ? 'ON' : 'OFF'}</span>
+                 </div>
                  {isAdmin && matchList.length > 0 && (
-                    <button onClick={handleClearAutoMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
+                    <button onClick={handleClearAutoMatches} className="cox-pill-danger">전체삭제</button>
                  )}
             </div>
             {isAutoMatchOn && matchList.length === 0 && (
@@ -828,8 +830,12 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
 const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
     return (
         <section>
-            {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
-            <h2 className="text-sm font-bold mb-2 text-red-500 px-1 arcade-font">경기 진행</h2>
+            <div className="cox-secline mb-2.5 px-1">
+                <div className="lbl coral">
+                    <span className="tick"></span>
+                    <span>경기 진행</span>
+                </div>
+            </div>
             <div id="in-progress-courts" className="flex flex-col gap-2">
                 {Array.from({ length: numInProgressCourts }).map((_, courtIndex) => (
                     <InProgressCourt
@@ -932,6 +938,8 @@ export default function App() {
     // [모바일 UI 개선] 화면 너비와 활성 탭 상태를 관리합니다.
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [activeTab, setActiveTab] = useState('matching');
+    // [디자인 개편] 상단 아바타 프로필 메뉴 열림 상태
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
 
     const isAdmin = currentUser && ADMIN_NAMES.includes(currentUser.name);
     const autoMatches = gameState?.autoMatches || {};
@@ -2238,6 +2246,17 @@ useEffect(() => {
         return <EntryPage onEnter={handleEnter} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />;
     }
 
+    // [디자인 개편] 상단 통계 요약 (출석 / 진행 중 / 대기) — 레퍼런스 스타일
+    const presentCount = Object.keys(activePlayers).length;
+    const activeCourtCount = (gameState?.inProgressCourts || []).filter(c => c && c.players).length;
+    const statBar = (
+        <div className="cox-statbar">
+            <div className="cox-stat"><div className="v">{presentCount}</div><div className="k">출석 인원</div></div>
+            <div className="cox-stat"><div className="v volt">{activeCourtCount}</div><div className="k">진행 중</div></div>
+            <div className="cox-stat"><div className="v coral">{waitingPlayers.length}</div><div className="k">대기 중</div></div>
+        </div>
+    );
+
     return (
         <div className={`${isDarkMode ? 'cox-dark' : 'light-mode'} text-white min-h-screen font-sans flex flex-col`} style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
@@ -2336,48 +2355,87 @@ useEffect(() => {
             onAdminAddPlayer={handleAdminAddPlayer}
         />}
 
-            <header className="flex-shrink-0 px-3 py-2.5 flex items-center justify-between gap-2 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
-                <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
-                    <span className="cox-livedot"></span>
-                    <h1 className="text-base sm:text-xl font-bold text-yellow-400 arcade-font flex items-center" style={{ letterSpacing: '.14em' }}>
-                        <span className="uppercase truncate">COCKSLIGHTING</span>
+            <header className="cox-appbar">
+                <div className="cox-appbar-brand">
+                    <div className="cox-hello">
+                        <span className="cox-livedot"></span>
+                        <span>{isAdmin ? '👑 관리자' : `${currentUser.name} 님`} · 콕스라이팅</span>
+                    </div>
+                    <h1 className="cox-title">
+                        {activeTab === 'inProgress'
+                            ? (<>경기 <em>진행</em></>)
+                            : (<>오늘의 <em>경기</em></>)}
                     </h1>
                 </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                    <span className="text-[11px] font-bold whitespace-nowrap px-2.5 py-1 rounded-full bg-gray-700 text-gray-300">
-                        {isAdmin ? '👑 ' : ''}{currentUser.name}
-                    </span>
+
+                <div className="relative flex-shrink-0">
                     <button
-                        onClick={handleToggleRest}
-                        className={`arcade-button py-1.5 px-2.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
-                            currentUser.isResting
-                                ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                        }`}
+                        className={`cox-avatar-btn ${isAdmin ? 'admin' : ''}`}
+                        onClick={() => setIsProfileMenuOpen(o => !o)}
+                        aria-label="프로필 메뉴"
                     >
-                        {currentUser.isResting ? '복귀' : '휴식'}
+                        {currentUser.name.slice(-2)}
                     </button>
-                    <button
-                        onClick={toggleTheme}
-                        className="text-gray-400 hover:text-yellow-400 text-base px-1.5 py-1 transition-colors"
-                        title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
-                    >
-                        <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
-                    </button>
-                    {isAdmin && (
-                        <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white text-base px-1.5 py-1">
-                            <i className="fas fa-cog"></i>
-                        </button>
+
+                    {isProfileMenuOpen && (
+                        <>
+                            <div className="cox-menu-backdrop" onClick={() => setIsProfileMenuOpen(false)} />
+                            <div className="cox-menu">
+                                <div className="cox-menu-head">
+                                    <div className={`cox-avatar-btn ${isAdmin ? 'admin' : ''}`} style={{ width: 38, height: 38, borderRadius: 12, pointerEvents: 'none' }}>
+                                        {currentUser.name.slice(-2)}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="nm truncate">{currentUser.name}</div>
+                                        <div className="rl">{isAdmin ? '관리자 계정' : `${currentUser.level} · ${currentUser.isGuest ? '게스트' : '회원'}`}</div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    className={`cox-menu-item ${currentUser.isResting ? 'accent' : ''}`}
+                                    onClick={() => { setIsProfileMenuOpen(false); handleToggleRest(); }}
+                                >
+                                    <i className={`fas fa-${currentUser.isResting ? 'play' : 'mug-hot'}`}></i>
+                                    {currentUser.isResting ? '경기 복귀하기' : '잠시 휴식하기'}
+                                </button>
+
+                                <button
+                                    className="cox-menu-item"
+                                    onClick={() => { setIsProfileMenuOpen(false); toggleTheme(); }}
+                                >
+                                    <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
+                                    {isDarkMode ? '라이트 모드' : '다크 모드'}
+                                </button>
+
+                                {isAdmin && (
+                                    <button
+                                        className="cox-menu-item"
+                                        onClick={() => { setIsProfileMenuOpen(false); setIsSettingsOpen(true); }}
+                                    >
+                                        <i className="fas fa-sliders"></i>
+                                        관리자 설정
+                                    </button>
+                                )}
+
+                                <button
+                                    className="cox-menu-item danger"
+                                    onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }}
+                                >
+                                    <i className="fas fa-right-from-bracket"></i>
+                                    나가기
+                                </button>
+                            </div>
+                        </>
                     )}
-                    <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-2.5 rounded-xl text-xs whitespace-nowrap">나가기</button>
                 </div>
             </header>
 
-            <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto" style={{ paddingBottom: isMobile ? '96px' : '16px' }}>
+            <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto" style={{ paddingBottom: isMobile ? 'calc(104px + env(safe-area-inset-bottom, 0px))' : '16px' }}>
                 {isMobile ? (
                     <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
+                                    {statBar}
                                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
                                     <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
                                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
@@ -2391,6 +2449,7 @@ useEffect(() => {
                     </div>
             ) : (
                 <div className="flex flex-col gap-3">
+                    {statBar}
                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
                     <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
