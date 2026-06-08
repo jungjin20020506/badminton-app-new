@@ -2398,7 +2398,7 @@ useEffect(() => {
 // ===================================================================================
 // 신규 및 복구된 페이지/모달 컴포넌트들
 // ===================================================================================
-function EntryPage({ onEnter }) {
+function EntryPage({ onEnter, isDarkMode, toggleTheme }) {
     const [formData, setFormData] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
 
     useEffect(() => {
@@ -2429,8 +2429,11 @@ function EntryPage({ onEnter }) {
     ));
 
     return (
-        <div className="bg-black text-white min-h-screen flex items-center justify-center font-sans p-4">
-            <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
+              <div className={`${isDarkMode ? 'bg-black' : 'light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4 relative`}>
+            <button onClick={toggleTheme} className="absolute top-4 right-4 text-gray-400 hover:text-yellow-400 text-lg px-1 transition-colors" title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}>
+                <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
+            </button>
+            <div className="modal-content bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
                 <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">⚡ COCKSLIGHTING</h1>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
@@ -3114,7 +3117,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     );
 }
 
-function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
+function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
 
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -3151,7 +3154,7 @@ function CourtSelectionModal({ courts, onSelect, onCancel }) {
     );
 }
 
-function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
+function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 
 function NotiIntroModal({ onAllow, onClose }) {
     return (
