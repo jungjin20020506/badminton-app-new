@@ -475,22 +475,17 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
 
     const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
     const isWaiting = !context.location;
-        const playerNameClass = `player-name text-xs font-semibold whitespace-nowrap leading-tight`;
-    const playerInfoClass = `player-info text-[10px] leading-tight mt-0.5 whitespace-nowrap flex items-center gap-1`;
-
-    const getLevelBadgeClass = (level, isGuest) => {
-        if (isGuest) return 'badge-G';
-        switch(level) {
-            case 'A조': return 'badge-A';
-            case 'B조': return 'badge-B';
-            case 'C조': return 'badge-C';
-            case 'D조': return 'badge-D';
-            default:    return 'badge-N';
-        }
-    };
+    const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter`;
+    const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
 
     const levelColor = getLevelColor(player.level, player.isGuest);
-    const levelStyle = { color: levelColor, fontWeight: '700', fontSize: '11px' };
+
+    const levelStyle = {
+        color: levelColor,
+        fontWeight: 'bold',
+        fontSize: '14px',
+        textShadow: `0 0 5px ${levelColor}`
+    };
 
     const cardStyle = {
         ...genderStyle,
@@ -517,9 +512,10 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const actionLabel = (isWaiting || context.location === 'auto') ? '선수 내보내기' : '대기자로 이동';
 
     return (
-                <div
+        <div
             ref={cardRef}
-            className={`player-card p-1.5 relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'opacity-40' : ''}`}
+            // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
+            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
             onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
@@ -528,29 +524,28 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             onContextMenu={handleContextMenu}
         >
             <div>
-                <div className={playerNameClass} style={{color: 'var(--text1)'}}>{adminIcon}{player.name}</div>
+                <div className={playerNameClass}>{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>
                     <span style={levelStyle}>{player.level.replace('조','')}</span>
-                    <span className="font-semibold" style={{color: 'var(--text3)', fontSize: '10px'}}>{player.todayRecentGames ? player.todayRecentGames.length : 0}G</span>
+                    <span className="ml-1 text-gray-300 font-bold">{player.todayRecentGames ? player.todayRecentGames.length : 0}G</span>
                 </div>
             </div>
             {isAdmin && onAction && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onAction(player); }}
-                    className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-white"
-                    style={{background: 'var(--border)', fontSize: '9px'}}
+                    className={`absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400`}
                     aria-label={actionLabel}
-                ><i className="fas fa-times"></i></button>
+                ><i className={"fas fa-times-circle fa-xs"}></i></button>
             )}
         </div>
     );
 });
 const EmptySlot = ({ onSlotClick }) => (
     <div
-        className="player-slot h-14 flex items-center justify-center cursor-pointer"
+        className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-700/50 hover:border-yellow-400 transition-all"
         onClick={onSlotClick}
     >
-        <span className="text-lg font-light" style={{color: 'var(--text3)'}}>+</span>
+        <span className="text-xl font-bold">+</span>
     </div>
 );
 const CourtTimer = ({ court }) => {
@@ -593,20 +588,16 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
     const totalWaiting = maleWaitingPlayers.length + femaleWaitingPlayers.length;
 
     return (
-               <section className="section-card">
-            <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{background: 'var(--amber)'}}></div>
-                    <h2 className="text-sm font-bold" style={{color: 'var(--text1)'}}>
-                        대기 명단
-                        <span className="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded-full" style={{background: 'var(--surface2)', color: 'var(--text2)'}}>{totalWaiting}</span>
-                    </h2>
-                </div>
+        <section className="bg-gray-800/50 rounded-lg p-2">
+            <div className="flex justify-between items-center mb-2">
+                <h2 className="text-sm font-bold text-yellow-400 arcade-font flicker-text">
+                    대기 명단 ({totalWaiting})
+                </h2>
+                {/* [신규 기능] 대기자 전체 내보내기 버튼 */}
                 {isAdmin && totalWaiting > 0 && (
                     <button
                         onClick={onClearAllWaitingPlayers}
-                        className="text-xs font-semibold px-2 py-1 rounded-md"
-                        style={{background: 'rgba(239,68,68,0.1)', color: '#EF4444'}}
+                        className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md"
                     >
                         전체 내보내기
                     </button>
@@ -642,14 +633,12 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
     const hasMatches = Object.values(scheduledMatches).some(m => m && m.some(p => p !== null));
 
     return (
-              <section className="section-card">
-            <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{background: '#2563EB'}}></div>
-                    <h2 className="text-sm font-bold" style={{color: 'var(--text1)'}}>경기 예정</h2>
-                </div>
+        <section>
+            <div className="flex justify-between items-center mb-2 px-1">
+                {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
+                <h2 className="text-sm font-bold text-cyan-400 arcade-font">경기 예정</h2>
                 {isAdmin && hasMatches && (
-                    <button onClick={handleClearScheduledMatches} className="text-xs font-semibold px-2 py-1 rounded-md" style={{background: 'rgba(239,68,68,0.1)', color: '#EF4444'}}>전체삭제</button>
+                    <button onClick={handleClearScheduledMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
                 )}
             </div>
             <div id="scheduled-matches" className="flex flex-col gap-2">
@@ -657,15 +646,16 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                     const match = scheduledMatches[String(matchIndex)] || Array(PLAYERS_PER_MATCH).fill(null);
                     const playerCount = match.filter(p => p).length;
                     return (
-                        <div key={`schedule-${matchIndex}`} className="match-row flex items-center w-full gap-2">
+                        // [UI 수정] 내부 요소 정렬 및 간격 유지
+                        <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
                             <div
-                                className="flex-shrink-0 w-7 text-center cursor-pointer flex items-center justify-center"
+                                className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
                                 onMouseDown={() => handlePressStart(matchIndex)}
                                 onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
                                 onTouchStart={() => handlePressStart(matchIndex)}
                                 onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                             >
-                                <p className="font-bold text-base" style={{color: 'var(--text2)'}}>{matchIndex + 1}</p>
+                                <p className="font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
                             </div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                 {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
@@ -676,12 +666,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
-                                <button
-                                    className={`w-full py-1.5 px-1 rounded-lg font-bold text-[10px] transition-all ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'btn-primary' : ''}`}
-                                    style={!(playerCount === PLAYERS_PER_MATCH && isAdmin) ? {background: 'var(--surface2)', color: 'var(--text3)', cursor: 'not-allowed'} : {}}
-                                    disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin}
-                                    onClick={() => handleStartMatch(matchIndex, 'schedule')}
-                                >START</button>
+                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex, 'schedule')}>START</button>
                             </div>
                         </div>
                     );
@@ -710,40 +695,36 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
     const matchList = Object.entries(autoMatches);
 
     return (
-               <section className="section-card">
-            <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{background: '#10B981'}}></div>
-                    <h2 className="text-sm font-bold" style={{color: 'var(--text1)'}}>
-                        자동 매칭
-                        <span className="ml-1.5 text-xs font-semibold px-1.5 py-0.5 rounded-full" style={isAutoMatchOn ? {background: 'rgba(16,185,129,0.15)', color: '#10B981'} : {background: 'var(--surface2)', color: 'var(--text3)'}}>
-                            {isAutoMatchOn ? 'ON' : 'OFF'}
-                        </span>
-                    </h2>
-                </div>
-                {isAdmin && matchList.length > 0 && (
-                    <button onClick={handleClearAutoMatches} className="text-xs font-semibold px-2 py-1 rounded-md" style={{background: 'rgba(239,68,68,0.1)', color: '#EF4444'}}>전체삭제</button>
-                )}
+        <section>
+            <div className="flex justify-between items-center mb-2 px-1">
+                 {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
+                 <h2 className={`text-sm font-bold text-green-400 arcade-font ${isAutoMatchOn ? 'flicker-text' : ''}`}>
+                    🤖 자동 매칭 {isAutoMatchOn ? '(ON)' : '(OFF)'}
+                 </h2>
+                 {isAdmin && matchList.length > 0 && (
+                    <button onClick={handleClearAutoMatches} className="arcade-button text-xs bg-red-800 text-white py-1 px-2 rounded-md">전체삭제</button>
+                 )}
             </div>
             {isAutoMatchOn && matchList.length === 0 && (
-                <div className="text-center p-4 rounded-xl" style={{background: 'var(--surface2)', color: 'var(--text2)'}}>
-                    <p className="text-sm">자동 매칭 대기 중...</p>
-                    <p className="text-xs mt-1" style={{color: 'var(--text3)'}}>대기 선수가 4명 이상이고 좋은 조합이 발견되면 자동 생성됩니다.</p>
+                <div className="text-center text-gray-500 p-4 bg-gray-800/60 rounded-lg">
+                    <p>자동 매칭 대기 중...</p>
+                    <p className="text-xs mt-1">대기 선수가 4명 이상이고, '최소 점수'를 넘는<br/>좋은 조합이 발견되면 자동으로 생성됩니다.</p>
                 </div>
             )}
             <div id="auto-matches" className="flex flex-col gap-2">
                 {matchList.map(([matchIndex, match]) => {
                     const playerCount = match.filter(p => p).length;
                     return (
-                        <div key={`auto-match-${matchIndex}`} className="match-row flex items-center w-full gap-2">
+                        // [UI 수정] 내부 요소 정렬 및 간격 유지
+                        <div key={`auto-match-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
                             <div
-                                className="flex-shrink-0 w-7 text-center cursor-pointer flex items-center justify-center"
+                                className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
                                 onMouseDown={() => handlePressStart(matchIndex)}
                                 onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
                                 onTouchStart={() => handlePressStart(matchIndex)}
                                 onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                             >
-                                <p className="font-bold text-base" style={{color: 'var(--text2)'}}>{parseInt(matchIndex, 10) + 1}</p>
+                                <p className="font-bold text-lg text-white arcade-font">{parseInt(matchIndex, 10) + 1}</p>
                             </div>
                             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                 {match.map((playerId, slotIndex) => {
@@ -756,12 +737,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
-                                <button
-                                    className={`w-full py-1.5 px-1 rounded-lg font-bold text-[10px] transition-all ${playerCount === 4 && isAdmin ? 'btn-primary' : ''}`}
-                                    style={!(playerCount === 4 && isAdmin) ? {background: 'var(--surface2)', color: 'var(--text3)', cursor: 'not-allowed'} : {}}
-                                    disabled={playerCount !== 4 || !isAdmin}
-                                    onClick={() => handleStartAutoMatch(matchIndex, 'auto')}
-                                >START</button>
+                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== 4 || !isAdmin} onClick={() => handleStartAutoMatch(matchIndex, 'auto')}>START</button>
                             </div>
                         </div>
                     );
@@ -824,13 +800,14 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
     }, [isAdmin, handlePressStart, handlePressEnd]);
 
     const isSource = courtMove.sourceIndex === courtIndex;
-       const courtContainerClass = `match-row flex items-center w-full gap-2 transition-all duration-200 ${isSource ? 'ring-2 ring-blue-500 scale-[1.02]' : ''} ${isAdmin ? 'cursor-pointer' : ''}`;
+    const courtContainerClass = `flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 transition-all duration-300 ${isSource ? 'border-2 border-yellow-400 scale-105 shadow-lg shadow-yellow-400/30' : 'border-2 border-transparent'} ${isAdmin ? 'cursor-pointer' : ''}`;
 
     return (
         <div ref={courtRef} className={courtContainerClass} onClick={handleClick}>
-            <div className="flex-shrink-0 w-7 flex flex-col items-center justify-center">
-                <p className="font-bold text-base" style={{color: court ? '#EF4444' : 'var(--text3)'}}>{courtIndex + 1}</p>
-                <p className="text-[9px] font-medium" style={{color: 'var(--text3)'}}>코트</p>
+            {/* [UI 수정] 내부 요소 정렬 및 간격 유지 */}
+            <div className="flex-shrink-0 w-8 flex flex-col items-center justify-center">
+                <p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p>
+                <p className="font-semibold text-[8px] text-gray-400 arcade-font">코트</p>
             </div>
             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((playerId, slotIndex) => {
@@ -839,12 +816,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
                 })}
             </div>
             <div className="flex-shrink-0 w-14 text-center">
-                <button
-                    className={`w-full py-1.5 px-1 rounded-lg font-bold text-[10px] transition-all ${court && isAdmin ? 'btn-danger' : ''}`}
-                    style={!(court && isAdmin) ? {background: 'var(--surface2)', color: 'var(--text3)', cursor: 'not-allowed'} : {}}
-                    disabled={!court || !isAdmin}
-                    onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}
-                >END</button>
+                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
                 <CourtTimer court={court} />
             </div>
         </div>
@@ -853,12 +825,10 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
 
 
 const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
-       return (
-        <section className="section-card">
-            <div className="flex items-center gap-2 mb-3">
-                <div className="w-2 h-2 rounded-full" style={{background: '#EF4444'}}></div>
-                <h2 className="text-sm font-bold" style={{color: 'var(--text1)'}}>경기 진행</h2>
-            </div>
+    return (
+        <section>
+            {/* [UI 수정] 제목 폰트 크기 text-sm로 조정 */}
+            <h2 className="text-sm font-bold mb-2 text-red-500 px-1 arcade-font">경기 진행</h2>
             <div id="in-progress-courts" className="flex flex-col gap-2">
                 {Array.from({ length: numInProgressCourts }).map((_, courtIndex) => (
                     <InProgressCourt
@@ -2203,46 +2173,44 @@ useEffect(() => {
         }
     }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
 
-    if (isLoading) {
-        return (
-            <div className={`${isDarkMode ? '' : 'light-mode'} min-h-screen flex items-center justify-center`} style={{background: 'var(--bg)'}}>
-                <div className="flex flex-col items-center gap-3">
-                    <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{borderColor: 'var(--blue)', borderTopColor: 'transparent'}}></div>
-                    <p className="text-sm font-semibold" style={{color: 'var(--text2)'}}>Loading...</p>
-                </div>
-            </div>
-        );
+
+     if (isLoading) {
+        return <div className={`${isDarkMode ? 'bg-black' : 'bg-gray-100 light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4`}><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
     }
 
     // 인앱 브라우저 접속 시 강제 안내 화면 (외부 브라우저 유도)
-       if (isInAppBrowser) {
+    if (isInAppBrowser) {
         return (
-            <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center" style={{background: 'var(--bg)'}}>
-                <div className="w-full max-w-sm p-8 rounded-2xl" style={{background: 'var(--surface)', border: '1px solid var(--border)'}}>
-                    <div className="text-5xl mb-5">🚀</div>
-                    <h2 className="text-lg font-bold mb-2" style={{color: 'var(--text1)'}}>전용 브라우저로 열어주세요</h2>
-                    <p className="text-sm mb-6 leading-relaxed" style={{color: 'var(--text2)'}}>
-                        카카오톡 내 브라우저에서는 실시간 매칭이 끊길 수 있어요.<br/>
-                        아래 버튼을 눌러 외부 브라우저로 접속해주세요.
+            <div className="bg-black text-white min-h-screen flex flex-col items-center justify-center font-sans p-6 text-center" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+                <div className="bg-gray-800 p-8 rounded-2xl shadow-[0_0_20px_rgba(255,224,0,0.2)] w-full max-w-sm border border-yellow-500/30">
+                    <div className="text-5xl mb-4">🚀</div>
+                    <h2 className="text-xl font-bold text-yellow-400 mb-2">앗! 전용 브라우저가 필요해요</h2>
+                    <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+                        카카오톡 등 현재 화면에서는<br/>콕스라이팅의 실시간 매칭이 끊길 수 있어요.<br/><br/>
+                        <span className="text-white font-bold bg-red-500/20 px-2 py-1 rounded">오류 없는 쾌적한 경기 진행</span>을 위해<br/>
+                        아래 버튼을 눌러 외부 브라우저로 접속해주세요!
                     </p>
-                    <button
+                    <button 
                         onClick={() => {
                             const targetUrl = window.location.href;
+                            // 안드로이드 카카오톡 외부 브라우저 열기 인텐트
                             if (navigator.userAgent.toLowerCase().includes('android') && navigator.userAgent.toLowerCase().includes('kakao')) {
                                 window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(targetUrl)}`;
                             } else {
+                                // 아이폰 또는 기타 브라우저는 클립보드 복사 유도
                                 navigator.clipboard.writeText(targetUrl).then(() => {
                                     alert("링크가 복사되었습니다! 사파리(Safari)나 크롬(Chrome) 주소창에 붙여넣어주세요.");
                                 });
                             }
                         }}
-                        className="btn-primary w-full py-3 text-sm font-bold"
+                        className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg text-sm"
                     >
                         {navigator.userAgent.toLowerCase().includes('android') ? '외부 브라우저로 열기' : '링크 복사해서 열기'}
                     </button>
+                    {/* 아이폰 사용자를 위한 추가 안내 */}
                     {!navigator.userAgent.toLowerCase().includes('android') && (
-                        <p className="text-xs mt-4" style={{color: 'var(--text3)'}}>
-                            우측 하단 [⋯] 버튼 → '다른 브라우저로 열기'
+                        <p className="text-gray-500 text-[10px] mt-4">
+                            우측 하단 [⋯] 버튼을 누르고<br/>'다른 브라우저로 열기'를 선택하셔도 됩니다.
                         </p>
                     )}
                 </div>
@@ -2254,8 +2222,8 @@ useEffect(() => {
         return <EntryPage onEnter={handleEnter} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />;
     }
 
-     return (
-        <div className={`${isDarkMode ? '' : 'light-mode'} min-h-screen flex flex-col`} style={{ background: 'var(--bg)', color: 'var(--text1)' }}>
+    return (
+        <div className={`${isDarkMode ? 'bg-black' : 'light-mode'} text-white min-h-screen font-sans flex flex-col`} style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
           {/* --- PWA 앱 설치 유도 배너 (iOS 및 안드로이드 강력 대응) --- */}
             {showInstallBanner && (
@@ -2352,72 +2320,60 @@ useEffect(() => {
             onAdminAddPlayer={handleAdminAddPlayer}
         />}
 
-                      <header className="flex-shrink-0 sticky top-0 z-20 backdrop-blur-md" style={{background: 'rgba(13,17,23,0.88)', borderBottom: '1px solid var(--border)'}}>
-                <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                    <h1 className="text-base font-extrabold tracking-tight" style={{color: 'var(--text1)', letterSpacing: '-0.03em'}}>
-                        {isAdmin && <span className="text-xs mr-1">👑</span>}
-                        콕스라이팅
-                    </h1>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{background: 'var(--surface2)', color: 'var(--text2)'}}>
-                            {currentUser.name}
-                        </span>
-                        <button
-                            onClick={handleToggleRest}
-                            className="text-xs font-semibold px-2.5 py-1 rounded-full transition-all"
-                            style={currentUser.isResting
-                                ? {background: '#1d4ed8', color: '#fff'}
-                                : {background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)'}
-                            }
-                        >
-                            {currentUser.isResting ? '복귀' : '휴식'}
-                        </button>
-                        <button
-                            onClick={toggleTheme}
-                            className="w-8 h-8 flex items-center justify-center rounded-full transition-all"
-                            style={{background: 'var(--surface2)', color: 'var(--text2)'}}
-                        >
-                            <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'} text-sm`}></i>
-                        </button>
-                        {isAdmin && (
-                            <button
-                                onClick={() => setIsSettingsOpen(true)}
-                                className="w-8 h-8 flex items-center justify-center rounded-full transition-all"
-                                style={{background: 'var(--surface2)', color: 'var(--text2)'}}
-                            >
-                                <i className="fas fa-cog text-sm"></i>
-                            </button>
-                        )}
-                        <button
-                            onClick={handleLogout}
-                            className="text-xs font-semibold px-2.5 py-1 rounded-full transition-all"
-                            style={{background: 'rgba(239,68,68,0.12)', color: '#EF4444'}}
-                        >
-                            나가기
-                        </button>
+            <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center flex-shrink-0">
+                        <h1 className="text-sm sm:text-lg font-bold text-yellow-400 arcade-font flicker-text flex items-center">
+                            <span className="mr-1">⚡</span>
+                            <span className="uppercase">COCKSLIGHTING</span>
+                        </h1>
                     </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                       <span className="text-xs font-bold whitespace-nowrap">{isAdmin ? '👑' : ''} {currentUser.name}</span>
+                       <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap">나가기</button>
+                    </div>
+                </div>
+                              <div className="flex items-center justify-end gap-1.5">
+                    <button
+                        onClick={toggleTheme}
+                        className="text-gray-400 hover:text-yellow-400 text-lg px-1 transition-colors"
+                        title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
+                    >
+                        <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
+                    </button>
+                    {isAdmin && (
+                        <>
+                            <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white text-lg px-1">
+                                <i className="fas fa-cog"></i>
+                            </button>
+                        </>
+                    )}
+                    <button
+                        onClick={handleToggleRest}
+                        className={`arcade-button py-1.5 px-2.5 rounded-md text-xs font-bold transition-colors whitespace-nowrap ${
+                            currentUser.isResting
+                                ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                                : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                        }`}
+                    >
+                        {currentUser.isResting ? '복귀' : '휴식'}
+                    </button>
                 </div>
             </header>
 
-                       <main className="flex-grow flex flex-col gap-3 p-3 overflow-y-auto">
+            <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto">
                 {isMobile ? (
                     <>
-                                                <div className="flex-shrink-0 flex gap-1 mb-3 sticky top-0 z-10 p-1 rounded-xl" style={{background: 'var(--surface2)'}}>
+                        <div className="flex-shrink-0 flex justify-around border-b border-gray-700 mb-2 sticky top-0 bg-black z-10">
                             <button
                                 onClick={() => setActiveTab('matching')}
-                                className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
-                                style={activeTab === 'matching'
-                                    ? {background: 'var(--surface)', color: 'var(--text1)', boxShadow: '0 1px 3px rgba(0,0,0,0.3)'}
-                                    : {color: 'var(--text2)'}}
+                                className={`py-2 px-4 font-bold ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
                             >
                                 경기 예정
                             </button>
                             <button
                                 onClick={() => setActiveTab('inProgress')}
-                                className="flex-1 py-2 text-sm font-semibold rounded-lg transition-all"
-                                style={activeTab === 'inProgress'
-                                    ? {background: 'var(--surface)', color: 'var(--text1)', boxShadow: '0 1px 3px rgba(0,0,0,0.3)'}
-                                    : {color: 'var(--text2)'}}
+                                className={`py-2 px-4 font-bold ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
                             >
                                 경기 진행
                             </button>
@@ -2471,91 +2427,41 @@ function EntryPage({ onEnter, isDarkMode, toggleTheme }) {
     };
     const handleSubmit = (e) => { e.preventDefault(); onEnter(formData); };
 
-    const levelColors = { 'A조': '#FF4F4F', 'B조': '#F97316', 'C조': '#EAB308', 'D조': '#22C55E' };
+    const levelButtons = ['A조', 'B조', 'C조', 'D조'].map(level => (
+        <button
+            key={level}
+            type="button"
+            name="level"
+            onClick={() => setFormData(prev => ({ ...prev, level }))}
+            className={`w-full p-3 rounded-md font-bold transition-colors arcade-button ${formData.level === level ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-white'}`}
+        >
+            {level}
+        </button>
+    ));
 
     return (
-        <div className={`${isDarkMode ? '' : 'light-mode'} min-h-screen flex items-center justify-center p-4 relative`} style={{background: 'var(--bg)'}}>
-            <button
-                onClick={toggleTheme}
-                className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full transition-all"
-                style={{background: 'var(--surface2)', color: 'var(--text2)'}}
-            >
-                <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'} text-sm`}></i>
+              <div className={`${isDarkMode ? 'bg-black' : 'light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4 relative`}>
+            <button onClick={toggleTheme} className="absolute top-4 right-4 text-gray-400 hover:text-yellow-400 text-lg px-1 transition-colors" title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}>
+                <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
             </button>
-
-            <div className="modal-content w-full max-w-sm">
-                <div className="text-center mb-8">
-                    <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4" style={{background: 'var(--surface2)'}}>
-                        <span className="text-2xl">🏸</span>
+            <div className="modal-content bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
+                <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">⚡ COCKSLIGHTING</h1>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
+                    <div className="grid grid-cols-4 gap-2">
+                        {levelButtons}
                     </div>
-                    <h1 className="text-2xl font-extrabold tracking-tight" style={{color: 'var(--text1)', letterSpacing: '-0.03em'}}>콕스라이팅</h1>
-                    <p className="text-sm mt-1" style={{color: 'var(--text2)'}}>배드민턴 실시간 매칭 시스템</p>
-                </div>
-
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    <div>
-                        <label className="block text-xs font-semibold mb-1.5" style={{color: 'var(--text2)'}}>이름</label>
-                        <input
-                            type="text" name="name" placeholder="이름을 입력하세요"
-                            value={formData.name} onChange={handleChange}
-                            className="field text-sm"
-                            required
-                        />
+                    <div className="flex justify-around items-center text-lg">
+                        <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자</label>
+                        <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자</label>
                     </div>
-
-                    <div>
-                        <label className="block text-xs font-semibold mb-1.5" style={{color: 'var(--text2)'}}>레벨</label>
-                        <div className="grid grid-cols-4 gap-1.5">
-                            {['A조', 'B조', 'C조', 'D조'].map(level => (
-                                <button
-                                    key={level}
-                                    type="button"
-                                    onClick={() => setFormData(prev => ({ ...prev, level }))}
-                                    className="py-2.5 rounded-lg text-sm font-bold transition-all"
-                                    style={formData.level === level
-                                        ? {background: levelColors[level], color: '#fff', transform: 'scale(1.02)'}
-                                        : {background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)'}
-                                    }
-                                >
-                                    {level}
-                                </button>
-                            ))}
-                        </div>
+                    <div className="text-center">
+                        <label className="flex items-center justify-center text-lg cursor-pointer">
+                            <input type="checkbox" name="isGuest" checked={formData.isGuest} onChange={handleChange} className="mr-2 h-4 w-4 rounded text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" />
+                            게스트
+                        </label>
                     </div>
-
-                    <div>
-                        <label className="block text-xs font-semibold mb-1.5" style={{color: 'var(--text2)'}}>성별</label>
-                        <div className="grid grid-cols-2 gap-1.5">
-                            {[{value: '남', label: '남자', color: '#3B82F6'}, {value: '여', label: '여자', color: '#EC4899'}].map(opt => (
-                                <label
-                                    key={opt.value}
-                                    className="flex items-center justify-center gap-2 py-2.5 rounded-lg cursor-pointer text-sm font-semibold transition-all"
-                                    style={formData.gender === opt.value
-                                        ? {background: opt.color, color: '#fff'}
-                                        : {background: 'var(--surface2)', color: 'var(--text2)', border: '1px solid var(--border)'}
-                                    }
-                                >
-                                    <input type="radio" name="gender" value={opt.value} checked={formData.gender === opt.value} onChange={handleChange} className="sr-only" />
-                                    {opt.label}
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <label className="flex items-center gap-2.5 py-2 cursor-pointer">
-                        <div
-                            className="w-5 h-5 rounded flex items-center justify-center transition-all"
-                            style={formData.isGuest ? {background: '#2563EB'} : {background: 'var(--surface2)', border: '1.5px solid var(--border)'}}
-                        >
-                            {formData.isGuest && <i className="fas fa-check text-white" style={{fontSize: '10px'}}></i>}
-                        </div>
-                        <input type="checkbox" name="isGuest" checked={formData.isGuest} onChange={handleChange} className="sr-only" />
-                        <span className="text-sm font-medium" style={{color: 'var(--text2)'}}>게스트로 참가</span>
-                    </label>
-
-                    <button type="submit" className="btn-primary w-full py-3.5 text-sm font-bold mt-2">
-                        입장하기
-                    </button>
+                    <button type="submit" className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition duration-300">입장하기</button>
                 </form>
             </div>
         </div>
@@ -3222,72 +3128,63 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     );
 }
 
-function ConfirmationModal({ title, body, onConfirm, onCancel }) {
-    return (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{background: 'rgba(0,0,0,0.75)'}}>
-            <div className="modal-content w-full max-w-sm rounded-2xl p-6" style={{background: 'var(--surface)', border: '1px solid var(--border)'}}>
-                <h3 className="text-base font-bold mb-2" style={{color: 'var(--text1)'}}>{title}</h3>
-                <p className="text-sm mb-6 leading-relaxed" style={{color: 'var(--text2)'}}>{body}</p>
-                <div className="flex gap-3">
-                    <button onClick={onCancel} className="btn-ghost flex-1 py-2.5 text-sm">취소</button>
-                    <button onClick={onConfirm} className="btn-danger flex-1 py-2.5 text-sm">확인</button>
-                </div>
-            </div>
-        </div>
-    );
-}
+function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
 
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
     const [isProcessing, setIsProcessing] = useState(false);
 
     return (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{background: 'rgba(0,0,0,0.75)'}}>
-            <div className="modal-content w-full max-w-sm rounded-2xl p-6" style={{background: 'var(--surface)', border: '1px solid var(--border)'}}>
-                <h3 className="text-base font-bold mb-1" style={{color: 'var(--text1)'}}>코트 선택</h3>
-                <p className="text-sm mb-5" style={{color: 'var(--text2)'}}>경기를 시작할 코트를 선택해주세요.</p>
-                <div className="flex flex-col gap-2">
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
+                <h3 className="text-xl font-bold text-yellow-400 mb-4 arcade-font">코트 선택</h3>
+                <p className="text-gray-300 mb-6">경기를 시작할 코트를 선택해주세요.</p>
+                <div className="flex flex-col gap-3">
                     {courts.map(courtIdx => (
                         <button
                             key={courtIdx}
-                            onClick={() => { setIsProcessing(true); onSelect(courtIdx); }}
-                            className="btn-primary w-full py-3 text-sm font-bold disabled:opacity-50"
+                            onClick={() => {
+                                setIsProcessing(true);
+                                onSelect(courtIdx);
+                            }}
+                            className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors disabled:bg-gray-500 disabled:cursor-not-allowed"
                             disabled={isProcessing}
                         >
                             {isProcessing ? '처리 중...' : `${courtIdx + 1}번 코트`}
                         </button>
                     ))}
                 </div>
-                <button onClick={onCancel} className="btn-ghost w-full py-2.5 text-sm mt-3" disabled={isProcessing}>취소</button>
+                <button
+                    onClick={onCancel}
+                    className="mt-6 w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors"
+                    disabled={isProcessing}
+                >
+                    취소
+                </button>
             </div>
         </div>
     );
 }
 
-function AlertModal({ title, body, onClose }) {
-    return (
-        <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{background: 'rgba(0,0,0,0.75)'}}>
-            <div className="modal-content w-full max-w-sm rounded-2xl p-6 text-center" style={{background: 'var(--surface)', border: '1px solid var(--border)'}}>
-                <h3 className="text-base font-bold mb-2" style={{color: 'var(--text1)'}}>{title}</h3>
-                <p className="text-sm mb-6 leading-relaxed" style={{color: 'var(--text2)'}}>{body}</p>
-                <button onClick={onClose} className="btn-primary w-full py-2.5 text-sm">확인</button>
-            </div>
-        </div>
-    );
-}
+function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 
 function NotiIntroModal({ onAllow, onClose }) {
     return (
-        <div className="fixed inset-0 flex items-center justify-center z-[70] p-4" style={{background: 'rgba(0,0,0,0.8)'}}>
-            <div className="modal-content w-full max-w-sm rounded-2xl p-6 text-center" style={{background: 'var(--surface)', border: '1px solid var(--border)'}}>
-                <div className="text-4xl mb-4">🔔</div>
-                <h3 className="text-base font-bold mb-2" style={{color: 'var(--text1)'}}>경기 입장 알림 받기</h3>
-                <p className="text-sm mb-5 leading-relaxed" style={{color: 'var(--text2)'}}>
-                    차례가 되면 <strong style={{color: 'var(--text1)'}}>방 입장 알림</strong>을 보내드립니다.<br/>
-                    원활한 경기 진행을 위해 알림을 허용해주세요.
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[70] p-4">
+            <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm text-center shadow-[0_0_20px_rgba(255,224,0,0.3)] border border-yellow-500/30">
+                <div className="text-5xl mb-4">🔔</div>
+                <h3 className="text-xl font-bold text-yellow-400 mb-2">경기 입장 알림 받기</h3>
+                <p className="text-gray-300 text-sm mb-6 leading-relaxed">
+                    다음 차례가 되면 <strong>방 입장 알림</strong>을 보내드립니다.<br/>
+                    원활한 경기 진행을 위해<br/>
+                    <span className="text-white font-bold bg-red-500/20 px-2 py-1 rounded inline-block mt-2">반드시 알림을 '허용' 해주세요!</span>
                 </p>
-                <div className="flex flex-col gap-2">
-                    <button onClick={onAllow} className="btn-primary w-full py-3 text-sm font-bold">알림 허용하기</button>
-                    <button onClick={onClose} className="text-xs py-2" style={{color: 'var(--text3)'}}>나중에 설정하기</button>
+                <div className="flex gap-3 flex-col">
+                    <button onClick={onAllow} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg text-sm transition-transform active:scale-95">
+                        알림 허용하기
+                    </button>
+                    <button onClick={onClose} className="text-gray-500 hover:text-gray-400 text-xs py-2 underline decoration-gray-600">
+                        나중에 설정하기
+                    </button>
                 </div>
             </div>
         </div>
