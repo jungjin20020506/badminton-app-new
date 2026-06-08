@@ -1,3 +1,47 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.player-card { background-color: #2d3748; }
+
+@keyframes slideInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes modalScaleIn {
+    from { opacity: 0; transform: scale(0.93); }
+    to   { opacity: 1; transform: scale(1); }
+}
+@keyframes tabFadeSlide {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+.player-card { animation: slideInUp 0.22s ease-out both; }
+.modal-content { animation: modalScaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1) both; }
+.tab-fade-in { animation: tabFadeSlide 0.2s ease-out both; }
+
+.light-mode { background-color: #f0f4f8; color: #1a202c; }
+.light-mode .bg-black { background-color: #f0f4f8 !important; }
+.light-mode header { background-color: rgba(248,250,252,0.97) !important; border-color: #e2e8f0 !important; }
+.light-mode .bg-gray-800\/50 { background-color: rgba(255,255,255,0.97) !important; }
+.light-mode .bg-gray-800\/60 { background-color: rgba(255,255,255,0.97) !important; }
+.light-mode .bg-gray-800 { background-color: #ffffff !important; }
+.light-mode .bg-gray-900\/80 { background-color: rgba(248,250,252,0.97) !important; }
+.light-mode .bg-gray-700 { background-color: #f1f5f9 !important; }
+.light-mode .bg-gray-700\/50 { background-color: rgba(241,245,249,0.85) !important; }
+.light-mode .bg-gray-600 { background-color: #e2e8f0 !important; }
+.light-mode .bg-black\/30 { background-color: rgba(15,23,42,0.06) !important; }
+.light-mode .player-card { background-color: #dde6f0 !important; }
+.light-mode .sticky.bg-black { background-color: #f0f4f8 !important; }
+.light-mode .text-white { color: #1a202c !important; }
+.light-mode .text-gray-300 { color: #374151 !important; }
+.light-mode .text-gray-400 { color: #4b5563 !important; }
+.light-mode .text-gray-500 { color: #6b7280 !important; }
+.light-mode .text-gray-600 { color: #6b7280 !important; }
+.light-mode .border-gray-700 { border-color: #cbd5e0 !important; }
+.light-mode .border-gray-600 { border-color: #a0aec0 !important; }
+.light-mode .border-dashed { border-color: #94a3b8 !important; }
+.light-mode .arcade-button { border-color: #94a3b8 !important; box-shadow: inset -2px -2px 0px 0px #94a3b8, inset 2px 2px 0px 0px #ffffff !important; }
+.light-mode .arcade-button:active { box-shadow: inset -1px -1px 0px 0px #94a3b8, inset 1px 1px 0px 0px #ffffff !important; }
+.light-mode textarea, .light-mode input[type="text"], .light-mode input[type="number"] { background-color: #f1f5f9 !important; color: #1a202c !important; }
