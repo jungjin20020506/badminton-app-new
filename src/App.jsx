@@ -497,14 +497,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     };
 
     if (context.selected || isSelectedForWin) {
-        cardStyle.borderColor = '#34d399';
-        cardStyle.transform = 'scale(1.1)';
-        cardStyle.boxShadow = `${cardStyle.boxShadow}, 0 0 15px 5px rgba(52, 211, 153, 0.9)`;
+        cardStyle.borderColor = '#CDFB47';
+        cardStyle.transform = 'scale(1.08)';
+        cardStyle.boxShadow = `${cardStyle.boxShadow}, 0 0 16px 3px rgba(205, 251, 71, 0.6)`;
     }
 
     if (isCurrentUser) {
-        cardStyle.borderColor = '#FBBF24';
-        cardStyle.boxShadow = `${cardStyle.boxShadow}, 0 0 12px 4px rgba(251, 191, 36, 0.9)`;
+        cardStyle.borderColor = '#FF6A52';
+        cardStyle.boxShadow = `${cardStyle.boxShadow}, 0 0 13px 3px rgba(255, 106, 82, 0.55)`;
     }
 
     const isLongPressDisabled = context.location === 'court';
@@ -514,6 +514,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     return (
         <div
             ref={cardRef}
+            id={isCurrentUser ? 'my-player-card' : undefined}
             // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
             style={cardStyle}
@@ -2173,16 +2174,31 @@ useEffect(() => {
         }
     }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
 
+    // [COX UI] 하단 FAB: 내 카드 위치로 스크롤 + 하이라이트 (모바일에선 알맞은 탭으로 전환)
+    const handleLocateMe = useCallback(() => {
+        if (!currentUser) return;
+        const onCourt = inProgressPlayerIds.has(currentUser.id);
+        if (isMobile) setActiveTab(onCourt ? 'inProgress' : 'matching');
+        setTimeout(() => {
+            const el = document.getElementById('my-player-card');
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.add('cox-flash');
+                setTimeout(() => el.classList.remove('cox-flash'), 1600);
+            }
+        }, 140);
+    }, [currentUser, inProgressPlayerIds, isMobile]);
+
 
      if (isLoading) {
-        return <div className={`${isDarkMode ? 'bg-black' : 'bg-gray-100 light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4`}><div className="text-yellow-400 arcade-font">LOADING...</div></div>;
+        return <div className={`${isDarkMode ? 'cox-dark' : 'bg-gray-100 light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4`}><div className="text-yellow-400 arcade-font flicker-text" style={{ fontSize: '34px', letterSpacing: '.12em' }}>LOADING...</div></div>;
     }
 
     // 인앱 브라우저 접속 시 강제 안내 화면 (외부 브라우저 유도)
     if (isInAppBrowser) {
         return (
-            <div className="bg-black text-white min-h-screen flex flex-col items-center justify-center font-sans p-6 text-center" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-                <div className="bg-gray-800 p-8 rounded-2xl shadow-[0_0_20px_rgba(255,224,0,0.2)] w-full max-w-sm border border-yellow-500/30">
+            <div className="cox-dark text-white min-h-screen flex flex-col items-center justify-center font-sans p-6 text-center" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+                <div className="bg-gray-800 p-8 rounded-2xl shadow-[0_0_20px_rgba(205,251,71,0.15)] w-full max-w-sm border border-yellow-500/30">
                     <div className="text-5xl mb-4">🚀</div>
                     <h2 className="text-xl font-bold text-yellow-400 mb-2">앗! 전용 브라우저가 필요해요</h2>
                     <p className="text-gray-300 text-sm mb-6 leading-relaxed">
@@ -2223,7 +2239,7 @@ useEffect(() => {
     }
 
     return (
-        <div className={`${isDarkMode ? 'bg-black' : 'light-mode'} text-white min-h-screen font-sans flex flex-col`} style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+        <div className={`${isDarkMode ? 'cox-dark' : 'light-mode'} text-white min-h-screen font-sans flex flex-col`} style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
           {/* --- PWA 앱 설치 유도 배너 (iOS 및 안드로이드 강력 대응) --- */}
             {showInstallBanner && (
@@ -2320,37 +2336,20 @@ useEffect(() => {
             onAdminAddPlayer={handleAdminAddPlayer}
         />}
 
-            <header className="flex-shrink-0 p-2 flex flex-col gap-1 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
-                <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center flex-shrink-0">
-                        <h1 className="text-sm sm:text-lg font-bold text-yellow-400 arcade-font flicker-text flex items-center">
-                            <span className="mr-1">⚡</span>
-                            <span className="uppercase">COCKSLIGHTING</span>
-                        </h1>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                       <span className="text-xs font-bold whitespace-nowrap">{isAdmin ? '👑' : ''} {currentUser.name}</span>
-                       <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded-md text-xs whitespace-nowrap">나가기</button>
-                    </div>
+            <header className="flex-shrink-0 px-3 py-2.5 flex items-center justify-between gap-2 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-20 border-b border-gray-700">
+                <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
+                    <span className="cox-livedot"></span>
+                    <h1 className="text-base sm:text-xl font-bold text-yellow-400 arcade-font flex items-center" style={{ letterSpacing: '.14em' }}>
+                        <span className="uppercase truncate">COCKSLIGHTING</span>
+                    </h1>
                 </div>
-                              <div className="flex items-center justify-end gap-1.5">
-                    <button
-                        onClick={toggleTheme}
-                        className="text-gray-400 hover:text-yellow-400 text-lg px-1 transition-colors"
-                        title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
-                    >
-                        <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
-                    </button>
-                    {isAdmin && (
-                        <>
-                            <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white text-lg px-1">
-                                <i className="fas fa-cog"></i>
-                            </button>
-                        </>
-                    )}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-[11px] font-bold whitespace-nowrap px-2.5 py-1 rounded-full bg-gray-700 text-gray-300">
+                        {isAdmin ? '👑 ' : ''}{currentUser.name}
+                    </span>
                     <button
                         onClick={handleToggleRest}
-                        className={`arcade-button py-1.5 px-2.5 rounded-md text-xs font-bold transition-colors whitespace-nowrap ${
+                        className={`arcade-button py-1.5 px-2.5 rounded-xl text-xs font-bold transition-colors whitespace-nowrap ${
                             currentUser.isResting
                                 ? 'bg-blue-500 hover:bg-blue-600 text-white'
                                 : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
@@ -2358,27 +2357,25 @@ useEffect(() => {
                     >
                         {currentUser.isResting ? '복귀' : '휴식'}
                     </button>
+                    <button
+                        onClick={toggleTheme}
+                        className="text-gray-400 hover:text-yellow-400 text-base px-1.5 py-1 transition-colors"
+                        title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}
+                    >
+                        <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
+                    </button>
+                    {isAdmin && (
+                        <button onClick={() => setIsSettingsOpen(true)} className="text-gray-400 hover:text-white text-base px-1.5 py-1">
+                            <i className="fas fa-cog"></i>
+                        </button>
+                    )}
+                    <button onClick={handleLogout} className="bg-red-600 hover:bg-red-700 text-white font-bold py-1.5 px-2.5 rounded-xl text-xs whitespace-nowrap">나가기</button>
                 </div>
             </header>
 
-            <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto">
+            <main className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto" style={{ paddingBottom: isMobile ? '96px' : '16px' }}>
                 {isMobile ? (
-                    <>
-                        <div className="flex-shrink-0 flex justify-around border-b border-gray-700 mb-2 sticky top-0 bg-black z-10">
-                            <button
-                                onClick={() => setActiveTab('matching')}
-                                className={`py-2 px-4 font-bold ${activeTab === 'matching' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
-                            >
-                                경기 예정
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('inProgress')}
-                                className={`py-2 px-4 font-bold ${activeTab === 'inProgress' ? 'text-yellow-400 border-b-2 border-yellow-400' : 'text-gray-400'}`}
-                            >
-                                경기 진행
-                            </button>
-                        </div>
-                                              <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
                                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
@@ -2391,8 +2388,7 @@ useEffect(() => {
                                 <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
                                 </div>
                             )}
-                                                </div>
-                </>
+                    </div>
             ) : (
                 <div className="flex flex-col gap-3">
                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
@@ -2402,6 +2398,40 @@ useEffect(() => {
                 </div>
             )}
             </main>
+
+            {/* --- COX 하단 글래스 네비게이션 (모바일) + 가운데 라임 FAB --- */}
+            {isMobile && (
+                <nav className="cox-bottomnav">
+                    <button
+                        className={`cox-nav-btn ${activeTab === 'matching' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('matching')}
+                    >
+                        <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="17" rx="2.5" />
+                            <path d="M3 9h18M8 2.5v3M16 2.5v3" />
+                        </svg>
+                        <span>경기 예정</span>
+                    </button>
+
+                    <button className="cox-fab" onClick={handleLocateMe} title="내 위치 찾기" aria-label="내 위치 찾기">
+                        <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="3.2" />
+                            <circle cx="12" cy="12" r="8" />
+                            <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" />
+                        </svg>
+                    </button>
+
+                    <button
+                        className={`cox-nav-btn ${activeTab === 'inProgress' ? 'active' : ''}`}
+                        onClick={() => setActiveTab('inProgress')}
+                    >
+                        <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 12h3l2.5-7 5 16 2.5-9H21" />
+                        </svg>
+                        <span>경기 진행</span>
+                    </button>
+                </nav>
+            )}
         </div>
     );
 }
@@ -2440,12 +2470,14 @@ function EntryPage({ onEnter, isDarkMode, toggleTheme }) {
     ));
 
     return (
-              <div className={`${isDarkMode ? 'bg-black' : 'light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4 relative`}>
+              <div className={`${isDarkMode ? 'cox-dark' : 'light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4 relative`}>
             <button onClick={toggleTheme} className="absolute top-4 right-4 text-gray-400 hover:text-yellow-400 text-lg px-1 transition-colors" title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}>
                 <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
             </button>
-            <div className="modal-content bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-sm">
-                <h1 className="text-3xl font-bold text-yellow-400 mb-6 text-center arcade-font flicker-text">⚡ COCKSLIGHTING</h1>
+            <div className="modal-content bg-gray-800 p-8 w-full max-w-sm" style={{ borderRadius: '26px' }}>
+                <p className="cox-label text-center mb-2" style={{ color: 'var(--volt)' }}>Premium Match System</p>
+                <h1 className="text-3xl font-bold text-yellow-400 mb-1 text-center arcade-font flicker-text" style={{ letterSpacing: '.06em' }}>⚡ COCKSLIGHTING</h1>
+                <p className="text-center text-gray-500 text-xs mb-6 tracking-wide">실시간 배드민턴 경기 관리</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
                     <div className="grid grid-cols-4 gap-2">
@@ -2497,7 +2529,7 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
         <div className="poster-wrapper">
             <style>{`
                 .poster-wrapper {
-                  --brand-yellow: #FFE000;
+                  --brand-yellow: #CDFB47;
                   --bg-solid: #0A0A0A;
                   display: flex;
                   justify-content: center;
