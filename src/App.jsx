@@ -865,17 +865,6 @@ export default function App() {
     const [seasonConfig, setSeasonConfig] = useState(null);
        const [currentUser, setCurrentUser] = useState(null);
 
-    const [isDarkMode, setIsDarkMode] = useState(() => {
-        return localStorage.getItem('badminton-theme') !== 'light';
-    });
-    const toggleTheme = useCallback(() => {
-        setIsDarkMode(prev => {
-            const next = !prev;
-            localStorage.setItem('badminton-theme', next ? 'dark' : 'light');
-            return next;
-        });
-    }, []);
-
     // --- [알림 권한 및 유도 모달 상태] ---
     const [notiPermission, setNotiPermission] = useState(
         typeof window !== "undefined" && "Notification" in window ? Notification.permission : 'default'
@@ -2199,7 +2188,7 @@ useEffect(() => {
 
 
      if (isLoading) {
-        return <div className={`${isDarkMode ? 'cox-dark' : 'bg-gray-100 light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4`}><div className="text-yellow-400 arcade-font flicker-text" style={{ fontSize: '34px', letterSpacing: '.12em' }}>LOADING...</div></div>;
+        return <div className="cox-dark text-white min-h-screen flex items-center justify-center font-sans p-4"><div className="text-yellow-400 arcade-font flicker-text" style={{ fontSize: '34px', letterSpacing: '.12em' }}>LOADING...</div></div>;
     }
 
     // 인앱 브라우저 접속 시 강제 안내 화면 (외부 브라우저 유도)
@@ -2243,11 +2232,11 @@ useEffect(() => {
     }
 
    if (!currentUser) {
-        return <EntryPage onEnter={handleEnter} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />;
+        return <EntryPage onEnter={handleEnter} />;
     }
 
     return (
-        <div className={`${isDarkMode ? 'cox-dark' : 'light-mode'} text-white min-h-screen font-sans flex flex-col`} style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
+        <div className="cox-dark text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
           {/* --- PWA 앱 설치 유도 배너 (iOS 및 안드로이드 강력 대응) --- */}
             {showInstallBanner && (
@@ -2388,14 +2377,6 @@ useEffect(() => {
                                     {currentUser.isResting ? '경기 복귀하기' : '잠시 휴식하기'}
                                 </button>
 
-                                <button
-                                    className="cox-menu-item"
-                                    onClick={() => { setIsProfileMenuOpen(false); toggleTheme(); }}
-                                >
-                                    <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
-                                    {isDarkMode ? '라이트 모드' : '다크 모드'}
-                                </button>
-
                                 {isAdmin && (
                                     <button
                                         className="cox-menu-item"
@@ -2485,7 +2466,7 @@ useEffect(() => {
 // ===================================================================================
 // 신규 및 복구된 페이지/모달 컴포넌트들
 // ===================================================================================
-function EntryPage({ onEnter, isDarkMode, toggleTheme }) {
+function EntryPage({ onEnter }) {
     const [formData, setFormData] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
 
     useEffect(() => {
@@ -2516,10 +2497,7 @@ function EntryPage({ onEnter, isDarkMode, toggleTheme }) {
     ));
 
     return (
-              <div className={`${isDarkMode ? 'cox-dark' : 'light-mode'} text-white min-h-screen flex items-center justify-center font-sans p-4 relative`}>
-            <button onClick={toggleTheme} className="absolute top-4 right-4 text-gray-400 hover:text-yellow-400 text-lg px-1 transition-colors" title={isDarkMode ? '라이트 모드로 전환' : '다크 모드로 전환'}>
-                <i className={`fas fa-${isDarkMode ? 'sun' : 'moon'}`}></i>
-            </button>
+              <div className="cox-dark text-white min-h-screen flex items-center justify-center font-sans p-4 relative">
             <div className="modal-content bg-gray-800 p-8 w-full max-w-sm" style={{ borderRadius: '26px' }}>
                 <p className="cox-label text-center mb-2" style={{ color: 'var(--volt)' }}>Premium Match System</p>
                 <h1 className="text-3xl font-bold text-yellow-400 mb-1 text-center arcade-font flicker-text" style={{ letterSpacing: '.06em' }}>⚡ COCKSLIGHTING</h1>
