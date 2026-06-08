@@ -2,46 +2,216 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Custom class definitions ─── */
+.arcade-font { font-family: 'Press Start 2P', cursive; }
+
+@keyframes flicker {
+  0%, 91%, 94%, 100% { opacity: 1; }
+  92%  { opacity: 0.7; }
+  93%  { opacity: 1; }
+  95%  { opacity: 0.55; }
+}
+.flicker-text { animation: flicker 5s linear infinite; }
+
+.arcade-button {
+  box-shadow: inset -2px -2px 0 rgba(0,0,0,0.35), inset 2px 2px 0 rgba(255,255,255,0.18);
+  transition: box-shadow 0.08s ease, transform 0.08s ease;
+}
+.arcade-button:active {
+  box-shadow: inset 2px 2px 0 rgba(0,0,0,0.35), inset -2px -2px 0 rgba(255,255,255,0.18);
+  transform: translate(1px, 1px);
+}
+
 .player-card { background-color: #2d3748; }
 
+/* ─── Animations ─── */
 @keyframes slideInUp {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes modalScaleIn {
-    from { opacity: 0; transform: scale(0.93); }
-    to   { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: scale(0.93); }
+  to   { opacity: 1; transform: scale(1); }
 }
 @keyframes tabFadeSlide {
-    from { opacity: 0; transform: translateX(-8px); }
-    to   { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
-.player-card { animation: slideInUp 0.22s ease-out both; }
+.player-card  { animation: slideInUp 0.22s ease-out both; }
 .modal-content { animation: modalScaleIn 0.18s cubic-bezier(0.34,1.56,0.64,1) both; }
-.tab-fade-in { animation: tabFadeSlide 0.2s ease-out both; }
+.tab-fade-in  { animation: tabFadeSlide 0.2s ease-out both; }
 
-.light-mode { background-color: #f0f4f8; color: #1a202c; }
-.light-mode .bg-black { background-color: #f0f4f8 !important; }
-.light-mode header { background-color: rgba(248,250,252,0.97) !important; border-color: #e2e8f0 !important; }
-.light-mode .bg-gray-800\/50 { background-color: rgba(255,255,255,0.97) !important; }
-.light-mode .bg-gray-800\/60 { background-color: rgba(255,255,255,0.97) !important; }
-.light-mode .bg-gray-800 { background-color: #ffffff !important; }
-.light-mode .bg-gray-900\/80 { background-color: rgba(248,250,252,0.97) !important; }
-.light-mode .bg-gray-700 { background-color: #f1f5f9 !important; }
-.light-mode .bg-gray-700\/50 { background-color: rgba(241,245,249,0.85) !important; }
-.light-mode .bg-gray-600 { background-color: #e2e8f0 !important; }
-.light-mode .bg-black\/30 { background-color: rgba(15,23,42,0.06) !important; }
-.light-mode .player-card { background-color: #dde6f0 !important; }
-.light-mode .sticky.bg-black { background-color: #f0f4f8 !important; }
-.light-mode .text-white { color: #1a202c !important; }
-.light-mode .text-gray-300 { color: #374151 !important; }
-.light-mode .text-gray-400 { color: #4b5563 !important; }
-.light-mode .text-gray-500 { color: #6b7280 !important; }
-.light-mode .text-gray-600 { color: #6b7280 !important; }
-.light-mode .border-gray-700 { border-color: #cbd5e0 !important; }
-.light-mode .border-gray-600 { border-color: #a0aec0 !important; }
-.light-mode .border-dashed { border-color: #94a3b8 !important; }
-.light-mode .arcade-button { border-color: #94a3b8 !important; box-shadow: inset -2px -2px 0px 0px #94a3b8, inset 2px 2px 0px 0px #ffffff !important; }
-.light-mode .arcade-button:active { box-shadow: inset -1px -1px 0px 0px #94a3b8, inset 1px 1px 0px 0px #ffffff !important; }
-.light-mode textarea, .light-mode input[type="text"], .light-mode input[type="number"] { background-color: #f1f5f9 !important; color: #1a202c !important; }
+
+/* ══════════════════════════════════════════════════════
+   LIGHT MODE  ·  Premium Redesign
+   팔레트: 쿨-화이트 + 슬레이트-블루 베이스
+══════════════════════════════════════════════════════ */
+
+/* ── Root ── */
+.light-mode {
+  background-color: #ECF2FA;
+  color: #0C1A2E;
+}
+
+/* ── Page background ── */
+.light-mode .bg-black {
+  background-color: #ECF2FA !important;
+}
+
+/* ── Header  (frosted glass) ── */
+.light-mode header {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(210, 228, 250, 0.75) !important;
+  box-shadow: 0 1px 24px rgba(12, 26, 46, 0.10) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+}
+
+/* ── Sticky backdrop (modal layer, stacked headers) ── */
+.light-mode .bg-gray-900\/80 {
+  background: rgba(255, 255, 255, 0.97) !important;
+  box-shadow: 0 2px 20px rgba(12, 26, 46, 0.09) !important;
+}
+
+/* ── Section card  (WaitingListSection wrapper) ── */
+.light-mode .bg-gray-800\/50 {
+  background: #FFFFFF !important;
+  border: 1px solid #D2E4F8 !important;
+  box-shadow: 0 2px 16px rgba(12, 26, 46, 0.07), 0 1px 3px rgba(12, 26, 46, 0.04) !important;
+}
+
+/* ── Match / Court row cards ── */
+.light-mode .bg-gray-800\/60 {
+  background: #F5F9FF !important;
+  border: 1px solid #DDE9F8 !important;
+  box-shadow: 0 1px 6px rgba(12, 26, 46, 0.06) !important;
+}
+
+/* ── Modal content cards ── */
+.light-mode .bg-gray-800 {
+  background: #FFFFFF !important;
+  border: 1px solid #D2E4F8 !important;
+  box-shadow: 0 16px 48px rgba(12, 26, 46, 0.15), 0 2px 8px rgba(12, 26, 46, 0.06) !important;
+}
+
+/* ── Inner / elevated panels ── */
+.light-mode .bg-gray-700       { background-color: #E8F1FB !important; }
+.light-mode .bg-gray-700\/50   { background-color: rgba(232, 241, 251, 0.85) !important; }
+.light-mode .bg-gray-600       { background-color: #D2E4F8 !important; }
+.light-mode .bg-black\/30      { background-color: rgba(12, 26, 46, 0.04) !important; }
+
+/* ── Player cards ── */
+.light-mode .player-card {
+  background: linear-gradient(145deg, #E8F2FF 0%, #DAEAF8 100%) !important;
+  box-shadow:
+    0 1px 4px rgba(12, 26, 46, 0.11),
+    0 0 0 1px rgba(190, 216, 245, 0.65) !important;
+}
+
+/* ── Empty slot ── */
+.light-mode .player-slot {
+  background: rgba(232, 241, 251, 0.55) !important;
+  border-color: #BECEDF !important;
+}
+
+/* ── Mobile sticky tab bar ── */
+.light-mode .sticky.bg-black {
+  background-color: #FFFFFF !important;
+  box-shadow: 0 2px 16px rgba(12, 26, 46, 0.08) !important;
+}
+
+/* ── Text ── */
+.light-mode .text-white    { color: #0C1A2E !important; }
+.light-mode .text-gray-300 { color: #2A3E5C !important; }
+.light-mode .text-gray-400 { color: #4F6882 !important; }
+.light-mode .text-gray-500 { color: #7A96B3 !important; }
+.light-mode .text-gray-600 { color: #98AFC7 !important; }
+
+/* ── Borders ── */
+.light-mode .border-gray-700 { border-color: #D2E4F8 !important; }
+.light-mode .border-gray-600 { border-color: #BECEDF !important; }
+.light-mode .border-dashed   { border-color: #BECEDF !important; }
+
+/* ── Semantic / accent text colors  (readable on white/light-blue bg) ── */
+.light-mode .text-yellow-400 { color: #B45309 !important; }   /* 브랜드, 대기 명단 */
+.light-mode .text-cyan-400   { color: #0369A1 !important; }   /* 경기 예정 */
+.light-mode .text-green-400  { color: #047857 !important; }   /* 자동 매칭 */
+.light-mode .text-red-500    { color: #B91C1C !important; }   /* 경기 진행 */
+
+/* ── Buttons ── */
+.light-mode .arcade-button {
+  border: 1px solid #C0D4EC !important;
+  box-shadow: 0 2px 0 #A8C0DC, 0 1px 6px rgba(12, 26, 46, 0.09) !important;
+}
+.light-mode .arcade-button:active {
+  box-shadow: 0 0 0 #A8C0DC !important;
+  transform: translateY(2px) !important;
+}
+
+/* ── Disabled / neutral button fill ── */
+.light-mode .bg-gray-600.cursor-not-allowed,
+.light-mode .bg-gray-600.text-gray-400 {
+  background-color: #E4EEF9 !important;
+  color: #98AFC7 !important;
+}
+
+/* ── Danger / admin clear buttons ── */
+.light-mode .bg-red-800 {
+  background-color: #EF4444 !important;
+  color: #ffffff !important;
+  box-shadow: 0 2px 0 #B91C1C !important;
+}
+
+/* ── Rest / toggle button ── */
+.light-mode .bg-gray-700.text-gray-300 {
+  background-color: #E0ECF9 !important;
+  color: #4F6882 !important;
+}
+
+/* ── Form inputs ── */
+.light-mode textarea,
+.light-mode input[type="text"],
+.light-mode input[type="number"] {
+  background-color: #F2F7FF !important;
+  color: #0C1A2E !important;
+  border: 1.5px solid #C0D4EC !important;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.light-mode textarea:focus,
+.light-mode input[type="text"]:focus,
+.light-mode input[type="number"]:focus {
+  border-color: #3B82F6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15) !important;
+  outline: none !important;
+}
+
+/* ── Hover: empty slot ── */
+.light-mode .player-slot:hover {
+  background: rgba(224, 236, 252, 0.75) !important;
+  border-color: #93BBDF !important;
+}
+
+/* ── Modal overlay backdrops — must stay dark ── */
+.light-mode .fixed.bg-black {
+  background-color: rgba(12, 26, 46, 0.80) !important;
+}
+
+/* ── Level/info text inside player cards — darken inline colors for readability ── */
+.light-mode .player-card .player-info {
+  filter: saturate(1.1) brightness(0.62);
+}
+
+/* ── Hover states ── */
+.light-mode .hover\:bg-gray-500:hover { background-color: #C4D9F0 !important; }
+.light-mode .hover\:bg-gray-600:hover { background-color: #D2E4F8 !important; }
+.light-mode .hover\:bg-gray-700:hover { background-color: #E2EEF9 !important; }
+
+/* ── Light red text for dark bg buttons (delete etc.) ── */
+.light-mode .text-red-300 { color: #DC2626 !important; }
+
+/* ── Scrollbar ── */
+.light-mode ::-webkit-scrollbar        { width: 4px; height: 4px; }
+.light-mode ::-webkit-scrollbar-track  { background: #ECF2FA; border-radius: 4px; }
+.light-mode ::-webkit-scrollbar-thumb  { background: #BECEDF; border-radius: 4px; }
+.light-mode ::-webkit-scrollbar-thumb:hover { background: #7A96B3; }
