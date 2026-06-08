@@ -2254,7 +2254,7 @@ useEffect(() => {
         return <EntryPage onEnter={handleEnter} isDarkMode={isDarkMode} toggleTheme={toggleTheme} />;
     }
 
-    r    return (
+     return (
         <div className={`${isDarkMode ? '' : 'light-mode'} min-h-screen flex flex-col`} style={{ background: 'var(--bg)', color: 'var(--text1)' }}>
             
           {/* --- PWA 앱 설치 유도 배너 (iOS 및 안드로이드 강력 대응) --- */}
