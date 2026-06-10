@@ -137,21 +137,28 @@ onSnapshot(configRef, (doc) => {
             announcement: "랭킹전 시즌에 오신 것을 환영합니다! 공지사항은 관리자 설정에서 변경할 수 있습니다.",
             seasonId: "default-season",
             pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP",
-            // [자동매칭] 기본 설정값 추가 (수정됨: 코트 수 제거)
+            // [자동매칭] 기본 설정값 (남/여 개별 ON/OFF + 민감도 프리셋)
             autoMatchConfig: {
                 isEnabled: false,
-                minMaleScore: 75,
-                minFemaleScore: 100
+                isMaleEnabled: false,
+                isFemaleEnabled: false,
+                sensitivity: 'normal',
+                perGenderSensitivity: false,
+                maleSensitivity: 'normal',
+                femaleSensitivity: 'normal'
             }
         };
     }
-    // [자동매칭] 기존 설정에 autoMatchConfig가 없으면 기본값 병합 (수정됨: 코트 수 제거)
+    // [자동매칭] 기존 설정에 autoMatchConfig가 없으면 기본값 병합
 if (seasonConfigData && !seasonConfigData.autoMatchConfig) {
     seasonConfigData.autoMatchConfig = {
         isEnabled: false,
-        minMaleScore: 75,
-        minFemaleScore: 100,
-        isManualConfig: false // [수정] 수동 설정 플래그 기본값
+        isMaleEnabled: false,
+        isFemaleEnabled: false,
+        sensitivity: 'normal',
+        perGenderSensitivity: false,
+        maleSensitivity: 'normal',
+        femaleSensitivity: 'normal'
     };
 }
 
@@ -319,13 +326,16 @@ function getBestLevelSplit(combo, allPlayers) {
  * @param {Array<object>} combo - 4인 조합
  * @param {object} allPlayers - 전체 선수 데이터
  * @param {number} poolAvgGames - 이 풀의 평균 경기 수
+ * @param {{now:number, maxGames:number}} [fairnessCtx] - 공평 강화용 컨텍스트(현재시각/최다 경기수)
  * @returns {number} 최종 매치 점수
  */
-function calculateMatchScore(combo, allPlayers, poolAvgGames) {
+function calculateMatchScore(combo, allPlayers, poolAvgGames, fairnessCtx) {
     let score = 100;
 
-    // 1. 공평 점수 (경기 수)
-    const matchTotalGames = combo.reduce((acc, p) => acc + (p.todayWins || 0) + (p.todayLosses || 0), 0);
+    // 1. 공평 점수 (경기 수) — 실제 추적되는 todayRecentGames 길이를 사용
+    //    (기존 todayWins/Losses는 앱에서 갱신되지 않아 항상 0이었음 → 버그 수정)
+    const gamesOf = (p) => (allPlayers[p.id]?.todayRecentGames?.length ?? p.todayRecentGames?.length ?? 0);
+    const matchTotalGames = combo.reduce((acc, p) => acc + gamesOf(p), 0);
     const matchAvgGames = matchTotalGames / 4;
     const fairnessScore = (poolAvgGames - matchAvgGames) * 50;
     score += fairnessScore;
@@ -359,6 +369,21 @@ function calculateMatchScore(combo, allPlayers, poolAvgGames) {
     score -= levelDiff * 10;   // 팀 간 급수 불균형 페널티 (A,A vs A,C → diff 2 → -20)
     score -= levelSpread * 2;  // 조합 전체 급수 편차 페널티
 
+    // 4. 공평 강화 (대기 시간 + 절대 경기차)
+    // 오래 기다렸거나(대기시간) 남들보다 적게 친(경기차) 선수를 끌어올려, "운 없이 계속
+    // 밀리는" 사람을 방지한다. 가중치는 약하게 두어 다양성(안친사람)을 크게 해치지 않게 함.
+    if (fairnessCtx) {
+        let fairnessBoost = 0;
+        for (const p of combo) {
+            const pdata = allPlayers[p.id] || p;
+            const games = pdata.todayRecentGames?.length ?? 0;
+            const lastTs = pdata.todayRecentGames?.[0]?.timestamp || pdata.entryTime;
+            const waitMin = lastTs ? Math.max(0, (fairnessCtx.now - new Date(lastTs).getTime()) / 60000) : 0;
+            fairnessBoost += (fairnessCtx.maxGames - games) * 8 + waitMin * 0.8;
+        }
+        score += fairnessBoost;
+    }
+
     return Math.round(score);
 }
 
@@ -367,13 +392,15 @@ function calculateMatchScore(combo, allPlayers, poolAvgGames) {
  * @param {Array<object>} pool - 선수 풀 (남자/여자)
  * @param {object} allPlayers - 전체 선수 데이터
  * @param {number} minScore - 최소 매칭 점수 (커트라인)
+ * @param {{now:number, maxGames:number}} [fairnessCtx] - 공평 강화 컨텍스트
+ * @param {number} [slots=Infinity] - 이번에 만들 최대 매치 수 (큐 과다 적재 방지)
  * @returns {Array<Array<object>>} 확정된 매치 배열
  */
-function findBestMatches(pool, allPlayers, minScore) {
-    if (pool.length < 4) return [];
+function findBestMatches(pool, allPlayers, minScore, fairnessCtx, slots = Infinity) {
+    if (pool.length < 4 || slots <= 0) return [];
 
     const poolAvgGames = pool.length > 0
-        ? pool.reduce((acc, p) => acc + (p.todayWins || 0) + (p.todayLosses || 0), 0) / pool.length
+        ? pool.reduce((acc, p) => acc + (allPlayers[p.id]?.todayRecentGames?.length ?? p.todayRecentGames?.length ?? 0), 0) / pool.length
         : 0;
 
     const allCombos = getAllCombinations(pool, 4);
@@ -381,7 +408,7 @@ function findBestMatches(pool, allPlayers, minScore) {
 
     const scoredCombos = allCombos.map(combo => ({
         combo,
-        score: calculateMatchScore(combo, allPlayers, poolAvgGames)
+        score: calculateMatchScore(combo, allPlayers, poolAvgGames, fairnessCtx)
     }));
 
     // 점수 높은 순으로 정렬
@@ -395,6 +422,7 @@ function findBestMatches(pool, allPlayers, minScore) {
     const usedPlayerIds = new Set();
 
     for (const { combo } of goodCombos) {
+        if (bestMatches.length >= slots) break;
         const hasUsedPlayer = combo.some(player => usedPlayerIds.has(player.id));
         if (!hasUsedPlayer) {
             bestMatches.push(combo);
@@ -430,6 +458,24 @@ function getAutoMatchMinScore(totalPlayers) {
     };
     if (TABLE[n] !== undefined) return TABLE[n];
     return 130; // 26명 이상은 130 고정(상한)
+}
+
+/**
+ * [자동매칭] 민감도 프리셋. 인원별 기준점수(getAutoMatchMinScore)에 offset을 더해
+ * "얼마나 깐깐하게 좋은 조합을 기다릴지"를 직관적으로 조절한다. (수천 회 시뮬레이션으로 확정)
+ *  - 낮음: 회전율 우선(바로바로 경기), 대기시간 최소 · 반복 多
+ *  - 보통: 균형 (추천 기본값)
+ *  - 높음: 다양성 우선(최대한 안 친 사람)
+ *  - 최고: 다양성 최대(살짝 더 깐깐)
+ */
+const AUTO_MATCH_SENSITIVITIES = [
+    { key: 'low',    label: '낮음', offset: -60, short: '회전율 우선',  desc: '기다리지 않고 바로 경기를 만듭니다. 사람이 적거나 빨리 많이 치고 싶을 때.' },
+    { key: 'normal', label: '보통', offset: -25, short: '균형 (추천)',   desc: '공평함과 다양성을 적절히 맞춥니다. 잘 모르겠으면 이걸 쓰세요.' },
+    { key: 'high',   label: '높음', offset: 0,   short: '다양성 우선',   desc: '최대한 안 친 사람과 만나도록 더 신경 써서 매칭합니다.' },
+    { key: 'max',    label: '최고', offset: 12,  short: '다양성 최대',   desc: '더 좋은 조합을 위해 살짝 더 깐깐하게 고릅니다. 사람이 많을 때 추천.' },
+];
+function getSensitivity(key) {
+    return AUTO_MATCH_SENSITIVITIES.find(s => s.key === key) || AUTO_MATCH_SENSITIVITIES[1];
 }
 
 
@@ -1889,7 +1935,8 @@ useEffect(() => {
                                     opponents: opponents
                                 };
 
-                                const recentGames = (pData.todayRecentGames || []).slice(0, 9);
+                                // 최근 20경기 유지 (공평 계산용 경기수 누적 + 다양성 판단)
+                                const recentGames = (pData.todayRecentGames || []).slice(0, 19);
                                 transaction.update(pDoc.ref, {
                                     todayRecentGames: [gameRecord, ...recentGames]
                                 });
@@ -1948,18 +1995,39 @@ useEffect(() => {
             // [수정] 커트라인은 "대기석"이 아니라 현재 접속 중인 전체 인원 기준으로 계산한다.
             //  (경기대기 + 경기예정 + 경기진행에 있는 해당 성별 선수 모두 포함, 휴식/비활성 제외, 게스트 포함)
             const activePlayersList = Object.values(allPlayers).filter(p => p.status === 'active' && !p.isResting);
-            const maleCount = activePlayersList.filter(p => p.gender === '남').length;
-            const femaleCount = activePlayersList.filter(p => p.gender === '여').length;
+            const maleActive = activePlayersList.filter(p => p.gender === '남');
+            const femaleActive = activePlayersList.filter(p => p.gender === '여');
+            const maleCount = maleActive.length;
+            const femaleCount = femaleActive.length;
 
-            const appliedMinMaleScore = config.isManualConfig ? config.minMaleScore : getAutoMatchMinScore(maleCount);
-            const appliedMinFemaleScore = config.isManualConfig ? config.minFemaleScore : getAutoMatchMinScore(femaleCount);
+            // [자동매칭] 민감도 프리셋 → 커트라인 오프셋 (성별별 따로 설정 가능)
+            const masterSens = config.sensitivity || 'normal';
+            const perGender = !!config.perGenderSensitivity;
+            const maleSensKey = perGender ? (config.maleSensitivity || masterSens) : masterSens;
+            const femaleSensKey = perGender ? (config.femaleSensitivity || masterSens) : masterSens;
+
+            const appliedMinMaleScore = getAutoMatchMinScore(maleCount) + getSensitivity(maleSensKey).offset;
+            const appliedMinFemaleScore = getAutoMatchMinScore(femaleCount) + getSensitivity(femaleSensKey).offset;
+
+            // [공평 강화] 대기시간/경기차 보정용 컨텍스트 (성별별 최다 경기수 기준)
+            const now = Date.now();
+            const gamesLen = (p) => (p.todayRecentGames?.length ?? 0);
+            const maleFairnessCtx = { now, maxGames: maleActive.reduce((m, p) => Math.max(m, gamesLen(p)), 0) };
+            const femaleFairnessCtx = { now, maxGames: femaleActive.reduce((m, p) => Math.max(m, gamesLen(p)), 0) };
+
+            // [자동매칭] 큐(자동매칭 목록) 과다 적재 방지: 코트 수 정도만 미리 만들어 둔다.
+            const QUEUE_CAP = Math.max(2, gameState.numInProgressCourts || 4);
+            const existingAutoCount = Object.keys(gameState.autoMatches || {}).length;
+            let slotsRemaining = Math.max(0, QUEUE_CAP - existingAutoCount);
 
             // [자동매칭] 남/여 각각 ON일 때만 해당 성별 매칭 생성
-            const bestMaleMatches = maleEnabled ? findBestMatches(malePool, allPlayers, appliedMinMaleScore) : [];
-            const bestFemaleMatches = femaleEnabled ? findBestMatches(femalePool, allPlayers, appliedMinFemaleScore) : [];
+            const bestMaleMatches = (maleEnabled && slotsRemaining > 0)
+                ? findBestMatches(malePool, allPlayers, appliedMinMaleScore, maleFairnessCtx, slotsRemaining) : [];
+            slotsRemaining = Math.max(0, slotsRemaining - bestMaleMatches.length);
+            const bestFemaleMatches = (femaleEnabled && slotsRemaining > 0)
+                ? findBestMatches(femalePool, allPlayers, appliedMinFemaleScore, femaleFairnessCtx, slotsRemaining) : [];
 
             const newMatches = [...bestMaleMatches, ...bestFemaleMatches];
-          // App.jsx (수정된 버전)
 
             if (newMatches.length > 0) {
                 // [추가] 기존에 자동매칭 목록이 비어있었는지 체크 (방금 대기 1번이 생성되었는지 확인용)
@@ -1976,8 +2044,10 @@ useEffect(() => {
                     let nextIndex = Object.keys(newState.autoMatches || {}).length;
 
                     for (const match of newMatches) {
+                        // [자동매칭] 큐 상한 초과 시 중단 (다른 트랜잭션이 먼저 채웠을 수 있음)
+                        if (nextIndex >= QUEUE_CAP) break;
                         // [수정] 이 매치에 포함된 선수가 방금 다른 트랜잭션에 의해 추가되었는지 확인
-                        const hasPlayerAlreadyMatched = match.some(player => 
+                        const hasPlayerAlreadyMatched = match.some(player =>
                             currentAutoMatchedIds.has(player.id)
                         );
 
@@ -2345,6 +2415,16 @@ useEffect(() => {
             pureAutoMatchConfig.isMaleEnabled = !!pureAutoMatchConfig.isMaleEnabled;
             pureAutoMatchConfig.isFemaleEnabled = !!pureAutoMatchConfig.isFemaleEnabled;
             pureAutoMatchConfig.isEnabled = pureAutoMatchConfig.isMaleEnabled || pureAutoMatchConfig.isFemaleEnabled;
+
+            // [자동매칭] 민감도 프리셋 저장 (기본값 normal)
+            pureAutoMatchConfig.sensitivity = pureAutoMatchConfig.sensitivity || 'normal';
+            pureAutoMatchConfig.perGenderSensitivity = !!pureAutoMatchConfig.perGenderSensitivity;
+            pureAutoMatchConfig.maleSensitivity = pureAutoMatchConfig.maleSensitivity || pureAutoMatchConfig.sensitivity;
+            pureAutoMatchConfig.femaleSensitivity = pureAutoMatchConfig.femaleSensitivity || pureAutoMatchConfig.sensitivity;
+            // 더 이상 쓰지 않는 수동 점수 필드 제거(있으면)
+            delete pureAutoMatchConfig.minMaleScore;
+            delete pureAutoMatchConfig.minFemaleScore;
+            delete pureAutoMatchConfig.isManualConfig;
 
             await setDoc(configRef, {
                 announcement,
@@ -3055,17 +3135,25 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
     const [newPlayerForm, setNewPlayerForm] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
 
+    // [자동매칭] 사용설명서 모달 표시 상태
+    const [showAutoGuide, setShowAutoGuide] = useState(false);
+
     // 자동매칭 설정 상태 (수정됨)
-    // [자동매칭] 남/여 개별 ON/OFF 초기화 (구버전 설정은 isEnabled를 양쪽에 적용)
+    // [자동매칭] 남/여 개별 ON/OFF + 민감도 프리셋 초기화 (구버전 설정 호환)
   const [autoMatchConfig, setAutoMatchConfig] = useState(() => {
         const cfg = seasonConfig.autoMatchConfig || {};
         const isMaleEnabled = cfg.isMaleEnabled ?? cfg.isEnabled ?? false;
         const isFemaleEnabled = cfg.isFemaleEnabled ?? cfg.isEnabled ?? false;
+        const sensitivity = cfg.sensitivity || 'normal';
         return {
             ...cfg,
             isMaleEnabled,
             isFemaleEnabled,
             isEnabled: isMaleEnabled || isFemaleEnabled,
+            sensitivity,
+            perGenderSensitivity: cfg.perGenderSensitivity ?? false,
+            maleSensitivity: cfg.maleSensitivity || sensitivity,
+            femaleSensitivity: cfg.femaleSensitivity || sensitivity,
             // [수정] 루트 레벨에 저장된 공지 타입과 사진 URL을 초기값으로 명시
             announcementType: seasonConfig.announcementType || 'text',
             announcementPhotoUrl: seasonConfig.announcementPhotoUrl || ''
@@ -3101,35 +3189,15 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         }));
     };
 
-// [자동매칭] 전체 인원수 기반 추천 점수 계산 로직 (수정됨)
-    const { malePlayerCount, femalePlayerCount, recommendedMaleScore, recommendedFemaleScore } = useMemo(() => {
-        // [수정] '대기'가 아닌 '전체 활성' 선수 중 휴식 제외 (대기+진행+예정 모두 포함, 게스트 포함)
+// [자동매칭] 현재 활성 인원수 (대기+진행+예정 모두 포함, 휴식 제외, 게스트 포함)
+    const { malePlayerCount, femalePlayerCount } = useMemo(() => {
         const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting);
-        const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
-        const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
-
-        // [수정] 스케줄러와 동일한 시뮬레이션 기반 커트라인 함수 사용 (일관성 보장)
         return {
-            malePlayerCount,
-            femalePlayerCount,
-            recommendedMaleScore: getAutoMatchMinScore(malePlayerCount),
-            recommendedFemaleScore: getAutoMatchMinScore(femalePlayerCount)
-        }
-    }, [activePlayers]); // courtCount 의존성 제거
+            malePlayerCount: activePlayersList.filter(p => p.gender === '남').length,
+            femalePlayerCount: activePlayersList.filter(p => p.gender === '여').length,
+        };
+    }, [activePlayers]);
 
-
-    // [신규] 수동 설정이 아닐 경우, 추천 점수를 autoMatchConfig 상태에 자동으로 반영
-    useEffect(() => {
-        if (!autoMatchConfig.isManualConfig) { // [수정]
-            // If not in manual mode, update the config state with the live recommended scores
-            setAutoMatchConfig(prev => ({
-                ...prev,
-                minMaleScore: recommendedMaleScore,
-                minFemaleScore: recommendedFemaleScore
-            }));
-        }
-    }, [autoMatchConfig.isManualConfig, recommendedMaleScore, recommendedFemaleScore]); // [수정]
-    
     // Toggle Switch Component
     const ToggleSwitch = ({ name, checked, onChange }) => (
         <label className="relative inline-flex items-center cursor-pointer">
@@ -3141,6 +3209,22 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         </label>
     );
 
+    // [자동매칭] 민감도 세그먼트 선택 컴포넌트
+    const SensitivitySelect = ({ value, onChange }) => (
+        <div className="grid grid-cols-4 gap-1">
+            {AUTO_MATCH_SENSITIVITIES.map(s => (
+                <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => onChange(s.key)}
+                    className={`py-1.5 rounded-md text-xs font-bold arcade-button transition-colors ${value === s.key ? 'bg-green-500 text-black' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}
+                >
+                    {s.label}
+                </button>
+            ))}
+        </div>
+    );
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg flex flex-col" style={{maxHeight: '90vh'}}>
@@ -3149,9 +3233,18 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 
                     {/* --- 자동 매칭 설정 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg">
-                        <label className="font-semibold text-lg text-green-400 arcade-font block mb-3">
-                            🤖 콕스타 자동 매칭
-                        </label>
+                        <div className="flex justify-between items-center mb-3">
+                            <label className="font-semibold text-lg text-green-400 arcade-font">
+                                🤖 콕스타 자동 매칭
+                            </label>
+                            <button
+                                type="button"
+                                onClick={() => setShowAutoGuide(true)}
+                                className="flex items-center gap-1 text-xs font-bold bg-green-500/15 text-green-300 border border-green-500/40 rounded-full px-3 py-1.5 hover:bg-green-500/25 transition-colors"
+                            >
+                                📖 사용설명서
+                            </button>
+                        </div>
                         {/* [자동매칭] 남자 / 여자 개별 ON/OFF */}
                         <div className="space-y-2">
                             <div className="flex justify-between items-center bg-gray-800 px-3 py-2 rounded-lg">
@@ -3175,63 +3268,62 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                         {(autoMatchConfig.isMaleEnabled || autoMatchConfig.isFemaleEnabled) && (
                             <div className="mt-4 pt-4 border-t border-gray-600 space-y-4">
 
-                              {/* [수정] 전체 인원수 및 추천 점수 표시 UI */}
-                               <div className="bg-gray-800 p-2 rounded">
-                                <p className="text-sm text-center text-gray-400">
-                                    현재 활성 인원: 남 {malePlayerCount}명 / 여 {femalePlayerCount}명
-                                </p>
-                                    <p className="text-sm text-center text-yellow-400 mt-1">
-                                        추천 최소 점수: {recommendedMaleScore}점 (남) / {recommendedFemaleScore}점 (여)
+                              {/* 현재 활성 인원 표시 */}
+                               <div className="bg-gray-800 p-2 rounded text-center">
+                                    <p className="text-sm text-gray-400">
+                                        현재 활성 인원: <span className="text-blue-300 font-bold">남 {malePlayerCount}</span> / <span className="text-pink-300 font-bold">여 {femalePlayerCount}</span> 명
                                     </p>
                                 </div>
-                                
-                                {/* [수정됨] 수동 설정 체크박스 및 입력란 수정 */}
+
+                                {/* [자동매칭] 민감도 프리셋 (낮음/보통/높음/최고) */}
                                 <div>
-                                   <div className="flex justify-between items-center mb-2">
-                                        <p className="font-semibold text-center">최종 최소 점수</p>
-                                        <label className="flex items-center text-sm cursor-pointer">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={autoMatchConfig.isManualConfig || false} 
-                                                onChange={(e) => setAutoMatchConfig(prev => ({ ...prev, isManualConfig: e.target.checked }))} 
-                                                className="w-4 h-4 text-yellow-400 bg-gray-700 border-gray-600 rounded focus:ring-yellow-500"
+                                    <div className="flex justify-between items-center mb-2">
+                                        <p className="font-semibold">매칭 민감도</p>
+                                        <label className="flex items-center text-xs cursor-pointer text-gray-300">
+                                            <input
+                                                type="checkbox"
+                                                checked={autoMatchConfig.perGenderSensitivity || false}
+                                                onChange={(e) => setAutoMatchConfig(prev => ({ ...prev, perGenderSensitivity: e.target.checked }))}
+                                                className="w-4 h-4 mr-1.5 text-green-400 bg-gray-700 border-gray-600 rounded focus:ring-green-500"
                                             />
-                                            <span className="ml-2 text-gray-300">수동 설정</span>
+                                            남/여 따로
                                         </label>
                                     </div>
-                                    <div className="flex justify-around gap-4">
-                                        <div className="flex-1 text-center">
-                                            <label className="block mb-1">👨 남자 최소 점수</label>
-                                           <input 
-                                                type="text" 
-                                                inputMode="decimal" 
-                                                name="minMaleScore" 
-                                                value={autoMatchConfig.minMaleScore} 
-                                                onChange={handleAutoMatchConfigChange} 
-                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
-                                                placeholder={String(recommendedMaleScore)}
-                                                disabled={!autoMatchConfig.isManualConfig} 
+
+                                    {!autoMatchConfig.perGenderSensitivity ? (
+                                        <>
+                                            <SensitivitySelect
+                                                value={autoMatchConfig.sensitivity || 'normal'}
+                                                onChange={(key) => setAutoMatchConfig(prev => ({ ...prev, sensitivity: key, maleSensitivity: key, femaleSensitivity: key }))}
                                             />
+                                            <p className="text-xs text-green-300/90 mt-2 text-center min-h-[2.5em]">
+                                                <span className="font-bold">{getSensitivity(autoMatchConfig.sensitivity || 'normal').label}</span>
+                                                {' · '}{getSensitivity(autoMatchConfig.sensitivity || 'normal').desc}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            <div>
+                                                <p className="text-sm text-blue-300 font-semibold mb-1">👨 남자</p>
+                                                <SensitivitySelect
+                                                    value={autoMatchConfig.maleSensitivity || 'normal'}
+                                                    onChange={(key) => setAutoMatchConfig(prev => ({ ...prev, maleSensitivity: key }))}
+                                                />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm text-pink-300 font-semibold mb-1">👩 여자</p>
+                                                <SensitivitySelect
+                                                    value={autoMatchConfig.femaleSensitivity || 'normal'}
+                                                    onChange={(key) => setAutoMatchConfig(prev => ({ ...prev, femaleSensitivity: key }))}
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="flex-1 text-center">
-                                            <label className="block mb-1">👩 여자 최소 점수</label>
-                                             <input 
-                                                type="text" 
-                                                inputMode="decimal" 
-                                                name="minFemaleScore" 
-                                                value={autoMatchConfig.minFemaleScore} 
-                                                onChange={handleAutoMatchConfigChange} 
-                                                className={`w-full bg-gray-600 p-2 rounded-lg text-center ${!autoMatchConfig.isManualConfig ? 'text-gray-400' : 'text-white'}`}
-                                                placeholder={String(recommendedFemaleScore)}
-                                                disabled={!autoMatchConfig.isManualConfig} 
-                                            />
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
 
                                 <p className="text-xs text-gray-500 text-center">
-                                    점수가 높을수록 '좋은 조합'을 엄격하게 찾습니다 (매칭 속도 느려짐).<br/>
-                                    점수가 낮을수록 '경기 수'만 보고 빠르게 매칭합니다.
+                                    민감도가 <b>높을수록</b> 최대한 '안 친 사람'끼리 매칭합니다(살짝 더 기다림).<br/>
+                                    <b>낮을수록</b> 빠르게 바로바로 경기를 만듭니다. 잘 모르겠으면 <b>보통</b>.
                                 </p>
                             </div>
                         )}
@@ -3419,6 +3511,62 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                 <div className="mt-6 flex gap-4 flex-shrink-0">
                      <button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 font-bold py-2 rounded-lg">취소</button>
                     <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">저장</button>
+                </div>
+            </div>
+
+            {/* [자동매칭] 사용설명서 모달 */}
+            {showAutoGuide && <AutoMatchGuideModal onClose={() => setShowAutoGuide(false)} />}
+        </div>
+    );
+}
+
+// [자동매칭] 초보 관리자용 사용설명서 — 짧고 핵심만
+function AutoMatchGuideModal({ onClose }) {
+    return (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+            <div
+                className="bg-gray-800 rounded-2xl w-full max-w-md text-white shadow-[0_0_24px_rgba(34,197,94,0.25)] border border-green-500/30 flex flex-col"
+                style={{ maxHeight: '88vh' }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex justify-between items-center p-5 pb-3 flex-shrink-0 border-b border-gray-700">
+                    <h3 className="text-lg font-bold text-green-400 arcade-font">🤖 자동 매칭 사용설명서</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white leading-none">&times;</button>
+                </div>
+
+                <div className="p-5 pt-4 space-y-4 text-sm overflow-y-auto">
+                    <div>
+                        <p className="font-bold text-green-300 mb-1">① 자동 매칭이 뭔가요?</p>
+                        <p className="text-gray-300 leading-relaxed">대기 중인 선수를 시스템이 알아서 <b>4명씩</b> 묶어 <b>'🤖 자동 매칭'</b> 칸에 올려줍니다. 관리자는 <b>START</b>만 누르면 경기가 시작돼요.</p>
+                    </div>
+                    <div>
+                        <p className="font-bold text-green-300 mb-1">② 어떤 기준으로 짜나요?</p>
+                        <p className="text-gray-300 leading-relaxed">
+                            <b>1순위</b> 적게 치거나 오래 기다린 사람 먼저<br/>
+                            <b>2순위</b> 그 안에서 최대한 <b>안 친 사람</b>끼리<br/>
+                            <b>3순위</b> 양 팀 <b>급수</b>도 최대한 맞춰서
+                        </p>
+                    </div>
+                    <div>
+                        <p className="font-bold text-green-300 mb-1">③ 켜는 법</p>
+                        <p className="text-gray-300 leading-relaxed">👨 남자 / 👩 여자 자동 매칭을 각각 ON. 둘 다 켜면 <b>남자끼리, 여자끼리</b> 따로 매칭됩니다.</p>
+                    </div>
+                    <div>
+                        <p className="font-bold text-green-300 mb-1">④ 민감도 고르기</p>
+                        <ul className="text-gray-300 leading-relaxed space-y-1">
+                            {AUTO_MATCH_SENSITIVITIES.map(s => (
+                                <li key={s.key}><b className="text-white">{s.label}</b> — {s.short}: <span className="text-gray-400">{s.desc}</span></li>
+                            ))}
+                        </ul>
+                    </div>
+                    <div className="bg-green-500/10 border border-green-500/25 rounded-lg p-3">
+                        <p className="font-bold text-green-300 mb-1">💡 한 줄 팁</p>
+                        <p className="text-gray-300 leading-relaxed">사람이 <b>적으면 낮음~보통</b>, <b>많으면 높음~최고</b>. 고민되면 그냥 <b>보통</b>으로 두세요. 인원에 맞춰 깐깐함은 자동으로 조절됩니다.</p>
+                    </div>
+                </div>
+
+                <div className="p-4 flex-shrink-0 border-t border-gray-700">
+                    <button onClick={onClose} className="w-full arcade-button bg-green-500 hover:bg-green-600 text-black font-bold py-2.5 rounded-lg">확인했어요</button>
                 </div>
             </div>
         </div>
