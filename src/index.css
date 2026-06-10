@@ -16,10 +16,18 @@ html,body{
 }
 *{ -webkit-tap-highlight-color:transparent; }
 /* 인터랙티브 요소가 텍스트로 선택되어 깨지는 현상 방지 (입력창은 예외) */
+/* 앱 전체에서 길게 누를 때 텍스트 선택/'복사' 콜아웃 메뉴가 뜨지 않도록 차단
+   (코트 번호를 길게 눌러 코트 이동/교환 시 복사 메뉴가 뜨던 문제 해결) */
+html, body, #root{
+  -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+}
 button, .cox-nav-btn, .cox-fab, .player-card, .player-slot, .cox-avatar-btn, .cox-menu-item{
   -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
 }
-input, textarea{ -webkit-user-select:text; user-select:text; touch-action:auto; }
+/* 입력창은 선택/편집 가능하도록 예외 처리 */
+input, textarea{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; touch-action:auto; }
 img{ max-width:100%; }
 
 /* ── 당겨서 새로고침(Pull-to-refresh) 인디케이터 ── */
