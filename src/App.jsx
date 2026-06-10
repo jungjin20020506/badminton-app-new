@@ -405,6 +405,33 @@ function findBestMatches(pool, allPlayers, minScore) {
     return bestMatches;
 }
 
+/**
+ * [자동매칭] 전체 접속 인원(해당 성별: 경기대기 + 경기예정 + 경기진행, 휴식 제외)에 따른
+ * "최소 매칭 점수" 커트라인.
+ *
+ * 실제 매칭 로직(calculateMatchScore/findBestMatches)을 그대로 포팅하여 인원수별로
+ * 수천 회 세션을 시뮬레이션해서 도출한 값이다.
+ *  - 인원이 많을수록 가능한 조합이 많아 "최대한 안 친 사람"끼리 짤 수 있으므로 커트라인을
+ *    높여서(엄격) 좋은 조합이 모일 때까지 기다린다. (경기 성사율은 유지)
+ *  - 인원이 적으면 나올 수 있는 경우의 수가 적으므로 커트라인을 낮춰(느슨) 바로 매칭한다.
+ * 우선순위: 경기수(코트 가동/공평) > 안친사람(다양성) > 급수(밸런스)
+ *
+ * @param {number} totalPlayers - 해당 성별의 전체 접속 인원(휴식 제외)
+ * @returns {number} 최소 매칭 점수 커트라인
+ */
+function getAutoMatchMinScore(totalPlayers) {
+    const n = Math.max(0, Math.floor(totalPlayers || 0));
+    if (n < 8) return -100; // 인원이 매우 적으면 거의 무조건 매칭(고인물 -1000만 회피)
+    // 인원별 상세 커트라인 (시뮬레이션 기반, 8~25명은 1명 단위로 세분화)
+    const TABLE = {
+        8: -40, 9: 0, 10: 20, 11: 35, 12: 50, 13: 62, 14: 72, 15: 82,
+        16: 92, 17: 98, 18: 104, 19: 108, 20: 112, 21: 116, 22: 120,
+        23: 123, 24: 126, 25: 128,
+    };
+    if (TABLE[n] !== undefined) return TABLE[n];
+    return 130; // 26명 이상은 130 고정(상한)
+}
+
 
 // ===================================================================================
 // 상수 및 Helper 함수
@@ -733,7 +760,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
 });
 
 // [자동매칭] 자동 매칭 섹션 컴포넌트 (UI 변경)
-const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick, isAutoMatchOn }) => {
+const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick, isAutoMatchOn, isMaleAutoOn, isFemaleAutoOn }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -753,10 +780,24 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
     return (
         <section>
             <div className="cox-secline mb-2.5 px-1">
-                 <div className={`lbl green ${isAutoMatchOn ? 'flicker-text' : ''}`}>
-                    <span className="tick"></span>
-                    <span>🤖 자동 매칭</span>
-                    <span className="count">{isAutoMatchOn ? 'ON' : 'OFF'}</span>
+                 <div className="auto-head-left">
+                     <div className={`lbl green ${isAutoMatchOn ? 'flicker-text' : ''}`}>
+                        <span className="tick"></span>
+                        <span>🤖 자동 매칭</span>
+                     </div>
+                     {/* [신규] 성별별 자동매칭 ON/OFF 배지 */}
+                     <div className="auto-gender-badges">
+                        <span className={`gender-badge male ${isMaleAutoOn ? 'on' : 'off'}`}>
+                            {isMaleAutoOn && <span className="dot"></span>}
+                            <span>👨 남</span>
+                            <span className="st">{isMaleAutoOn ? 'ON' : 'OFF'}</span>
+                        </span>
+                        <span className={`gender-badge female ${isFemaleAutoOn ? 'on' : 'off'}`}>
+                            {isFemaleAutoOn && <span className="dot"></span>}
+                            <span>👩 여</span>
+                            <span className="st">{isFemaleAutoOn ? 'ON' : 'OFF'}</span>
+                        </span>
+                     </div>
                  </div>
                  {isAdmin && matchList.length > 0 && (
                     <button onClick={handleClearAutoMatches} className="cox-pill-danger">전체삭제</button>
@@ -1904,20 +1945,14 @@ useEffect(() => {
                 !p.isResting // <-- 휴식 선수 제외
             );
 
-            // [수정] 수동 모드가 아닐 경우 현재 인원수를 기준으로 자동 점수 계산 (게스트 포함)
+            // [수정] 커트라인은 "대기석"이 아니라 현재 접속 중인 전체 인원 기준으로 계산한다.
+            //  (경기대기 + 경기예정 + 경기진행에 있는 해당 성별 선수 모두 포함, 휴식/비활성 제외, 게스트 포함)
             const activePlayersList = Object.values(allPlayers).filter(p => p.status === 'active' && !p.isResting);
             const maleCount = activePlayersList.filter(p => p.gender === '남').length;
             const femaleCount = activePlayersList.filter(p => p.gender === '여').length;
 
-          const getDynamicMinScore = (totalPlayers) => {
-                if (totalPlayers < 8) return -100;
-                if (totalPlayers >= 8 && totalPlayers < 12) return 0;
-                if (totalPlayers >= 12 && totalPlayers < 16) return 40;
-                return 80;
-            };
-
-            const appliedMinMaleScore = config.isManualConfig ? config.minMaleScore : getDynamicMinScore(maleCount);
-            const appliedMinFemaleScore = config.isManualConfig ? config.minFemaleScore : getDynamicMinScore(femaleCount);
+            const appliedMinMaleScore = config.isManualConfig ? config.minMaleScore : getAutoMatchMinScore(maleCount);
+            const appliedMinFemaleScore = config.isManualConfig ? config.minFemaleScore : getAutoMatchMinScore(femaleCount);
 
             // [자동매칭] 남/여 각각 ON일 때만 해당 성별 매칭 생성
             const bestMaleMatches = maleEnabled ? findBestMatches(malePool, allPlayers, appliedMinMaleScore) : [];
@@ -2598,7 +2633,7 @@ useEffect(() => {
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
                                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={isAutoMatchOn}/>
+                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={isAutoMatchOn} isMaleAutoOn={isMaleAutoOn} isFemaleAutoOn={isFemaleAutoOn}/>
                                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
                                 </div>
                             )}
@@ -2611,7 +2646,7 @@ useEffect(() => {
             ) : (
                 <div className="flex flex-col gap-3">
                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={isAutoMatchOn}/>
+                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={isAutoMatchOn} isMaleAutoOn={isMaleAutoOn} isFemaleAutoOn={isFemaleAutoOn}/>
                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
                     <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
                 </div>
@@ -3073,19 +3108,12 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         const malePlayerCount = activePlayersList.filter(p => p.gender === '남').length;
         const femalePlayerCount = activePlayersList.filter(p => p.gender === '여').length;
 
-     // [수정] 전체 인원수에 따른 직관적인 커트라인 계산 함수
-        const getMinScore = (totalPlayers) => {
-            if (totalPlayers < 8) return -100; // 생존 모드 (회전율 최우선)
-            if (totalPlayers >= 8 && totalPlayers < 12) return 0; // 현실적 타협 구간 (10명 기준 최적화)
-            if (totalPlayers >= 12 && totalPlayers < 16) return 40; // 쾌적 모드
-            return 80; // 엄격한 다양성 모드
-        };
-
+        // [수정] 스케줄러와 동일한 시뮬레이션 기반 커트라인 함수 사용 (일관성 보장)
         return {
             malePlayerCount,
             femalePlayerCount,
-            recommendedMaleScore: getMinScore(malePlayerCount),
-            recommendedFemaleScore: getMinScore(femalePlayerCount)
+            recommendedMaleScore: getAutoMatchMinScore(malePlayerCount),
+            recommendedFemaleScore: getAutoMatchMinScore(femalePlayerCount)
         }
     }, [activePlayers]); // courtCount 의존성 제거
 
