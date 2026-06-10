@@ -277,6 +277,44 @@ function wasStalePool(combo, allPlayers) {
 }
 
 /**
+ * [급수 밸런스] 급수를 숫자로 환산 (A조=1 ... D조=4)
+ */
+const LEVEL_BALANCE_MAP = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 3 };
+function getLevelValue(player, allPlayers) {
+    const lvl = allPlayers[player.id]?.level || player.level;
+    return LEVEL_BALANCE_MAP[lvl] || 3;
+}
+
+/**
+ * [급수 밸런스] 4인 조합을 2:2 팀으로 나눌 때, 팀 간 급수합 차이가
+ * 가장 작아지는 분할(=가장 균형잡힌 팀)을 찾아 반환한다.
+ * @returns {{ diff: number, spread: number, order: Array<object> }}
+ *  - diff: 두 팀의 급수합 차이 (작을수록 밸런스 좋음)
+ *  - spread: 조합 내 최고/최저 급수 차이
+ *  - order: 균형잡힌 팀 순서로 재배열된 4인 (slot 0,1 = 팀A / 2,3 = 팀B)
+ */
+function getBestLevelSplit(combo, allPlayers) {
+    if (combo.length !== 4) {
+        return { diff: 0, spread: 0, order: combo };
+    }
+    const v = combo.map(p => getLevelValue(p, allPlayers));
+    const splits = [
+        [[0, 1], [2, 3]],
+        [[0, 2], [1, 3]],
+        [[0, 3], [1, 2]],
+    ];
+    let best = null;
+    for (const [t1, t2] of splits) {
+        const diff = Math.abs((v[t1[0]] + v[t1[1]]) - (v[t2[0]] + v[t2[1]]));
+        if (!best || diff < best.diff) {
+            best = { diff, order: [combo[t1[0]], combo[t1[1]], combo[t2[0]], combo[t2[1]]] };
+        }
+    }
+    const spread = Math.max(...v) - Math.min(...v);
+    return { diff: best.diff, spread, order: best.order };
+}
+
+/**
  * [자동매칭] 4인 조합의 "매치 점수" 계산
  * @param {Array<object>} combo - 4인 조합
  * @param {object} allPlayers - 전체 선수 데이터
@@ -313,6 +351,13 @@ function calculateMatchScore(combo, allPlayers, poolAvgGames) {
         }
     }
     score += noveltyScore;
+
+    // 3. 급수 밸런스 점수 (가중치 낮음 - 우선순위: 경기수 > 안친사람 > 급수)
+    // 팀을 2:2로 나눴을 때 급수 차이가 크거나(A,A vs A,C 같은), 조합 내 급수 편차가
+    // 큰 경우 약하게 감점한다. 다른 조건이 비슷할 때만 영향을 주도록 가중치를 낮게 둔다.
+    const { diff: levelDiff, spread: levelSpread } = getBestLevelSplit(combo, allPlayers);
+    score -= levelDiff * 10;   // 팀 간 급수 불균형 페널티 (A,A vs A,C → diff 2 → -20)
+    score -= levelSpread * 2;  // 조합 전체 급수 편차 페널티
 
     return Math.round(score);
 }
@@ -549,6 +594,15 @@ const EmptySlot = ({ onSlotClick }) => (
         <span className="text-xl font-bold">+</span>
     </div>
 );
+
+// [나간 선수] 경기 진행 중 프로그램에서 나간(퇴장/휴식 처리된) 선수를 표시하는 카드.
+// 카드가 사라지지 않고 '나간 선수'로 표시되므로 관리자가 정상적으로 경기를 종료할 수 있다.
+const LeftPlayerCard = ({ name }) => (
+    <div className="player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full border border-dashed border-red-500/60 bg-red-900/20 opacity-80 filter grayscale">
+        <div className="player-name text-red-300 text-[11px] font-bold whitespace-nowrap leading-tight truncate px-0.5">{name}</div>
+        <div className="text-red-400/90 text-[9px] leading-tight mt-px">🚪 나간 선수</div>
+    </div>
+);
 const CourtTimer = ({ court }) => {
     const [time, setTime] = useState('00:00');
     useEffect(() => {
@@ -750,7 +804,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
     );
 });
 
-const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
+const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
     const pressTimerRef = useRef(null);
     const courtRef = useRef(null);
 
@@ -814,8 +868,16 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
             </div>
             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((playerId, slotIndex) => {
+                    if (!playerId) return <EmptySlot key={`court-empty-${courtIndex}-${slotIndex}`} />;
                     const player = players[playerId];
-                    return player ? ( <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} /> ) : ( <EmptySlot key={`court-empty-${courtIndex}-${slotIndex}`} /> )
+                    // [나간 선수] 경기 중 선수가 프로그램에서 나가면(비활성/휴식 처리)
+                    // 카드를 '나간 선수'로 표시하여 관리자가 경기를 종료할 수 있게 한다.
+                    const isLeft = !player || player.isResting;
+                    if (isLeft) {
+                        const displayName = player?.name || allPlayers?.[playerId]?.name || '나간 선수';
+                        return <LeftPlayerCard key={`court-left-${courtIndex}-${slotIndex}`} name={displayName} />;
+                    }
+                    return <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} />;
                 })}
             </div>
             <div className="flex-shrink-0 w-14 text-center">
@@ -827,7 +889,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, isAdmin, handl
 });
 
 
-const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
+const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
     return (
         <section>
             <div className="cox-secline mb-2.5 px-1">
@@ -843,6 +905,7 @@ const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCou
                         courtIndex={courtIndex}
                         court={inProgressCourts[courtIndex]}
                         players={players}
+                        allPlayers={allPlayers}
                         isAdmin={isAdmin}
                         handleEndMatch={handleEndMatch}
                         currentUser={currentUser}
@@ -998,6 +1061,12 @@ export default function App() {
     // [자동매칭] 자동매칭 스케줄러 참조
     const schedulerIntervalRef = useRef(null);
     const isSchedulerRunningRef = useRef(false);
+
+    // [자동매칭] 남/여 개별 ON/OFF 상태 (구버전 설정은 isEnabled를 양쪽에 적용)
+    const autoMatchCfg = seasonConfig?.autoMatchConfig || {};
+    const isMaleAutoOn = autoMatchCfg.isMaleEnabled ?? autoMatchCfg.isEnabled ?? false;
+    const isFemaleAutoOn = autoMatchCfg.isFemaleEnabled ?? autoMatchCfg.isEnabled ?? false;
+    const isAutoMatchOn = isMaleAutoOn || isFemaleAutoOn;
 
     const activePlayers = useMemo(() => {
         return Object.values(allPlayers).filter(p => p.status === 'active').reduce((acc, p) => {
@@ -1607,26 +1676,46 @@ useEffect(() => {
                 const newState = JSON.parse(JSON.stringify(currentState));
                 let playersToMove = [];
 
+                // [중복 방지 #1] 동시에 여러 관리자가 START를 눌렀을 때, 대상 코트가
+                // 이미 사용 중이면 이 트랜잭션은 중단한다. (코트 덮어쓰기/중복 배정 방지)
+                if (newState.inProgressCourts[courtIndex]) {
+                    throw new Error("이미 다른 관리자가 이 코트에서 경기를 시작했습니다.");
+                }
+
                 if (matchType === 'schedule') {
                     const currentMatch = newState.scheduledMatches[String(matchIndex)] || [];
                     if(currentMatch.filter(p=>p).length !== PLAYERS_PER_MATCH) {
                         throw new Error("경기를 시작할 수 없습니다. 다른 관리자가 먼저 시작했을 수 있습니다.");
                     }
-                    playersToMove = [...newState.scheduledMatches[String(matchIndex)]];
-
-                    // 수동 매칭 목록 당기기
-                    for (let i = matchIndex; i < newState.numScheduledMatches - 1; i++) {
-                        newState.scheduledMatches[String(i)] = newState.scheduledMatches[String(i + 1)] || Array(PLAYERS_PER_MATCH).fill(null);
-                    }
-                    newState.scheduledMatches[String(newState.numScheduledMatches - 1)] = Array(PLAYERS_PER_MATCH).fill(null);
-
+                    playersToMove = [...currentMatch];
                 } else { // 'auto'
                     const currentMatch = newState.autoMatches[String(matchIndex)] || [];
                     if(currentMatch.filter(p=>p).length !== PLAYERS_PER_MATCH) {
                         throw new Error("경기를 시작할 수 없습니다. 다른 관리자가 먼저 시작했을 수 있습니다.");
                     }
-                    playersToMove = [...newState.autoMatches[String(matchIndex)]];
+                    playersToMove = [...currentMatch];
+                }
 
+                // [중복 방지 #2] 이 선수들이 이미 다른 코트에서 경기 중이면 중단한다.
+                // (동일 경기가 두 코트에 올라가 히스토리/경기수가 2배로 쌓이는 문제 방지)
+                const playersAlreadyOnCourt = new Set(
+                    newState.inProgressCourts
+                        .filter(c => c && c.players)
+                        .flatMap(c => c.players)
+                        .filter(Boolean)
+                );
+                if (playersToMove.some(pid => pid && playersAlreadyOnCourt.has(pid))) {
+                    throw new Error("선택한 선수가 이미 다른 코트에서 경기 중입니다.");
+                }
+
+                // 검증 통과 후에만 목록에서 제거/시프트한다.
+                if (matchType === 'schedule') {
+                    // 수동 매칭 목록 당기기
+                    for (let i = matchIndex; i < newState.numScheduledMatches - 1; i++) {
+                        newState.scheduledMatches[String(i)] = newState.scheduledMatches[String(i + 1)] || Array(PLAYERS_PER_MATCH).fill(null);
+                    }
+                    newState.scheduledMatches[String(newState.numScheduledMatches - 1)] = Array(PLAYERS_PER_MATCH).fill(null);
+                } else { // 'auto'
                     // 자동 매칭 목록에서 제거 및 재인덱싱
                     delete newState.autoMatches[matchIndex];
                     const reindexedMatches = {};
@@ -1636,7 +1725,11 @@ useEffect(() => {
                     newState.autoMatches = reindexedMatches;
                 }
 
-                newState.inProgressCourts[courtIndex] = { players: playersToMove, startTime: new Date().toISOString() };
+                newState.inProgressCourts[courtIndex] = {
+                    players: playersToMove,
+                    startTime: new Date().toISOString(),
+                    matchId: `${courtIndex}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+                };
 
                 return { newState };
             };
@@ -1694,7 +1787,8 @@ useEffect(() => {
 
    const handleEndMatch = useCallback(async (courtIndex) => {
         const court = gameState.inProgressCourts[courtIndex];
-        if (!court || !court.players || court.players.some(p=>!p)) return;
+        // [나간 선수] 코트만 존재하면 종료 가능. 나간 선수(빈 슬롯)가 있어도 막지 않는다.
+        if (!court || !court.players) return;
 
         setModal({
             type: 'confirm',
@@ -1712,20 +1806,23 @@ useEffect(() => {
                             
                             const currentState = gameStateDoc.data();
                             const currentCourt = currentState.inProgressCourts[courtIndex];
-                            
+
                             // 2. 여러 관리자가 동시에 누른 경우, 이미 코트가 비워져있다면 중복 처리 방지
-                            if (!currentCourt || !currentCourt.players || currentCourt.players.some(p => !p)) {
+                            //    (코트가 null이면 이미 종료된 것이므로 히스토리가 중복으로 쌓이지 않는다.)
+                            if (!currentCourt || !currentCourt.players) {
                                 return; // 이미 다른 관리자에 의해 종료됨
                             }
 
                             const allMatchPlayerIds = currentCourt.players;
+                            // [나간 선수] 나간 선수(null)는 제외하고 실제 남아있는 선수만 기록 처리
+                            const validPlayerIds = allMatchPlayerIds.filter(Boolean);
                             const now = new Date().toISOString();
 
                             const teamA = [allMatchPlayerIds[0], allMatchPlayerIds[1]].filter(Boolean);
                             const teamB = [allMatchPlayerIds[2], allMatchPlayerIds[3]].filter(Boolean);
 
                             // 3. 최신 선수 데이터 가져오기 (동시성 보장)
-                            const playerRefs = allMatchPlayerIds.map(pId => doc(playersRef, pId));
+                            const playerRefs = validPlayerIds.map(pId => doc(playersRef, pId));
                             const playerDocs = await Promise.all(playerRefs.map(ref => transaction.get(ref)));
 
                             // 4. 선수별 히스토리 업데이트
@@ -1774,7 +1871,15 @@ useEffect(() => {
     // [자동 매칭] 스케줄러 실행 로직
     const runMatchScheduler = useCallback(async () => {
         // [수정] gameState가 null일 때를 대비
-        if (!isAdmin || isSchedulerRunningRef.current || !seasonConfig || !seasonConfig.autoMatchConfig.isEnabled || !allPlayers || !gameState) {
+        // [자동매칭] 남/여 중 하나라도 켜져 있으면 스케줄러 동작
+        if (!isAdmin || isSchedulerRunningRef.current || !seasonConfig || !seasonConfig.autoMatchConfig || !allPlayers || !gameState) {
+            return;
+        }
+
+        const cfg = seasonConfig.autoMatchConfig;
+        const maleEnabled = cfg.isMaleEnabled ?? cfg.isEnabled ?? false;
+        const femaleEnabled = cfg.isFemaleEnabled ?? cfg.isEnabled ?? false;
+        if (!maleEnabled && !femaleEnabled) {
             return;
         }
 
@@ -1814,8 +1919,9 @@ useEffect(() => {
             const appliedMinMaleScore = config.isManualConfig ? config.minMaleScore : getDynamicMinScore(maleCount);
             const appliedMinFemaleScore = config.isManualConfig ? config.minFemaleScore : getDynamicMinScore(femaleCount);
 
-            const bestMaleMatches = findBestMatches(malePool, allPlayers, appliedMinMaleScore);
-            const bestFemaleMatches = findBestMatches(femalePool, allPlayers, appliedMinFemaleScore);
+            // [자동매칭] 남/여 각각 ON일 때만 해당 성별 매칭 생성
+            const bestMaleMatches = maleEnabled ? findBestMatches(malePool, allPlayers, appliedMinMaleScore) : [];
+            const bestFemaleMatches = femaleEnabled ? findBestMatches(femalePool, allPlayers, appliedMinFemaleScore) : [];
 
             const newMatches = [...bestMaleMatches, ...bestFemaleMatches];
           // App.jsx (수정된 버전)
@@ -1842,7 +1948,9 @@ useEffect(() => {
 
                         // [수정] 이미 매칭된 선수가 없는 "깨끗한" 매치만 추가합니다.
                         if (!hasPlayerAlreadyMatched) {
-                            newState.autoMatches[String(nextIndex)] = match.map(p => p.id); // Store IDs
+                            // [급수 밸런스] 두 팀(슬롯 0,1 / 2,3)의 급수가 최대한 맞도록 선수 순서 재배열
+                            const balancedOrder = getBestLevelSplit(match, allPlayers).order;
+                            newState.autoMatches[String(nextIndex)] = balancedOrder.map(p => p.id); // Store IDs
                             nextIndex++;
 
                             // [수정] 방금 추가한 선수들도 Set에 반영하여, 
@@ -1887,7 +1995,7 @@ useEffect(() => {
 
     // [자동매칭] 스케줄러 실행 useEffect
     useEffect(() => {
-        const isAutoMatchEnabled = isAdmin && seasonConfig?.autoMatchConfig?.isEnabled;
+        const isAutoMatchEnabled = isAdmin && isAutoMatchOn;
 
        if (isAutoMatchEnabled) {
             if (!schedulerIntervalRef.current) {
@@ -1908,7 +2016,7 @@ useEffect(() => {
                 schedulerIntervalRef.current = null;
             }
         };
-    }, [isAdmin, seasonConfig?.autoMatchConfig?.isEnabled, runMatchScheduler]);
+    }, [isAdmin, isAutoMatchOn, runMatchScheduler]);
 
     // [자동매칭] 더 이상 사용하지 않는 함수
     // handleAutoMatchGenerate
@@ -2172,10 +2280,11 @@ useEffect(() => {
                 finalPhotoUrl = await getDownloadURL(storageRef);
             }
 
+            // 1. 코트 수(gameState)는 동시성 보장을 위해 트랜잭션으로 갱신
             await runTransaction(db, async (transaction) => {
                 const currentGameStateDoc = await transaction.get(gameStateRef);
                 if (!currentGameStateDoc.exists()) throw new Error("GameState document does not exist!");
-                
+
                 const currentGameState = currentGameStateDoc.data();
                 const newGameState = { ...currentGameState, numScheduledMatches: scheduled, numInProgressCourts: courts };
 
@@ -2186,25 +2295,28 @@ useEffect(() => {
                     newGameState.inProgressCourts = [...currentCourts, ...Array(courts - currentCourts.length).fill(null)];
                 }
                 transaction.set(gameStateRef, newGameState);
-
-              // Firestore에 저장하기 전, File 객체 필드를 확실히 제거
-                const pureAutoMatchConfig = { ...autoMatchConfig };
-                delete pureAutoMatchConfig.photoFile;
-                // [수정] 객체 내부에도 정보를 기록하여 초기 로드 시 누락 방지
-                pureAutoMatchConfig.announcementType = announcementType || 'text';
-                pureAutoMatchConfig.announcementPhotoUrl = finalPhotoUrl;
-
-               // [수정] pureAutoMatchConfig 내부에도 타입을 명시하여 설정 모달을 다시 열었을 때 초기값이 유지되도록 함
-                pureAutoMatchConfig.announcementType = announcementType || 'text';
-                pureAutoMatchConfig.announcementPhotoUrl = finalPhotoUrl;
-
-                transaction.set(configRef, { 
-                    announcement,
-                    autoMatchConfig: pureAutoMatchConfig,
-                    announcementType: announcementType || 'text', // 루트 레벨 저장
-                    announcementPhotoUrl: finalPhotoUrl // 루트 레벨 저장
-                }, { merge: true });
             });
+
+            // 2. 설정(config)은 gameState 경합과 분리하여 별도로 확실히 저장한다.
+            //    (자동매칭 스케줄러가 gameState를 자주 갱신해도 설정 저장이 누락되지 않도록 함)
+            // Firestore에 저장하기 전, File 객체 필드를 확실히 제거
+            const pureAutoMatchConfig = { ...autoMatchConfig };
+            delete pureAutoMatchConfig.photoFile;
+            // 공지 타입/사진을 객체 내부에도 기록하여 초기 로드 시 누락 방지
+            pureAutoMatchConfig.announcementType = announcementType || 'text';
+            pureAutoMatchConfig.announcementPhotoUrl = finalPhotoUrl;
+
+            // [자동매칭] 남/여 개별 ON/OFF를 명시적으로 저장하고, 마스터 isEnabled는 둘 중 하나라도 켜져 있으면 true
+            pureAutoMatchConfig.isMaleEnabled = !!pureAutoMatchConfig.isMaleEnabled;
+            pureAutoMatchConfig.isFemaleEnabled = !!pureAutoMatchConfig.isFemaleEnabled;
+            pureAutoMatchConfig.isEnabled = pureAutoMatchConfig.isMaleEnabled || pureAutoMatchConfig.isFemaleEnabled;
+
+            await setDoc(configRef, {
+                announcement,
+                autoMatchConfig: pureAutoMatchConfig,
+                announcementType: announcementType || 'text', // 루트 레벨 저장
+                announcementPhotoUrl: finalPhotoUrl // 루트 레벨 저장
+            }, { merge: true });
 
             setIsSettingsOpen(false);
             setModal({ type: 'alert', data: { title: '저장 완료', body: '설정이 성공적으로 저장되었습니다.' } });
@@ -2486,22 +2598,22 @@ useEffect(() => {
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
                                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
+                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={isAutoMatchOn}/>
                                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
                                 </div>
                             )}
                             {activeTab === 'inProgress' && (
                                 <div key="tab-inprogress" className="tab-fade-in">
-                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
+                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
                                 </div>
                             )}
                     </div>
             ) : (
                 <div className="flex flex-col gap-3">
                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={seasonConfig?.autoMatchConfig?.isEnabled}/>
+                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} isAutoMatchOn={isAutoMatchOn}/>
                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
-                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
+                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
                 </div>
             )}
             </main>
@@ -2909,11 +3021,20 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
     const [newPlayerForm, setNewPlayerForm] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
 
     // 자동매칭 설정 상태 (수정됨)
-  const [autoMatchConfig, setAutoMatchConfig] = useState({
-        ...(seasonConfig.autoMatchConfig || {}),
-        // [수정] 루트 레벨에 저장된 공지 타입과 사진 URL을 초기값으로 명시
-        announcementType: seasonConfig.announcementType || 'text',
-        announcementPhotoUrl: seasonConfig.announcementPhotoUrl || ''
+    // [자동매칭] 남/여 개별 ON/OFF 초기화 (구버전 설정은 isEnabled를 양쪽에 적용)
+  const [autoMatchConfig, setAutoMatchConfig] = useState(() => {
+        const cfg = seasonConfig.autoMatchConfig || {};
+        const isMaleEnabled = cfg.isMaleEnabled ?? cfg.isEnabled ?? false;
+        const isFemaleEnabled = cfg.isFemaleEnabled ?? cfg.isEnabled ?? false;
+        return {
+            ...cfg,
+            isMaleEnabled,
+            isFemaleEnabled,
+            isEnabled: isMaleEnabled || isFemaleEnabled,
+            // [수정] 루트 레벨에 저장된 공지 타입과 사진 URL을 초기값으로 명시
+            announcementType: seasonConfig.announcementType || 'text',
+            announcementPhotoUrl: seasonConfig.announcementPhotoUrl || ''
+        };
     });
 
     if (!isAdmin) return null;
@@ -3000,18 +3121,30 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 
                     {/* --- 자동 매칭 설정 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg">
-                        <div className="flex justify-between items-center">
-                            <label className="font-semibold text-lg text-green-400 arcade-font">
-                                🤖 콕스타 자동 매칭
-                            </label>
-                            <ToggleSwitch
-                                name="isEnabled"
-                                checked={autoMatchConfig.isEnabled}
-                                onChange={handleAutoMatchConfigChange}
-                            />
+                        <label className="font-semibold text-lg text-green-400 arcade-font block mb-3">
+                            🤖 콕스타 자동 매칭
+                        </label>
+                        {/* [자동매칭] 남자 / 여자 개별 ON/OFF */}
+                        <div className="space-y-2">
+                            <div className="flex justify-between items-center bg-gray-800 px-3 py-2 rounded-lg">
+                                <span className="font-semibold text-blue-300">👨 남자 자동 매칭</span>
+                                <ToggleSwitch
+                                    name="isMaleEnabled"
+                                    checked={autoMatchConfig.isMaleEnabled}
+                                    onChange={handleAutoMatchConfigChange}
+                                />
+                            </div>
+                            <div className="flex justify-between items-center bg-gray-800 px-3 py-2 rounded-lg">
+                                <span className="font-semibold text-pink-300">👩 여자 자동 매칭</span>
+                                <ToggleSwitch
+                                    name="isFemaleEnabled"
+                                    checked={autoMatchConfig.isFemaleEnabled}
+                                    onChange={handleAutoMatchConfigChange}
+                                />
+                            </div>
                         </div>
 
-                        {autoMatchConfig.isEnabled && (
+                        {(autoMatchConfig.isMaleEnabled || autoMatchConfig.isFemaleEnabled) && (
                             <div className="mt-4 pt-4 border-t border-gray-600 space-y-4">
 
                               {/* [수정] 전체 인원수 및 추천 점수 표시 UI */}
