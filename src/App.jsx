@@ -182,6 +182,90 @@ const firebaseService = {
 };
 
 // ===================================================================================
+// [새벽 2시 자동 초기화] 클라이언트 측 구현
+// -----------------------------------------------------------------------------------
+// 기존에는 Firebase Cloud Function(dailyRoomCleanup)으로만 처리했으나, 배포를 Vercel
+// (프론트엔드)에서만 하는 환경에서는 Functions가 배포되지 않아 새벽 2시 초기화가
+// 동작하지 않았다. 그래서 앱이 열려 있는 동안 클라이언트가 직접 초기화를 수행한다.
+//   - 모든 선수(접속/미접속 포함) 현황판에서 내보내기(status:'inactive')
+//   - 모든 선수의 일일 경기기록/게임 수 삭제(승/패/연승/누구와 경기했는지 전부)
+//   - 경기진행/경기예정/자동매칭(경기방) 비우기
+// Firestore 트랜잭션으로 '운영일 키'를 선점하여, 여러 기기가 동시에 접속해 있어도
+// 단 하나의 클라이언트만 초기화를 실행한다.
+// ===================================================================================
+
+// 새벽 2시(KST)를 하루의 경계로 보는 '운영일 키'(YYYY-MM-DD)를 만든다.
+// UTC 시각에 +7시간(KST +9시간에서 초기화 기준 2시를 빼면 +7시간) 한 뒤 날짜를 취하면,
+// 새벽 2시 이전이면 전날, 이후면 당일 날짜가 자연스럽게 나온다.
+const getDailyResetKey = (now = new Date()) => {
+    const shifted = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const y = shifted.getUTCFullYear();
+    const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(shifted.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
+let dailyResetInFlight = false;
+
+// 운영일이 바뀌었는데 아직 초기화 기록이 없으면 초기화를 수행한다.
+const runDailyResetIfDue = async () => {
+    if (dailyResetInFlight) return;
+    const todayKey = getDailyResetKey();
+
+    // 빠른 사전 확인: 이미 오늘 초기화가 끝났으면 트랜잭션조차 시도하지 않는다.
+    if (gameStateData && gameStateData.lastDailyResetKey === todayKey) return;
+
+    dailyResetInFlight = true;
+    try {
+        // 1) 트랜잭션으로 '운영일 키'를 선점 + 경기방(경기진행/예정/자동매칭) 비우기.
+        //    이미 다른 기기가 처리했다면 won=false로 빠져나간다.
+        const won = await runTransaction(db, async (tx) => {
+            const gsSnap = await tx.get(gameStateRef);
+            const gs = gsSnap.exists() ? gsSnap.data() : {};
+            if (gs.lastDailyResetKey === todayKey) return false;
+            const numCourts = gs.numInProgressCourts || 4;
+            tx.set(gameStateRef, {
+                lastDailyResetKey: todayKey,
+                inProgressCourts: Array(numCourts).fill(null),
+                scheduledMatches: {},
+                autoMatches: {},
+            }, { merge: true });
+            return true;
+        });
+        if (!won) return;
+
+        // 2) 모든 선수(접속/미접속 포함) 일일 기록 삭제 + 현황판에서 내보내기.
+        //    getDocs로 전체를 가져오므로 나가 있는(inactive) 선수의 히스토리도 함께 삭제된다.
+        const snapshot = await getDocs(playersRef);
+        let batch = writeBatch(db);
+        let count = 0;
+        for (const playerDoc of snapshot.docs) {
+            batch.update(playerDoc.ref, {
+                status: 'inactive',     // 현황판에서 완전히 내보내기
+                isResting: false,       // 휴식 상태 해제
+                todayWins: 0,
+                todayLosses: 0,
+                todayWinStreakCount: 0,
+                todayRecentGames: [],   // 누구와 몇 게임 했는지 기록 전부 삭제
+            });
+            count++;
+            // Firestore batch 제한(500개)을 피하기 위해 400개 단위로 분할 처리
+            if (count % 400 === 0) {
+                await batch.commit();
+                batch = writeBatch(db);
+            }
+        }
+        if (count % 400 !== 0) await batch.commit();
+
+        console.log(`[새벽 2시 초기화] ${todayKey} 기준 ${count}명 선수 기록 삭제 및 내보내기 완료`);
+    } catch (e) {
+        console.error("[새벽 2시 초기화] 실패:", e);
+    } finally {
+        dailyResetInFlight = false;
+    }
+};
+
+// ===================================================================================
 // 자동 매칭 핵심 로직 (Helper Functions)
 // ===================================================================================
 
@@ -1280,6 +1364,16 @@ export default function App() {
             unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
         };
     }, []);
+
+    // [새벽 2시 자동 초기화] 앱이 열려 있는 동안 운영일(새벽 2시 기준)이 바뀌면
+    // 모든 선수 내보내기 + 일일 기록/게임 수 삭제 + 경기방 비우기를 수행한다.
+    // 트랜잭션으로 단 하나의 클라이언트만 실행하므로 여러 기기가 동시에 켜져 있어도 안전하다.
+    useEffect(() => {
+        if (isLoading) return;
+        runDailyResetIfDue();                                   // 진입 즉시 1회 확인
+        const intervalId = setInterval(runDailyResetIfDue, 60 * 1000); // 이후 1분마다 확인
+        return () => clearInterval(intervalId);
+    }, [isLoading]);
 
 useEffect(() => {
         // [개선] 데이터 로딩 완료 시 이미지 미리 불러오기 (Pre-loading)

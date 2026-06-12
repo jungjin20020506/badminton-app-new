@@ -310,14 +310,19 @@ exports.dailyRoomCleanup = onSchedule({
         const gameStateRef = db.collection("gameState").doc("live");
         const gameStateDoc = await gameStateRef.get();
         
+        // 클라이언트 측 초기화와 동일한 '운영일 키'(KST 새벽 2시 기준 날짜)
+        const nowKstShifted = new Date(Date.now() + 7 * 60 * 60 * 1000);
+        const resetKey = nowKstShifted.toISOString().slice(0, 10); // YYYY-MM-DD
+
         if (gameStateDoc.exists) {
             const data = gameStateDoc.data();
             const numInProgressCourts = data.numInProgressCourts || 4;
-            
+
             await gameStateRef.update({
                 inProgressCourts: Array(numInProgressCourts).fill(null), // 경기진행 비우기
                 scheduledMatches: {}, // 경기예정 비우기
-                autoMatches: {} // 경기대기(자동매칭) 비우기
+                autoMatches: {}, // 경기대기(자동매칭) 비우기
+                lastDailyResetKey: resetKey // 클라이언트가 중복 초기화하지 않도록 기록
             });
             logger.log("경기방(경기진행, 경기예정, 자동매칭) 모든 선수 내보내기 완료.");
         }
