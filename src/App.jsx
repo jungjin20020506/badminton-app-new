@@ -6,9 +6,7 @@ import {
     query, getDocs, where,
     enableIndexedDbPersistence
 } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"; // Storage 임포트 추가
-import { getMessaging, getToken, onMessage } from "firebase/messaging"; // FCM 푸시 알림 기능 추가
 // ===================================================================================
 // Firebase & Service Logic (하나의 파일로 통합)
 // ===================================================================================
@@ -26,16 +24,6 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app); // Storage 초기화
-
-// FCM 푸시 알림 객체 초기화 (브라우저가 지원하는 경우에만)
-let messaging = null;
-if (typeof window !== "undefined" && "Notification" in window) {
-    try {
-        messaging = getMessaging(app);
-    } catch (e) {
-        console.log("FCM 초기화 에러:", e);
-    }
-}
 
 // ============ [4번 전략 적용] 오프라인 지속성 활성화 ============
 // db 객체를 만든 직후, 다른 Firestore 작업을 하기 전에 호출합니다.
@@ -57,8 +45,6 @@ try {
   console.error("Firestore 오프라인 지속성 설정 오류:", err);
 }
 // ==========================================================
-
-const functions = getFunctions(app);
 
 const playersRef = collection(db, "players");
 const gameStateRef = doc(db, "gameState", "live");
@@ -1369,56 +1355,16 @@ export default function App() {
     const [isRosterOpen, setIsRosterOpen] = useState(false);
        const [currentUser, setCurrentUser] = useState(null);
 
-    // --- [알림 권한 및 유도 모달 상태] ---
-    const [notiPermission, setNotiPermission] = useState(
-        typeof window !== "undefined" && "Notification" in window ? Notification.permission : 'default'
-    );
-    const [showNotiIntroModal, setShowNotiIntroModal] = useState(false);
-
-    // --- [앱 설치 및 인앱 브라우저 감지 상태] ---
+    // --- [인앱 브라우저 감지 상태] ---
     const [isInAppBrowser, setIsInAppBrowser] = useState(false);
-    const [deferredPrompt, setDeferredPrompt] = useState(null);
-    const [showInstallBanner, setShowInstallBanner] = useState(false);
 
    useEffect(() => {
-        // 1. 인앱 브라우저 감지 (카카오톡, 라인, 인스타그램 등)
+        // 인앱 브라우저 감지 (카카오톡, 라인, 인스타그램 등)
         const userAgent = navigator.userAgent.toLowerCase();
         const inAppKeywords = ['kakao', 'line', 'instagram', 'naver', 'everytime'];
         const isIab = inAppKeywords.some(keyword => userAgent.includes(keyword));
         setIsInAppBrowser(isIab);
-
-        // 2. PWA 앱 설치 이벤트 감지 (안드로이드/데스크탑 크롬)
-        const handleBeforeInstallPrompt = (e) => {
-            e.preventDefault();
-            setDeferredPrompt(e);
-            setShowInstallBanner(true);
-        };
-        window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-        // 3. iOS Safari PWA 설치 유도 (beforeinstallprompt가 작동안함)
-        const isIos = /iphone|ipad|ipod/.test(userAgent);
-        const isSafari = /safari/.test(userAgent) && !/chrome|crios|crmo/.test(userAgent);
-        const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
-        
-        if (isIos && isSafari && !isStandalone) {
-            setShowInstallBanner(true); // iOS 사용자에게도 배너 표시
-        }
-
-        return () => {
-            window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-        };
     }, []);
-
-    const handleInstallClick = async () => {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') {
-                setShowInstallBanner(false);
-            }
-            setDeferredPrompt(null);
-        }
-    };
     // ----------------------------------------
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
    const [modal, setModal] = useState({ type: null, data: null });
@@ -1559,36 +1505,8 @@ export default function App() {
         };
         window.addEventListener('resize', handleResize);
 
-        // [푸시 알림] 앱이 켜져 있을 때 (Foreground) 알림을 받았을 경우 처리
-        let unsubscribeMessaging = null;
-        if (messaging) {
-            unsubscribeMessaging = onMessage(messaging, (payload) => {
-                const title = payload.notification?.title || payload.data?.title || '새로운 알림';
-                const body = payload.notification?.body || payload.data?.body || '코트로 이동해주세요!';
-
-                if (Notification.permission === 'granted') {
-                    new Notification(title, {
-                        body: body,
-                        icon: '/pwa-192x192.png'
-                    });
-                }
-                // [수정] 포그라운드 자체 팝업 알림 및 진동 추가 (선수가 앱을 보고 있을 때 알림을 놓치지 않게 함)
-                if (navigator.vibrate) {
-                    navigator.vibrate([200, 100, 200, 100, 200]); // 징-징-징 강한 진동
-                }
-                setModal({ 
-                    type: 'alert', 
-                    data: { 
-                        title: title, 
-                        body: body 
-                    }
-                });
-            });
-        }
-
         return () => {
             window.removeEventListener('resize', handleResize);
-            if (unsubscribeMessaging) unsubscribeMessaging();
         };
     }, []);
 
@@ -1677,76 +1595,6 @@ useEffect(() => {
             setModal({ type: 'season', data: seasonConfig });
         }
     }, [isLoading, seasonConfig, isSeasonModalDismissed, modal]);
-
-    // [알림 권한] 커스텀 모달에서 "허용하기" 클릭 시 호출되는 함수
-    const requestNotificationPermission = useCallback(async () => {
-        if (!messaging) return;
-        try {
-            const permission = await Notification.requestPermission();
-            setNotiPermission(permission);
-            setShowNotiIntroModal(false);
-
-            if (permission === 'granted' && currentUser) {
-                const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-                const currentToken = await getToken(messaging, {
-                    vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY",
-                    serviceWorkerRegistration: registration
-                });
-                if (currentToken) {
-                    const playerDocRef = doc(playersRef, currentUser.id);
-                    const playerDoc = await getDoc(playerDocRef);
-                    if (playerDoc.exists()) {
-                        const playerData = playerDoc.data();
-                        const currentTokens = playerData.fcmTokens || [];
-                        if (!currentTokens.includes(currentToken)) {
-                            await updateDoc(playerDocRef, { fcmTokens: [...currentTokens, currentToken] });
-                        }
-                    }
-                }
-            } else if (permission === 'denied') {
-                alert("알림이 차단되었습니다. 브라우저 설정에서 알림 권한을 허용해주세요.");
-            }
-        } catch (error) {
-            console.error("FCM 권한 요청 오류:", error);
-            setShowNotiIntroModal(false);
-        }
-    }, [currentUser]);
-
-    // 권한 체크 및 접속 시마다 백그라운드에서 자동으로 토큰을 갱신/유지하는 로직
-    useEffect(() => {
-        const checkAndSaveToken = async () => {
-            if (currentUser && "Notification" in window) {
-                if (Notification.permission === 'default') {
-                    setShowNotiIntroModal(true);
-                } else {
-                    setNotiPermission(Notification.permission);
-                    if (Notification.permission === 'granted' && messaging) {
-                        try {
-                            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-                            const currentToken = await getToken(messaging, {
-                                vapidKey: "BBRzbDzqqTxY6ZqJsDddwYoGZlWyosWf0Lx9-vA4kXLdFzqb5gHJTymRzk5bIX0dnVDTH_aVOYTiXXiXiB2ijkY",
-                                serviceWorkerRegistration: registration
-                            });
-                            if (currentToken) {
-                                const playerDocRef = doc(playersRef, currentUser.id);
-                                const playerDoc = await getDoc(playerDocRef);
-                                if (playerDoc.exists()) {
-                                    const playerData = playerDoc.data();
-                                    const currentTokens = playerData.fcmTokens || [];
-                                    if (!currentTokens.includes(currentToken)) {
-                                        await updateDoc(playerDocRef, { fcmTokens: [...currentTokens, currentToken] });
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            console.error("자동 토큰 갱신 에러:", error);
-                        }
-                    }
-                }
-            }
-        };
-        checkAndSaveToken();
-    }, [currentUser]);
 
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
@@ -2093,31 +1941,6 @@ useEffect(() => {
         };
 
         await updateGameState(updateFunction, '선수를 경기에 배정하는 데 실패했습니다.');
-        
-        // [추가] 관리자가 수동으로 대기 1번(인덱스 0)에 선수 4명을 꽉 채웠다면 대기 알림 발송
-        if (context.matchIndex === 0) {
-            setTimeout(async () => {
-                try {
-                    const liveDoc = await getDoc(doc(db, "gameState", "live"));
-                    if (liveDoc.exists()) {
-                        const updatedGameState = liveDoc.data();
-                        const checkMatch = context.location === 'schedule' 
-                            ? updatedGameState.scheduledMatches['0'] 
-                            : updatedGameState.autoMatches['0'];
-                        
-                        if (checkMatch && checkMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
-                            const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
-                            await sendWaitingNotification({
-                                playerIds: checkMatch,
-                                matchType: context.location
-                            });
-                        }
-                    }
-                } catch (error) {
-                    console.error("대기 1번 알림 확인 중 오류:", error);
-                }
-            }, 1500); // DB 확실한 동기화를 위해 1.5초 지연 및 직접 확인
-        }
 
         setSelectedPlayerIds([]);
     }, [isAdmin, selectedPlayerIds, activePlayers, updateGameState]);
@@ -2214,46 +2037,6 @@ useEffect(() => {
             };
 
             await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다. 다른 관리자가 먼저 시작했을 수 있습니다.');
-            
-            // [푸시 알림] 서버(Cloud Functions)로 경기 시작 알림 발송 요청
-            const playersToNotify = matchType === 'schedule' 
-                ? gameState.scheduledMatches[String(matchIndex)] 
-                : gameState.autoMatches[String(matchIndex)];
-                
-            if (playersToNotify && playersToNotify.length > 0) {
-                try {
-                    const sendMatchNotification = httpsCallable(functions, 'sendMatchNotification');
-                    sendMatchNotification({
-                        playerIds: playersToNotify,
-                        courtIndex: courtIndex
-                    }).catch(err => console.log("푸시 알림 함수 호출 실패:", err));
-                } catch (error) {
-                    console.error(error);
-                }
-            }
-
-            // [추가] 앞 경기가 시작되어 새로운 팀이 대기 1번(인덱스 0)으로 올라왔다면 대기 알림 발송
-            setTimeout(async () => {
-                try {
-                    const liveDoc = await getDoc(doc(db, "gameState", "live"));
-                    if (liveDoc.exists()) {
-                        const updatedGameState = liveDoc.data();
-                        const nextMatch = matchType === 'schedule' 
-                            ? updatedGameState.scheduledMatches['0'] 
-                            : updatedGameState.autoMatches['0'];
-                            
-                        if (nextMatch && nextMatch.filter(p => p).length === PLAYERS_PER_MATCH) {
-                            const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
-                            await sendWaitingNotification({
-                                playerIds: nextMatch,
-                                matchType: matchType
-                            });
-                        }
-                    }
-                } catch (error) {
-                    console.error("대기 1번 알림 확인 중 오류:", error);
-                }
-            }, 1500); // DB 확실한 동기화를 위해 1.5초 지연 및 직접 확인
 
            setModal({type: null, data: null});
         };
@@ -2422,9 +2205,6 @@ useEffect(() => {
             const newMatches = [...bestMaleMatches, ...bestFemaleMatches];
 
             if (newMatches.length > 0) {
-                // [추가] 기존에 자동매칭 목록이 비어있었는지 체크 (방금 대기 1번이 생성되었는지 확인용)
-                const wasAutoMatchesEmpty = Object.keys(gameState.autoMatches || {}).length === 0;
-
                 const updateFunction = (currentState) => {
                     const newState = JSON.parse(JSON.stringify(currentState));
                     
@@ -2458,30 +2238,6 @@ useEffect(() => {
                     return { newState };
                 };
                 await updateGameState(updateFunction, "자동 매칭 생성에 실패했습니다.");
-
-               // [추가] 자동매칭이 원래 0개였다가 방금 생성되었다면 대기 1번(인덱스 0) 알림 발송
-                if (wasAutoMatchesEmpty) {
-                    setTimeout(async () => {
-                        try {
-                            const liveDoc = await getDoc(doc(db, "gameState", "live"));
-                            if (liveDoc.exists()) {
-                                const updatedGameState = liveDoc.data();
-                                if (updatedGameState && updatedGameState.autoMatches['0']) {
-                                    const auto0 = updatedGameState.autoMatches['0'];
-                                    if (auto0.filter(p => p).length === PLAYERS_PER_MATCH) {
-                                        const sendWaitingNotification = httpsCallable(functions, 'sendWaitingNotification');
-                                        await sendWaitingNotification({
-                                            playerIds: auto0,
-                                            matchType: 'auto'
-                                        });
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            console.error("대기 1번 알림 확인 중 오류:", error);
-                        }
-                    }, 1500); // DB 확실한 동기화를 위해 1.5초 지연 및 직접 확인
-                }
             }
         } catch (error) {
             console.error("Auto-match scheduler error:", error);
@@ -2955,69 +2711,6 @@ useEffect(() => {
     return (
         <div className="cox-dark text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
             
-          {/* --- PWA 앱 설치 유도 배너 (iOS 및 안드로이드 강력 대응) --- */}
-            {showInstallBanner && (
-                <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 text-black p-3 flex flex-col shadow-xl sticky top-0 z-[60] border-b-2 border-yellow-700">
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex-1 pr-2">
-                            <p className="font-extrabold text-sm flex items-center gap-1">
-                                <span className="animate-bounce">⚡</span> 콕스라이팅 전용 앱 설치
-                            </p>
-                            <p className="text-[11px] font-bold opacity-90 leading-tight mt-0.5">
-                                푸시 알림을 받고 경기에 늦지 않으려면 <span className="underline decoration-red-500">반드시 앱을 설치</span>해야 합니다!
-                            </p>
-                        </div>
-                        <div className="flex flex-shrink-0">
-                            <button onClick={() => setShowInstallBanner(false)} className="p-1 text-black/50 hover:text-black transition-colors">
-                                <i className="fas fa-times fa-lg"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    {deferredPrompt ? (
-                        /* 안드로이드 / 크롬 설치 버튼 */
-                        <button onClick={handleInstallClick} className="w-full bg-black text-yellow-500 py-2.5 rounded-lg text-sm font-black shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2">
-                            <i className="fas fa-download animate-pulse"></i> 1초 만에 바로 설치하기
-                        </button>
-                    ) : (
-                        /* iOS 사파리 안내 (아이폰 사용자를 위한 시각적 설명) */
-                        <div className="bg-black/10 rounded-lg p-2.5 text-[11px] font-bold text-black flex flex-col gap-1 border border-black/20 shadow-inner">
-                            <p className="text-xs mb-1">🍎 <span className="text-red-700 font-extrabold">아이폰(iOS)</span> 3초 설치 방법:</p>
-                            <p className="flex items-center gap-1.5 mt-1">
-                                1. 화면 맨 아래의 <span className="bg-white px-2 py-0.5 rounded-md shadow-sm flex items-center border border-gray-200 text-blue-500"><i className="fas fa-external-link-alt mr-1"></i> 공유</span> 버튼 누르기
-                            </p>
-                            <p className="flex items-center gap-1.5 mt-1">
-                                2. 메뉴를 내려서 <span className="bg-white px-2 py-0.5 rounded-md shadow-sm flex items-center border border-gray-200"><i className="fas fa-plus-square text-gray-500 mr-1"></i> 홈 화면에 추가</span> 누르기
-                            </p>
-                            <p className="text-red-700 mt-1.5 bg-red-100 p-1 rounded">※ 반드시 <span className="underline">사파리(Safari)</span> 앱에서 열어주세요!</p>
-                        </div>
-                    )}
-                </div>
-            )}
-
-            {/* --- 알림 차단 경고 고정 배너 --- */}
-            {notiPermission !== 'granted' && (
-                <div className="bg-red-600 text-white p-3 flex items-center justify-between shadow-lg sticky top-0 z-[55]">
-                    <div className="flex-1 pr-2">
-                        <p className="font-bold text-[11px] leading-tight">⚠️ 알림을 허용해야만 차례가 되었을 때 방 입장 알림을 받을 수 있습니다.</p>
-                    </div>
-                    <div className="flex flex-shrink-0">
-                        <button 
-                            onClick={() => {
-                                if (notiPermission === 'default') {
-                                    setShowNotiIntroModal(true);
-                                } else {
-                                    alert("이미 권한이 차단되었습니다.\n주소창 좌측의 자물쇠 아이콘(또는 설정)을 눌러 알림 권한을 '허용'으로 변경해주세요.");
-                                }
-                            }} 
-                            className="bg-white text-red-600 px-2 py-1.5 rounded text-xs font-bold shadow-sm active:scale-95"
-                        >
-                            권한 설정
-                        </button>
-                    </div>
-                </div>
-            )}
-
             {/* --- [소모임 동기화] 자동 동기화 실패 배너 --- */}
             {showSyncErrorBanner && (
                 <div className="bg-orange-600 text-white p-3 flex items-center justify-between shadow-lg sticky top-0 z-[54]">
@@ -3035,14 +2728,6 @@ useEffect(() => {
                         </button>
                     )}
                 </div>
-            )}
-
-            {/* --- 알림 권한 유도 모달 --- */}
-            {showNotiIntroModal && (
-                <NotiIntroModal 
-                    onAllow={requestNotificationPermission} 
-                    onClose={() => setShowNotiIntroModal(false)} 
-                />
             )}
 
            {modal?.type === 'season' && <SeasonModal {...modal.data} onClose={() => {
@@ -4160,30 +3845,6 @@ function CourtSelectionModal({ courts, onSelect, onCancel }) {
 }
 
 function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80] p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
-
-function NotiIntroModal({ onAllow, onClose }) {
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[70] p-4">
-            <div className="bg-gray-800 rounded-2xl p-6 w-full max-w-sm text-center shadow-[0_0_20px_rgba(255,224,0,0.3)] border border-yellow-500/30">
-                <div className="text-5xl mb-4">🔔</div>
-                <h3 className="text-xl font-bold text-yellow-400 mb-2">경기 입장 알림 받기</h3>
-                <p className="text-gray-300 text-sm mb-6 leading-relaxed">
-                    다음 차례가 되면 <strong>방 입장 알림</strong>을 보내드립니다.<br/>
-                    원활한 경기 진행을 위해<br/>
-                    <span className="text-white font-bold bg-red-500/20 px-2 py-1 rounded inline-block mt-2">반드시 알림을 '허용' 해주세요!</span>
-                </p>
-                <div className="flex gap-3 flex-col">
-                    <button onClick={onAllow} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg text-sm transition-transform active:scale-95">
-                        알림 허용하기
-                    </button>
-                    <button onClick={onClose} className="text-gray-500 hover:text-gray-400 text-xs py-2 underline decoration-gray-600">
-                        나중에 설정하기
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-}
 
 // ===================================================================================
 // [선수 명단] 선수 정보 관리 모달 — 관리자 설정 > 선수 정보 관리
