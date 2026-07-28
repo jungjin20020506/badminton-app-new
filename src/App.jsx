@@ -65,18 +65,25 @@ const gameStateRef = doc(db, "gameState", "live");
 const configRef = doc(db, "config", "season");
 const monthlyRankingsRef = collection(db, "monthlyRankings");
 const notificationsRef = collection(db, "notifications");
+// [선수 명단] 모임 회원 명단(이름/급수/성별/소모임ID) — 관리자 설정 > 선수 정보 관리에서 편집
+const rosterRef = collection(db, "roster");
+// [소모임 동기화] 자동/수동 동기화 상태 기록 (실패 시 배너 표시용)
+const somoimSyncRef = doc(db, "config", "somoimSync");
 
 // --- 2. Service 로직 ---
 let allPlayersData = {};
 let gameStateData = null;
 let seasonConfigData = null;
+let rosterData = {};
+let somoimSyncData = null;
 const subscribers = new Set();
 
-let resolveAllPlayers, resolveGameState, resolveSeasonConfig;
+let resolveAllPlayers, resolveGameState, resolveSeasonConfig, resolveRoster;
 const allPlayersPromise = new Promise(resolve => { resolveAllPlayers = resolve; });
 const gameStatePromise = new Promise(resolve => { resolveGameState = resolve; });
 const seasonConfigPromise = new Promise(resolve => { resolveSeasonConfig = resolve; });
-const readyPromise = Promise.all([allPlayersPromise, gameStatePromise, seasonConfigPromise]);
+const rosterPromise = new Promise(resolve => { resolveRoster = resolve; });
+const readyPromise = Promise.all([allPlayersPromise, gameStatePromise, seasonConfigPromise, rosterPromise]);
 
 // --- 3. Firestore 리스너 설정 ---
 const activePlayersQuery = query(playersRef, where("status", "==", "active"));
@@ -166,6 +173,27 @@ if (seasonConfigData && !seasonConfigData.autoMatchConfig) {
     notifySubscribers();
 });
 
+// [선수 명단] 명단 리스너 — 읽기 실패(보안 규칙 등)해도 앱 로딩이 멈추지 않도록
+// 오류 시에도 resolve 한다. (명단이 비면 일반 선수 입장이 막히고 안내가 뜬다)
+onSnapshot(rosterRef, (snapshot) => {
+    const roster = {};
+    snapshot.forEach(d => roster[d.id] = d.data());
+    rosterData = roster;
+    if (resolveRoster) { resolveRoster(); resolveRoster = null; }
+    notifySubscribers();
+}, (error) => {
+    console.error("[선수 명단] 로딩 실패:", error);
+    if (resolveRoster) { resolveRoster(); resolveRoster = null; }
+});
+
+// [소모임 동기화] 동기화 상태 리스너 (실패 배너/결과 표시용, 로딩은 막지 않음)
+onSnapshot(somoimSyncRef, (d) => {
+    somoimSyncData = d.exists() ? d.data() : null;
+    notifySubscribers();
+}, (error) => {
+    console.error("[소모임 동기화] 상태 로딩 실패:", error);
+});
+
 function notifySubscribers() {
   subscribers.forEach(callback => callback());
 }
@@ -175,6 +203,8 @@ const firebaseService = {
   getAllPlayers: () => allPlayersData,
   getGameState: () => gameStateData,
   getSeasonConfig: () => seasonConfigData,
+  getRoster: () => rosterData,
+  getSomoimSync: () => somoimSyncData,
   subscribe: (callback) => {
     subscribers.add(callback);
     return () => subscribers.delete(callback);
@@ -262,6 +292,242 @@ const runDailyResetIfDue = async () => {
         console.error("[새벽 2시 초기화] 실패:", e);
     } finally {
         dailyResetInFlight = false;
+    }
+};
+
+// ===================================================================================
+// [선수 명단] 모임 회원 기본 명단 (사진 명단 기준)
+// -----------------------------------------------------------------------------------
+// 급수는 명단 사진 그대로. 성별은 소모임 데이터에 없어 이름으로 추정한 값이므로
+// 관리자 설정 > 선수 정보 관리에서 반드시 확인/수정해야 한다.
+// '방승환'은 사진에 '빙승환'으로 적혀 있으나 소모임 실명 기준으로 등록.
+// ===================================================================================
+const ROSTER_SEED = [
+    { name: '정형진', level: 'A조', gender: '남' }, { name: '나채빈', level: 'A조', gender: '여' },
+    { name: '오미리', level: 'A조', gender: '여' }, { name: '윤지혜', level: 'B조', gender: '여' },
+    { name: '이정문', level: 'A조', gender: '남' }, { name: '고지선', level: 'C조', gender: '여' },
+    { name: '공태호', level: 'C조', gender: '남' }, { name: '권지수', level: 'C조', gender: '여' },
+    { name: '김다은', level: 'C조', gender: '여' }, { name: '김도현', level: 'B조', gender: '남' },
+    { name: '김동균', level: 'B조', gender: '남' }, { name: '김민경', level: 'A조', gender: '여' },
+    { name: '김민수', level: 'A조', gender: '남' }, { name: '김시내', level: 'B조', gender: '여' },
+    { name: '김이령', level: 'B조', gender: '여' }, { name: '김재환', level: 'A조', gender: '남' },
+    { name: '김호진', level: 'C조', gender: '남' }, { name: '김환교', level: 'B조', gender: '남' },
+    { name: '도현석', level: 'A조', gender: '남' }, { name: '박민재', level: 'B조', gender: '남' },
+    { name: '박소현', level: 'B조', gender: '여' }, { name: '박영인', level: 'B조', gender: '남' },
+    { name: '박은진', level: 'B조', gender: '여' }, { name: '박지훈', level: 'C조', gender: '남' },
+    { name: '박현규', level: 'A조', gender: '남' }, { name: '방승환', level: 'B조', gender: '남' },
+    { name: '서소망', level: 'A조', gender: '여' }, { name: '서한일', level: 'A조', gender: '남' },
+    { name: '손선의', level: 'A조', gender: '여' }, { name: '신환종', level: 'A조', gender: '남' },
+    { name: '심예린', level: 'A조', gender: '여' }, { name: '윤다혜', level: 'A조', gender: '여' },
+    { name: '윤주혁', level: 'B조', gender: '남' }, { name: '이동준', level: 'C조', gender: '남' },
+    { name: '이미연', level: 'B조', gender: '여' }, { name: '이슬', level: 'B조', gender: '여' },
+    { name: '이윤성', level: 'C조', gender: '남' }, { name: '인치원', level: 'A조', gender: '남' },
+    { name: '임다혜', level: 'A조', gender: '여' }, { name: '장호성', level: 'B조', gender: '남' },
+    { name: '정상운', level: 'B조', gender: '남' }, { name: '정훈성', level: 'A조', gender: '남' },
+    { name: '조현빈', level: 'C조', gender: '남' }, { name: '조현철', level: 'B조', gender: '남' },
+    { name: '주재운', level: 'A조', gender: '남' }, { name: '진서원', level: 'B조', gender: '여' },
+    { name: '최나라', level: 'C조', gender: '여' }, { name: '한승찬', level: 'B조', gender: '남' },
+    { name: '한영록', level: 'A조', gender: '남' },
+];
+
+// ===================================================================================
+// [소모임 동기화] 정모 참석자 → 선수카드 자동 생성
+// -----------------------------------------------------------------------------------
+// 브라우저는 CORS 때문에 소모임을 직접 읽을 수 없으므로 /api/somoim (Vercel
+// serverless function)을 경유한다. 응답의 정모 목록에서 "오늘(KST)" 날짜의 정모를
+// 찾아, 참석(ijo=Y)한 멤버를 명단(roster)과 매칭해 선수카드를 생성/활성화한다.
+//   - 매칭 우선순위: 소모임 고유ID(somoimMid) → 실명. 이름으로 처음 매칭되면
+//     somoimMid를 명단에 자동 저장해 이후 동명이인/개명에 대비한다.
+//   - 명단에 없는 참석자는 카드를 만들지 않고 관리자에게 목록으로 보여준다.
+//     (급수/성별을 알 수 없는 카드가 임의로 생기는 것 방지)
+//   - 실패 시 절대 조용히 넘어가지 않고 오류코드를 남긴다. (동기화 실패 배너)
+// ===================================================================================
+
+// KST 기준 현재 시각 정보 (정모 날짜 비교는 '실제 날짜' 기준 — 새벽 2시 경계와 무관)
+const getKstParts = (now = new Date()) => {
+    const s = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    return {
+        dateNumber: s.getUTCFullYear() * 10000 + (s.getUTCMonth() + 1) * 100 + s.getUTCDate(), // YYYYMMDD
+        dateKey: `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, '0')}-${String(s.getUTCDate()).padStart(2, '0')}`,
+        hour: s.getUTCHours(),
+    };
+};
+
+class SomoimSyncError extends Error {
+    constructor(code, message) {
+        super(message || code);
+        this.code = code;
+    }
+}
+
+// 소모임 API 호출 (실패 시 SomoimSyncError)
+const fetchSomoimData = async () => {
+    let resp, json;
+    try {
+        resp = await fetch('/api/somoim', { cache: 'no-store' });
+    } catch (e) {
+        throw new SomoimSyncError('NETWORK', '동기화 서버에 접속하지 못했습니다.');
+    }
+    try {
+        json = await resp.json();
+    } catch (e) {
+        throw new SomoimSyncError('BAD_RESPONSE', '동기화 서버 응답을 해석하지 못했습니다.');
+    }
+    if (!resp.ok || !json.ok) {
+        throw new SomoimSyncError(json.code || `HTTP_${resp.status}`, json.message || '소모임 데이터를 가져오지 못했습니다.');
+    }
+    if (!Array.isArray(json.members) || json.members.length === 0) {
+        throw new SomoimSyncError('EMPTY_MEMBERS', '소모임 멤버 목록이 비어 있습니다.');
+    }
+    return json;
+};
+
+/**
+ * [소모임 동기화] 핵심 실행 함수. 오늘 정모 참석자를 선수카드로 생성/활성화한다.
+ * @returns {Promise<object>} 결과 요약 { noEvent, events, created, activated, already, unmatched }
+ * @throws {SomoimSyncError}
+ */
+const syncSomoimAttendees = async () => {
+    const data = await fetchSomoimData();
+    const { dateNumber } = getKstParts();
+
+    // 1) 오늘 날짜의 정모 찾기 (정모는 매주 새로 생기고 이름/차수가 바뀌므로 날짜로만 판단)
+    const todayEvents = (data.events || []).filter(e => e && e.date === dateNumber);
+    if (todayEvents.length === 0) {
+        return { noEvent: true, events: [], created: [], activated: [], already: [], unmatched: [] };
+    }
+
+    // 2) 오늘 정모(복수 가능)에 하나라도 참석(Y)한 멤버 수집 (강퇴/차단 멤버 제외)
+    const attendees = data.members.filter(m =>
+        !m.banned && todayEvents.some(ev => m.attend && m.attend[ev.slot - 1])
+    );
+
+    // 3) 명단(roster) 매칭 — somoimMid 우선, 없으면 실명
+    const roster = firebaseService.getRoster() || {};
+    const rosterList = Object.values(roster);
+    if (rosterList.length === 0) {
+        throw new SomoimSyncError('ROSTER_EMPTY', '선수 명단이 비어 있습니다. 관리자 설정 > 선수 정보 관리에서 명단을 먼저 등록해주세요.');
+    }
+    const byMid = {};
+    const byName = {};
+    rosterList.forEach(r => {
+        if (r.somoimMid) byMid[r.somoimMid] = r;
+        if (r.name) byName[r.name] = r;
+    });
+
+    const created = [], activated = [], already = [], unmatched = [];
+    const batch = writeBatch(db);
+    const currentPlayers = firebaseService.getAllPlayers() || {};
+
+    for (const att of attendees) {
+        const rosterEntry = byMid[att.mid] || byName[att.name];
+        if (!rosterEntry || !rosterEntry.level || !rosterEntry.gender) {
+            unmatched.push(att.name);
+            continue;
+        }
+        // (수동으로 콘솔에서 만든 문서 등) id 필드가 없어도 동작하도록 보정
+        const rosterId = rosterEntry.id || generateId(rosterEntry.name);
+        // 이름으로 처음 매칭된 경우 소모임 고유ID를 명단에 기록 (다음부터는 ID로 매칭)
+        if (!rosterEntry.somoimMid) {
+            batch.set(doc(rosterRef, rosterId), { id: rosterId, somoimMid: att.mid }, { merge: true });
+        }
+
+        const playerId = rosterId; // roster id == generateId(name) == players id
+        const existing = currentPlayers[playerId];
+        if (existing && existing.status === 'active') {
+            already.push(rosterEntry.name);
+            continue; // 이미 입장해 있는 선수는 건드리지 않는다 (경기중/기록 보호)
+        }
+        const playerData = {
+            id: playerId,
+            name: rosterEntry.name,
+            level: rosterEntry.level,
+            gender: rosterEntry.gender,
+            isGuest: false,
+            status: 'active',
+            isResting: false,
+            entryTime: new Date().toISOString(),
+            todayRecentGames: filterTodayGames(existing?.todayRecentGames),
+        };
+        batch.set(doc(playersRef, playerId), playerData, { merge: true });
+        (existing ? activated : created).push(rosterEntry.name);
+    }
+
+    await batch.commit();
+    return {
+        noEvent: false,
+        events: todayEvents.map(e => ({ name: e.name, time: e.time, place: e.place })),
+        created, activated, already, unmatched,
+    };
+};
+
+// [소모임 동기화] 18시 자동 동기화 — 여러 기기가 켜져 있어도 트랜잭션으로 딱 한 대만
+// 실행한다. 실패 시 10분 간격으로 최대 3회 재시도하고, 그래도 실패하면 오류 배너를 띄운다.
+let autoSyncInFlight = false;
+const AUTO_SYNC_HOUR = 18; // KST 18시(오후 6시)부터
+const AUTO_SYNC_MAX_ATTEMPTS = 3;
+
+const runAutoSomoimSyncIfDue = async () => {
+    if (autoSyncInFlight) return;
+    const { dateKey, hour } = getKstParts();
+    if (hour < AUTO_SYNC_HOUR) return;
+
+    // 빠른 사전 확인 (리스너 캐시 기준) — 끝난 날이면 트랜잭션 시도조차 하지 않음
+    const cached = firebaseService.getSomoimSync();
+    const cachedAuto = cached?.auto;
+    if (cachedAuto?.key === dateKey && (
+        cachedAuto.status === 'done' || cachedAuto.status === 'no-event' ||
+        (cachedAuto.status === 'error' && (cachedAuto.attempts || 0) >= AUTO_SYNC_MAX_ATTEMPTS)
+    )) return;
+
+    autoSyncInFlight = true;
+    try {
+        const nowIso = new Date().toISOString();
+        // 1) 실행권 선점 트랜잭션
+        const won = await runTransaction(db, async (tx) => {
+            const snap = await tx.get(somoimSyncRef);
+            const a = (snap.exists() ? snap.data().auto : null) || {};
+            if (a.key === dateKey) {
+                if (a.status === 'done' || a.status === 'no-event') return false;
+                if (a.status === 'error' && (a.attempts || 0) >= AUTO_SYNC_MAX_ATTEMPTS) return false;
+                // 다른 기기가 5분 내에 실행 중이면 양보
+                if (a.status === 'running' && a.startedAt && (Date.now() - new Date(a.startedAt).getTime()) < 5 * 60 * 1000) return false;
+                // 직전 실패 후 10분은 기다렸다가 재시도
+                if (a.status === 'error' && a.lastAttemptAt && (Date.now() - new Date(a.lastAttemptAt).getTime()) < 10 * 60 * 1000) return false;
+            }
+            const attempts = a.key === dateKey ? (a.attempts || 0) + 1 : 1;
+            tx.set(somoimSyncRef, {
+                auto: { key: dateKey, status: 'running', attempts, startedAt: nowIso, lastAttemptAt: nowIso }
+            }, { merge: true });
+            return true;
+        });
+        if (!won) return;
+
+        // 2) 실제 동기화 수행 → 결과/오류 기록
+        try {
+            const result = await syncSomoimAttendees();
+            await setDoc(somoimSyncRef, {
+                auto: {
+                    key: dateKey,
+                    status: result.noEvent ? 'no-event' : 'done',
+                    finishedAt: new Date().toISOString(),
+                },
+                lastResult: { ...result, at: new Date().toISOString(), trigger: 'auto' },
+                lastError: null,
+            }, { merge: true });
+            console.log('[소모임 동기화] 자동 동기화 완료:', result);
+        } catch (e) {
+            const code = e.code || 'UNKNOWN';
+            console.error('[소모임 동기화] 자동 동기화 실패:', code, e);
+            await setDoc(somoimSyncRef, {
+                auto: { key: dateKey, status: 'error', lastAttemptAt: new Date().toISOString() },
+                lastError: { at: new Date().toISOString(), code, message: e.message || '', trigger: 'auto', dateKey },
+            }, { merge: true }).catch(err => console.error('[소모임 동기화] 오류 기록 실패:', err));
+        }
+    } catch (e) {
+        console.error('[소모임 동기화] 자동 동기화 준비 실패:', e);
+    } finally {
+        autoSyncInFlight = false;
     }
 };
 
@@ -1097,6 +1363,10 @@ export default function App() {
     const [allPlayers, setAllPlayers] = useState({});
     const [gameState, setGameState] = useState(null);
     const [seasonConfig, setSeasonConfig] = useState(null);
+    // [선수 명단/소모임 동기화] 명단과 동기화 상태
+    const [roster, setRoster] = useState({});
+    const [somoimSync, setSomoimSync] = useState(null);
+    const [isRosterOpen, setIsRosterOpen] = useState(false);
        const [currentUser, setCurrentUser] = useState(null);
 
     // --- [알림 권한 및 유도 모달 상태] ---
@@ -1338,6 +1608,8 @@ export default function App() {
 
             setGameState(firebaseService.getGameState());
             setSeasonConfig(firebaseService.getSeasonConfig());
+            setRoster(firebaseService.getRoster());
+            setSomoimSync(firebaseService.getSomoimSync());
             setIsLoading(false);
 
             const unsubscribe = firebaseService.subscribe(() => {
@@ -1345,6 +1617,8 @@ export default function App() {
                 setAllPlayers(updatedPlayers);
                 setGameState(firebaseService.getGameState());
                 setSeasonConfig(firebaseService.getSeasonConfig());
+                setRoster(firebaseService.getRoster());
+                setSomoimSync(firebaseService.getSomoimSync());
 
                 setCurrentUser(prevUser => {
                     if (!prevUser) return null;
@@ -1372,6 +1646,15 @@ export default function App() {
         if (isLoading) return;
         runDailyResetIfDue();                                   // 진입 즉시 1회 확인
         const intervalId = setInterval(runDailyResetIfDue, 60 * 1000); // 이후 1분마다 확인
+        return () => clearInterval(intervalId);
+    }, [isLoading]);
+
+    // [소모임 동기화] 정모 당일 18시(KST)가 지나면 참석 인원에 맞춰 선수카드를 자동 생성.
+    // 새벽 2시 초기화와 동일하게 1분마다 확인하며, 트랜잭션으로 한 기기만 실행한다.
+    useEffect(() => {
+        if (isLoading) return;
+        runAutoSomoimSyncIfDue();
+        const intervalId = setInterval(runAutoSomoimSyncIfDue, 60 * 1000);
         return () => clearInterval(intervalId);
     }, [isLoading]);
 
@@ -1556,8 +1839,23 @@ useEffect(() => {
     }, [waitingPlayers]); // [수정] waitingPlayers가 휴식 선수를 포함하므로 올바르게 동작
 
     const handleEnter = useCallback(async (formData) => {
-        const { name, level, gender, isGuest } = formData;
+        const name = (formData.name || '').trim();
+        let { level, gender } = formData;
+        const isGuest = !!formData.isGuest;
         if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' }}); return; }
+
+        // [선수 명단] 일반(회원) 선수는 급수를 선택하지 않는다 — 명단에서 자동으로 가져온다.
+        // 명단에 없으면 입장 불가 (EntryPage에서 1차로 걸러지지만, 이중 안전장치)
+        if (!isGuest) {
+            const rosterEntry = Object.values(firebaseService.getRoster() || {}).find(r => r.name === name);
+            if (!rosterEntry || !rosterEntry.level || !rosterEntry.gender) {
+                setModal({ type: 'alert', data: { title: '입장 불가', body: '등록된 선수 정보가 없습니다. 관리자에게 문의해주세요.' }});
+                return;
+            }
+            level = rosterEntry.level;
+            gender = rosterEntry.gender;
+        }
+        if (!level || !gender) { setModal({ type: 'alert', data: { title: '오류', body: '급수와 성별을 선택해주세요.' }}); return; }
         const id = generateId(name);
         try {
             const playerDocRef = doc(playersRef, id);
@@ -2401,6 +2699,36 @@ useEffect(() => {
         }
     }, []);
 
+    // [소모임 동기화] 관리자 설정의 '소모임 동기화' 버튼 — 당일 정모 참석 인원과 동일하게
+    // 선수카드를 생성한다. (이미 입장한 선수는 건드리지 않으므로 여러 번 눌러도 안전)
+    const handleSomoimSync = useCallback(() => {
+        setModal({ type: 'confirm', data: {
+            title: '소모임 정모 동기화',
+            body: '오늘 소모임 정모의 참석 인원을 확인하여 선수카드를 자동 생성합니다. 진행할까요?',
+            onConfirm: async () => {
+                setModal({ type: 'alert', data: { title: '동기화 중...', body: '소모임에서 참석 명단을 가져오고 있습니다. 잠시만 기다려주세요.' }});
+                try {
+                    const result = await syncSomoimAttendees();
+                    // 수동 동기화 성공 시 자동 동기화 오류 상태도 함께 해소한다
+                    const { dateKey } = getKstParts();
+                    await setDoc(somoimSyncRef, {
+                        lastResult: { ...result, at: new Date().toISOString(), trigger: 'manual' },
+                        lastError: null,
+                        ...(result.noEvent ? {} : { auto: { key: dateKey, status: 'done', finishedAt: new Date().toISOString() } }),
+                    }, { merge: true }).catch(err => console.error('[소모임 동기화] 결과 기록 실패:', err));
+                    setModal({ type: 'somoimSyncResult', data: result });
+                } catch (e) {
+                    const code = e.code || 'UNKNOWN';
+                    console.error('[소모임 동기화] 수동 동기화 실패:', code, e);
+                    setModal({ type: 'alert', data: {
+                        title: '동기화 실패',
+                        body: `소모임 동기화에 실패하였습니다 (오류코드: ${code}) 관리자에게 문의해주세요.\n\n${e.message || ''}`,
+                    }});
+                }
+            }
+        }});
+    }, []);
+
     const handleGenerateRobots = useCallback(async (maleCount, femaleCount) => {
         setModal({ type: 'alert', data: { title: '생성 중', body: '테스트 로봇을 생성하고 있습니다...' } });
         try {
@@ -2616,8 +2944,13 @@ useEffect(() => {
     }
 
    if (!currentUser) {
-        return <EntryPage onEnter={handleEnter} />;
+        return <EntryPage onEnter={handleEnter} roster={roster} />;
     }
+
+    // [소모임 동기화] 오늘 자동 동기화가 실패했는지 (실패 배너 표시 조건)
+    const todayKstKey = getKstParts().dateKey;
+    const showSyncErrorBanner = somoimSync?.auto?.status === 'error'
+        && somoimSync?.lastError?.dateKey === todayKstKey;
 
     return (
         <div className="cox-dark text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
@@ -2685,6 +3018,25 @@ useEffect(() => {
                 </div>
             )}
 
+            {/* --- [소모임 동기화] 자동 동기화 실패 배너 --- */}
+            {showSyncErrorBanner && (
+                <div className="bg-orange-600 text-white p-3 flex items-center justify-between shadow-lg sticky top-0 z-[54]">
+                    <div className="flex-1 pr-2">
+                        <p className="font-bold text-[11px] leading-tight">
+                            ⚠️ 소모임 동기화에 실패하였습니다 (오류코드: {somoimSync?.lastError?.code || 'UNKNOWN'}) 관리자에게 문의해주세요.
+                        </p>
+                    </div>
+                    {isAdmin && (
+                        <button
+                            onClick={handleSomoimSync}
+                            className="bg-white text-orange-600 px-2 py-1.5 rounded text-xs font-bold shadow-sm active:scale-95 flex-shrink-0"
+                        >
+                            다시 시도
+                        </button>
+                    )}
+                </div>
+            )}
+
             {/* --- 알림 권한 유도 모달 --- */}
             {showNotiIntroModal && (
                 <NotiIntroModal 
@@ -2701,6 +3053,8 @@ useEffect(() => {
             {modal?.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
+            {modal?.type === 'somoimSyncResult' && <SomoimSyncResultModal result={modal.data} onClose={() => setModal({ type: null, data: null })} />}
+            {isRosterOpen && <RosterManageModal roster={roster} onClose={() => setIsRosterOpen(false)} setModal={setModal} />}
 
           {isSettingsOpen && <SettingsModal
             isAdmin={isAdmin}
@@ -2715,6 +3069,9 @@ useEffect(() => {
             onClearPlayerHistory={handleClearPlayerHistory}
             onGenerateRobots={handleGenerateRobots}
             onAdminAddPlayer={handleAdminAddPlayer}
+            onSomoimSync={handleSomoimSync}
+            onOpenRoster={() => setIsRosterOpen(true)}
+            somoimSync={somoimSync}
         />}
 
             <header className="cox-appbar">
@@ -2867,23 +3224,53 @@ useEffect(() => {
 // ===================================================================================
 // 신규 및 복구된 페이지/모달 컴포넌트들
 // ===================================================================================
-function EntryPage({ onEnter }) {
+// [선수 명단] 입장 화면 개편 — 회원은 이름만 입력하면 명단에서 급수/성별을 자동으로
+// 가져온다. 급수/성별 선택은 게스트(명단에 없는 손님)에게만 표시된다.
+function EntryPage({ onEnter, roster }) {
     const [formData, setFormData] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
+    const [entryError, setEntryError] = useState(null);
 
     useEffect(() => {
         const savedUserId = localStorage.getItem('badminton-currentUser-id');
         if (savedUserId) {
              getDoc(doc(playersRef, savedUserId)).then(docSnap => {
-                if (docSnap.exists()) { setFormData(prev => ({...prev, ...docSnap.data()})); }
-            });
+                if (docSnap.exists()) {
+                    const d = docSnap.data();
+                    setFormData(prev => ({
+                        ...prev,
+                        name: d.name || prev.name,
+                        isGuest: !!d.isGuest,
+                        level: d.level || prev.level,
+                        gender: d.gender || prev.gender,
+                    }));
+                }
+            }).catch(e => console.error("이전 입장 정보 불러오기 실패:", e));
         }
     }, []);
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
+        setEntryError(null);
         setFormData(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     };
-    const handleSubmit = (e) => { e.preventDefault(); onEnter(formData); };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        const name = (formData.name || '').trim();
+        if (!name) { setEntryError('이름을 입력해주세요.'); return; }
+
+        if (formData.isGuest) {
+            onEnter({ name, level: formData.level, gender: formData.gender, isGuest: true });
+            return;
+        }
+        // 회원: 명단에서 급수/성별 자동 조회
+        const rosterEntry = Object.values(roster || {}).find(r => r.name === name);
+        if (!rosterEntry || !rosterEntry.level || !rosterEntry.gender) {
+            setEntryError('등록된 선수 정보가 없습니다.\n관리자에게 문의해주세요.\n\n(모임 회원이 아닌 손님은 아래 "게스트"를 체크하고 입장해주세요.)');
+            return;
+        }
+        onEnter({ name, level: rosterEntry.level, gender: rosterEntry.gender, isGuest: false });
+    };
 
     const levelButtons = ['A조', 'B조', 'C조', 'D조'].map(level => (
         <button
@@ -2905,19 +3292,39 @@ function EntryPage({ onEnter }) {
                 <p className="text-center text-gray-500 text-xs mb-6 tracking-wide">실시간 배드민턴 경기 관리</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />
-                    <div className="grid grid-cols-4 gap-2">
-                        {levelButtons}
-                    </div>
-                    <div className="flex justify-around items-center text-lg">
-                        <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자</label>
-                        <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자</label>
-                    </div>
+
+                    {!formData.isGuest && (
+                        <p className="text-center text-gray-400 text-xs bg-gray-700/50 rounded-lg py-2 px-3">
+                            회원은 이름만 입력하면 등록된 급수로 입장됩니다.
+                        </p>
+                    )}
+
+                    {/* 게스트만 급수/성별을 직접 선택한다 (회원은 명단에서 자동) */}
+                    {formData.isGuest && (
+                        <>
+                            <div className="grid grid-cols-4 gap-2">
+                                {levelButtons}
+                            </div>
+                            <div className="flex justify-around items-center text-lg">
+                                <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="남" checked={formData.gender === '남'} onChange={handleChange} className="mr-2 h-4 w-4 text-yellow-500 bg-gray-700 border-gray-600 focus:ring-yellow-500" /> 남자</label>
+                                <label className="flex items-center cursor-pointer"><input type="radio" name="gender" value="여" checked={formData.gender === '여'} onChange={handleChange} className="mr-2 h-4 w-4 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자</label>
+                            </div>
+                        </>
+                    )}
+
                     <div className="text-center">
                         <label className="flex items-center justify-center text-lg cursor-pointer">
                             <input type="checkbox" name="isGuest" checked={formData.isGuest} onChange={handleChange} className="mr-2 h-4 w-4 rounded text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" />
                             게스트
                         </label>
                     </div>
+
+                    {entryError && (
+                        <div className="bg-red-900/40 border border-red-500/50 text-red-200 text-sm rounded-lg p-3 text-center whitespace-pre-line">
+                            {entryError}
+                        </div>
+                    )}
+
                     <button type="submit" className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg transition duration-300">입장하기</button>
                 </form>
             </div>
@@ -3218,7 +3625,7 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
 }
 
 // [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
@@ -3491,9 +3898,57 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 )}
                     </div>
 
+                 {/* --- [소모임 연동] 선수 정보 관리 + 정모 동기화 --- */}
+                    <div className="bg-gray-700 p-3 rounded-lg space-y-3">
+                        <label className="font-semibold block text-center border-b border-gray-600 pb-2">🏸 소모임 연동</label>
+
+                        <button
+                            onClick={onOpenRoster}
+                            className="w-full arcade-button bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg"
+                        >
+                            👥 선수 정보 관리 (명단)
+                        </button>
+
+                        <button
+                            onClick={onSomoimSync}
+                            className="w-full arcade-button bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 rounded-lg"
+                        >
+                            🔄 소모임 정모 동기화 (참석자 → 선수카드)
+                        </button>
+
+                        {/* 마지막 동기화 결과 요약 */}
+                        {somoimSync?.lastResult && (
+                            <div className="bg-gray-800 rounded-lg p-2.5 text-xs text-gray-300 space-y-1">
+                                <p className="text-gray-400">
+                                    마지막 동기화: {new Date(somoimSync.lastResult.at).toLocaleString('ko-KR')}
+                                    {somoimSync.lastResult.trigger === 'auto' ? ' (자동)' : ' (수동)'}
+                                </p>
+                                {somoimSync.lastResult.noEvent ? (
+                                    <p>당일 정모 없음</p>
+                                ) : (
+                                    <>
+                                        <p>생성 {somoimSync.lastResult.created?.length || 0}명 · 재입장 {somoimSync.lastResult.activated?.length || 0}명 · 이미 입장 {somoimSync.lastResult.already?.length || 0}명</p>
+                                        {somoimSync.lastResult.unmatched?.length > 0 && (
+                                            <p className="text-yellow-400">⚠ 명단 미등록: {somoimSync.lastResult.unmatched.join(', ')}</p>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+                        )}
+                        {somoimSync?.lastError && (
+                            <div className="bg-red-900/40 border border-red-500/40 rounded-lg p-2.5 text-xs text-red-200">
+                                ⚠ 마지막 자동 동기화 실패 (오류코드: {somoimSync.lastError.code}) — {new Date(somoimSync.lastError.at).toLocaleString('ko-KR')}
+                            </div>
+                        )}
+                        <p className="text-[10px] text-gray-500 text-center leading-relaxed">
+                            정모가 있는 날 <b>오후 6시</b>에 참석 인원의 선수카드가 자동 생성됩니다.<br/>
+                            버튼을 누르면 지금 즉시 동기화합니다. (여러 번 눌러도 안전)
+                        </p>
+                    </div>
+
                  {/* --- 선수 수동 추가 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg space-y-2">
-                        <div 
+                        <div
                             className="flex justify-between items-center cursor-pointer"
                             onClick={() => setShowAddPlayerForm(!showAddPlayerForm)}
                         >
@@ -3667,7 +4122,7 @@ function AutoMatchGuideModal({ onClose }) {
     );
 }
 
-function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
+function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80] p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
 
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -3704,7 +4159,7 @@ function CourtSelectionModal({ courts, onSelect, onCancel }) {
     );
 }
 
-function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
+function AlertModal({ title, body, onClose }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80] p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-yellow-400 mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><button onClick={onClose} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg transition-colors">확인</button></div></div> ); }
 
 function NotiIntroModal({ onAllow, onClose }) {
     return (
@@ -3725,6 +4180,286 @@ function NotiIntroModal({ onAllow, onClose }) {
                         나중에 설정하기
                     </button>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ===================================================================================
+// [선수 명단] 선수 정보 관리 모달 — 관리자 설정 > 선수 정보 관리
+// 명단(이름/급수/성별) 조회·검색·추가·수정·삭제. 소모임 연동(mid) 상태도 표시.
+// ===================================================================================
+function RosterManageModal({ roster, onClose, setModal }) {
+    const [search, setSearch] = useState('');
+    const [editingId, setEditingId] = useState(null);
+    const [editForm, setEditForm] = useState({ level: 'A조', gender: '남' });
+    const [showAddForm, setShowAddForm] = useState(false);
+    const [addForm, setAddForm] = useState({ name: '', level: 'A조', gender: '남' });
+    const [isBusy, setIsBusy] = useState(false);
+
+    const rosterList = useMemo(() =>
+        // 문서에 id 필드가 없어도 문서 키를 id로 보정해 수정/삭제가 항상 동작하게 한다
+        Object.entries(roster || {}).map(([docId, r]) => ({ ...r, id: r.id || docId }))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko')),
+    [roster]);
+
+    const filtered = useMemo(() =>
+        search.trim() ? rosterList.filter(r => (r.name || '').includes(search.trim())) : rosterList,
+    [rosterList, search]);
+
+    const showError = (body) => setModal({ type: 'alert', data: { title: '오류', body } });
+
+    // 기본 명단(사진 명단) 등록 — 이미 있는 이름은 건드리지 않는 비파괴 병합
+    const handleSeed = async () => {
+        setIsBusy(true);
+        try {
+            const existingNames = new Set(rosterList.map(r => r.name));
+            const toAdd = ROSTER_SEED.filter(s => !existingNames.has(s.name));
+            if (toAdd.length === 0) {
+                setModal({ type: 'alert', data: { title: '안내', body: '기본 명단의 선수들이 이미 모두 등록되어 있습니다.' } });
+                return;
+            }
+            const batch = writeBatch(db);
+            toAdd.forEach(s => {
+                const id = generateId(s.name);
+                batch.set(doc(rosterRef, id), {
+                    id, name: s.name, level: s.level, gender: s.gender,
+                    somoimMid: null, createdAt: new Date().toISOString(),
+                }, { merge: true });
+            });
+            await batch.commit();
+            setModal({ type: 'alert', data: {
+                title: '등록 완료',
+                body: `기본 명단 ${toAdd.length}명이 등록되었습니다.\n\n⚠ 성별은 이름으로 추정한 값입니다. 목록을 확인하고 잘못된 선수는 수정해주세요.`,
+            }});
+        } catch (e) {
+            console.error('명단 기본 등록 실패:', e);
+            showError('기본 명단 등록에 실패했습니다.');
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleAdd = async () => {
+        const name = (addForm.name || '').trim();
+        if (!name) { showError('이름을 입력해주세요.'); return; }
+        if (rosterList.some(r => r.name === name)) { showError('이미 명단에 있는 이름입니다.'); return; }
+        setIsBusy(true);
+        try {
+            const id = generateId(name);
+            await setDoc(doc(rosterRef, id), {
+                id, name, level: addForm.level, gender: addForm.gender,
+                somoimMid: null, createdAt: new Date().toISOString(),
+            }, { merge: true });
+            setAddForm({ name: '', level: 'A조', gender: '남' });
+            setShowAddForm(false);
+        } catch (e) {
+            console.error('명단 추가 실패:', e);
+            showError('선수 추가에 실패했습니다.');
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleEditSave = async (entry) => {
+        setIsBusy(true);
+        try {
+            await setDoc(doc(rosterRef, entry.id), {
+                level: editForm.level, gender: editForm.gender,
+                updatedAt: new Date().toISOString(),
+            }, { merge: true });
+            setEditingId(null);
+        } catch (e) {
+            console.error('명단 수정 실패:', e);
+            showError('선수 정보 수정에 실패했습니다.');
+        } finally {
+            setIsBusy(false);
+        }
+    };
+
+    const handleDelete = (entry) => {
+        setModal({ type: 'confirm', data: {
+            title: '명단에서 삭제',
+            body: `${entry.name} 선수를 명단에서 삭제할까요?\n(삭제하면 일반 입장 및 소모임 동기화가 되지 않습니다)`,
+            onConfirm: async () => {
+                try {
+                    await deleteDoc(doc(rosterRef, entry.id));
+                } catch (e) {
+                    console.error('명단 삭제 실패:', e);
+                    showError('삭제에 실패했습니다.');
+                }
+                setModal({ type: null, data: null });
+            }
+        }});
+    };
+
+    const LevelPicker = ({ value, onChange }) => (
+        <div className="grid grid-cols-4 gap-1">
+            {['A조', 'B조', 'C조', 'D조'].map(level => (
+                <button key={level} type="button" onClick={() => onChange(level)}
+                    className={`py-1 rounded text-xs font-bold arcade-button ${value === level ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-white'}`}>
+                    {level}
+                </button>
+            ))}
+        </div>
+    );
+    const GenderPicker = ({ value, onChange }) => (
+        <div className="flex gap-2">
+            {['남', '여'].map(g => (
+                <button key={g} type="button" onClick={() => onChange(g)}
+                    className={`flex-1 py-1 rounded text-xs font-bold arcade-button ${value === g ? (g === '남' ? 'bg-blue-500 text-white' : 'bg-pink-500 text-white') : 'bg-gray-600 text-white'}`}>
+                    {g === '남' ? '👨 남자' : '👩 여자'}
+                </button>
+            ))}
+        </div>
+    );
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[70] p-4">
+            <div className="bg-gray-800 rounded-lg p-5 w-full max-w-md text-white shadow-lg flex flex-col" style={{ maxHeight: '90vh' }}>
+                <div className="flex justify-between items-center mb-3 flex-shrink-0">
+                    <h3 className="text-lg font-bold text-yellow-400 arcade-font">👥 선수 정보 관리</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white leading-none">&times;</button>
+                </div>
+
+                <div className="flex gap-2 mb-3 flex-shrink-0">
+                    <input
+                        type="text" placeholder="이름 검색" value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="flex-1 bg-gray-700 text-white p-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    />
+                    <button onClick={() => setShowAddForm(v => !v)}
+                        className="arcade-button bg-green-600 hover:bg-green-700 text-white font-bold px-3 rounded-lg text-sm flex-shrink-0">
+                        {showAddForm ? '닫기' : '+ 추가'}
+                    </button>
+                </div>
+
+                {showAddForm && (
+                    <div className="bg-gray-700 rounded-lg p-3 mb-3 space-y-2 flex-shrink-0">
+                        <input type="text" placeholder="이름" value={addForm.name}
+                            onChange={(e) => setAddForm(prev => ({ ...prev, name: e.target.value }))}
+                            className="w-full bg-gray-600 text-white p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400" />
+                        <LevelPicker value={addForm.level} onChange={(level) => setAddForm(prev => ({ ...prev, level }))} />
+                        <GenderPicker value={addForm.gender} onChange={(gender) => setAddForm(prev => ({ ...prev, gender }))} />
+                        <button onClick={handleAdd} disabled={isBusy}
+                            className="w-full arcade-button bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 rounded text-sm disabled:opacity-50">
+                            명단에 추가
+                        </button>
+                    </div>
+                )}
+
+                <p className="text-[10px] text-gray-500 mb-2 flex-shrink-0 text-center">
+                    총 {rosterList.length}명 · 🔗 = 소모임 계정 연동됨 · 이름을 누르면 수정할 수 있습니다
+                </p>
+
+                <div className="flex-grow overflow-y-auto space-y-1 pr-1">
+                    {rosterList.length === 0 && (
+                        <div className="text-center py-6 space-y-3">
+                            <p className="text-gray-400 text-sm">등록된 선수 명단이 없습니다.</p>
+                            <button onClick={handleSeed} disabled={isBusy}
+                                className="arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 px-4 rounded-lg text-sm disabled:opacity-50">
+                                📋 기본 명단 {ROSTER_SEED.length}명 등록하기
+                            </button>
+                            <p className="text-[10px] text-gray-500">모임 명단 사진 기준 (성별은 추정값이므로 등록 후 확인 필요)</p>
+                        </div>
+                    )}
+                    {filtered.map(entry => (
+                        <div key={entry.id} className="bg-gray-700/60 rounded-lg">
+                            <div
+                                className="flex items-center justify-between px-3 py-2 cursor-pointer"
+                                onClick={() => {
+                                    if (editingId === entry.id) { setEditingId(null); return; }
+                                    setEditingId(entry.id);
+                                    setEditForm({ level: entry.level || 'A조', gender: entry.gender || '남' });
+                                }}
+                            >
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="font-bold text-sm truncate">{entry.name}</span>
+                                    {entry.somoimMid && <span title="소모임 계정 연동됨" className="text-xs">🔗</span>}
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <span className="text-xs font-bold" style={{ color: getLevelColor(entry.level, false) }}>{entry.level}</span>
+                                    <span className={`text-xs font-bold ${entry.gender === '남' ? 'text-blue-400' : 'text-pink-400'}`}>{entry.gender}</span>
+                                    <span className="text-gray-500 text-xs">{editingId === entry.id ? '▲' : '▼'}</span>
+                                </div>
+                            </div>
+                            {editingId === entry.id && (
+                                <div className="px-3 pb-3 space-y-2 border-t border-gray-600 pt-2">
+                                    <LevelPicker value={editForm.level} onChange={(level) => setEditForm(prev => ({ ...prev, level }))} />
+                                    <GenderPicker value={editForm.gender} onChange={(gender) => setEditForm(prev => ({ ...prev, gender }))} />
+                                    <div className="flex gap-2">
+                                        <button onClick={() => handleDelete(entry)}
+                                            className="arcade-button bg-red-900/60 hover:bg-red-800 text-red-300 font-bold py-1.5 px-3 rounded text-xs">
+                                            삭제
+                                        </button>
+                                        <button onClick={() => handleEditSave(entry)} disabled={isBusy}
+                                            className="flex-1 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-1.5 rounded text-xs disabled:opacity-50">
+                                            저장
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                    {rosterList.length > 0 && filtered.length === 0 && (
+                        <p className="text-center text-gray-500 text-sm py-4">검색 결과가 없습니다.</p>
+                    )}
+                </div>
+
+                <button onClick={onClose} className="mt-4 w-full arcade-button bg-gray-600 hover:bg-gray-700 font-bold py-2 rounded-lg flex-shrink-0">닫기</button>
+            </div>
+        </div>
+    );
+}
+
+// ===================================================================================
+// [소모임 동기화] 수동 동기화 결과 모달
+// ===================================================================================
+function SomoimSyncResultModal({ result, onClose }) {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[80] p-4">
+            <div className="bg-gray-800 rounded-lg p-6 w-full max-w-sm text-white shadow-lg flex flex-col" style={{ maxHeight: '85vh' }}>
+                <h3 className="text-xl font-bold text-teal-400 mb-4 arcade-font text-center flex-shrink-0">🔄 동기화 완료</h3>
+                <div className="flex-grow overflow-y-auto space-y-3 text-sm">
+                    {result.noEvent ? (
+                        <p className="text-center text-gray-300 py-4">
+                            오늘 날짜의 소모임 정모가 없습니다.<br/>
+                            <span className="text-xs text-gray-500">(정모가 등록된 날에만 선수카드가 생성됩니다)</span>
+                        </p>
+                    ) : (
+                        <>
+                            {result.events?.length > 0 && (
+                                <div className="bg-gray-700/60 rounded-lg p-2.5">
+                                    <p className="text-xs text-gray-400 mb-1">오늘 정모</p>
+                                    {result.events.map((ev, i) => (
+                                        <p key={i} className="font-bold text-yellow-300 text-xs">{ev.name}</p>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="bg-gray-700/60 rounded-lg p-2.5 space-y-1.5">
+                                <p>✅ 새로 입장: <b className="text-green-400">{result.created.length}명</b>
+                                    {result.created.length > 0 && <span className="text-xs text-gray-400 block">{result.created.join(', ')}</span>}
+                                </p>
+                                <p>♻️ 재입장 처리: <b className="text-teal-300">{result.activated.length}명</b>
+                                    {result.activated.length > 0 && <span className="text-xs text-gray-400 block">{result.activated.join(', ')}</span>}
+                                </p>
+                                <p>👍 이미 입장 중: <b className="text-gray-300">{result.already.length}명</b>
+                                    {result.already.length > 0 && <span className="text-xs text-gray-400 block">{result.already.join(', ')}</span>}
+                                </p>
+                            </div>
+                            {result.unmatched.length > 0 && (
+                                <div className="bg-yellow-900/30 border border-yellow-500/40 rounded-lg p-2.5">
+                                    <p className="text-yellow-300 font-bold text-xs mb-1">⚠ 명단에 없어 카드가 생성되지 않은 참석자 ({result.unmatched.length}명)</p>
+                                    <p className="text-xs text-yellow-200">{result.unmatched.join(', ')}</p>
+                                    <p className="text-[10px] text-gray-400 mt-1.5">
+                                        관리자 설정 → 선수 정보 관리에서 이 선수들을 추가한 뒤 다시 동기화해주세요.
+                                    </p>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+                <button onClick={onClose} className="mt-4 w-full arcade-button bg-teal-500 hover:bg-teal-600 text-black font-bold py-2 rounded-lg flex-shrink-0">확인</button>
             </div>
         </div>
     );
