@@ -56,6 +56,33 @@ const rosterRef = collection(db, "roster");
 // [소모임 동기화] 자동/수동 동기화 상태 기록 (실패 시 배너 표시용)
 const somoimSyncRef = doc(db, "config", "somoimSync");
 
+// ===================================================================================
+// [관리자 권한] 관리자 이름 목록
+// -----------------------------------------------------------------------------------
+// 예전에는 코드에 이름을 박아두어 관리자를 바꾸려면 배포를 다시 해야 했다.
+// 이제는 config/season 문서의 adminNames 배열이 기준이며,
+// 설정 ▸ 👑 관리자 권한 에서 관리자가 직접 부여/해임할 수 있다.
+// (adminNames가 아직 없는 기존 모임은 아래 기본 관리자가 그대로 적용된다)
+// ===================================================================================
+const DEFAULT_ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "오미리"];
+
+/**
+ * [관리자 권한] 현재 관리자 이름 목록을 구한다.
+ * 실수로 빈 배열이 저장돼 아무도 관리자가 아니게 되는 사고를 막기 위해 빈 배열은 무시한다.
+ * @param {object} seasonConfig - config/season 문서 데이터
+ * @returns {Array<string>} 관리자 이름 배열
+ */
+function getAdminNames(seasonConfig) {
+    const list = seasonConfig?.adminNames;
+    if (Array.isArray(list) && list.length > 0) return list;
+    return DEFAULT_ADMIN_NAMES;
+}
+
+// [관리자 권한] seasonConfig를 props로 받지 않는 곳(PlayerCard의 👑 아이콘 등)에서 쓰는 캐시.
+// config 스냅샷이 올 때마다 갱신된다.
+let adminNamesCache = DEFAULT_ADMIN_NAMES;
+const isAdminName = (name) => adminNamesCache.includes(name);
+
 // --- 2. Service 로직 ---
 let allPlayersData = {};
 let gameStateData = null;
@@ -148,6 +175,9 @@ if (seasonConfigData && !seasonConfigData.autoMatchConfig) {
         femaleSensitivity: 'normal'
     };
 }
+
+    // [관리자 권한] 관리자 목록 캐시 갱신 (PlayerCard의 👑 표시 등에서 사용)
+    adminNamesCache = getAdminNames(seasonConfigData);
 
     if(resolveSeasonConfig) { resolveSeasonConfig(); resolveSeasonConfig = null; }
     notifySubscribers();
@@ -805,7 +835,6 @@ function getSensitivity(key) {
 // ===================================================================================
 // 상수 및 Helper 함수
 // ===================================================================================
-const ADMIN_NAMES = ["나채빈", "정형진", "윤지혜", "이상민", "이정문", "오미리"];
 const PLAYERS_PER_MATCH = 4;
 const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
 
@@ -914,7 +943,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         boxShadow: `inset 4px 0 0 0 ${player.gender === '남' ? '#3B82F6' : '#EC4899'}`
     };
 
-    const adminIcon = (player.role === 'admin' || ADMIN_NAMES.includes(player.name)) ? '👑' : '';
+    const adminIcon = (player.role === 'admin' || isAdminName(player.name)) ? '👑' : '';
     const isWaiting = !context.location;
     const playerNameClass = `player-name text-white text-xs font-bold whitespace-nowrap leading-tight tracking-tighter`;
     const playerInfoClass = `player-info text-gray-400 text-[10px] leading-tight mt-px whitespace-nowrap`;
@@ -1443,7 +1472,9 @@ export default function App() {
         };
     }, [isRefreshing, isLoading, currentUser, isInAppBrowser]);
 
-    const isAdmin = currentUser && ADMIN_NAMES.includes(currentUser.name);
+    // [관리자 권한] 설정에서 관리하는 관리자 목록(config/season.adminNames) 기준으로 판정
+    const adminNames = useMemo(() => getAdminNames(seasonConfig), [seasonConfig]);
+    const isAdmin = !!currentUser && adminNames.includes(currentUser.name);
     const autoMatches = gameState?.autoMatches || {};
     // [자동매칭] '매칭 만들기' 중복 실행 방지 (버튼 연타 방지)
     const isGeneratingRef = useRef(false);
@@ -2704,6 +2735,8 @@ useEffect(() => {
             courtCount={gameState.numInProgressCourts}
             seasonConfig={seasonConfig}
             activePlayers={activePlayers} /* [수정] '대기'가 아닌 '전체 활성' 선수 전달 */
+            currentUser={currentUser}     /* [관리자 권한] 자기 자신 해임 확인용 */
+            roster={roster}               /* [관리자 권한] 이름 자동완성/명단 확인용 */
             onSave={handleSettingsUpdate} // [수정] App 컴포넌트에서 정의된 함수 전달
             onCancel={() => setIsSettingsOpen(false)}
             setModal={setModal}
@@ -3267,7 +3300,7 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
 }
 
 // [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, currentUser, roster, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
@@ -3299,10 +3332,69 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         };
     });
 
+    // [관리자 권한] 현재 관리자 목록 (config/season.adminNames 기준, 없으면 기본 관리자)
+    const adminNames = useMemo(() => getAdminNames(seasonConfig), [seasonConfig]);
+    const [adminInput, setAdminInput] = useState('');
+    const [isAdminBusy, setIsAdminBusy] = useState(false);
+    // 명단(roster)에 있는 이름인지 확인용 — 오타로 엉뚱한 이름이 등록되는 것을 눈으로 잡기 위함
+    const rosterNames = useMemo(
+        () => Object.values(roster || {}).map(r => r.name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'ko')),
+        [roster]
+    );
+
     if (!isAdmin) return null;
     
     const handleSave = () => {
         onSave({ scheduled, courts, announcement, autoMatchConfig });
+    };
+
+    // ── [관리자 권한] 부여/해임 — 아래 저장 버튼과 무관하게 즉시 반영된다 ──
+    const saveAdminNames = async (nextList) => {
+        setIsAdminBusy(true);
+        try {
+            await setDoc(configRef, { adminNames: nextList }, { merge: true });
+        } catch (e) {
+            console.error('관리자 목록 저장 실패:', e);
+            setModal({ type: 'alert', data: { title: '오류', body: '관리자 목록 저장에 실패했습니다.' } });
+        } finally {
+            setIsAdminBusy(false);
+        }
+    };
+
+    const handleAddAdmin = async () => {
+        const name = (adminInput || '').trim();
+        if (!name) {
+            setModal({ type: 'alert', data: { title: '안내', body: '관리자 권한을 줄 사람의 이름을 입력해주세요.' } });
+            return;
+        }
+        if (adminNames.includes(name)) {
+            setModal({ type: 'alert', data: { title: '안내', body: `${name} 님은 이미 관리자입니다.` } });
+            return;
+        }
+        await saveAdminNames([...adminNames, name]);
+        setAdminInput('');
+    };
+
+    const handleRemoveAdmin = (name) => {
+        // 마지막 한 명까지 해임하면 아무도 설정을 열 수 없게 되므로 막는다.
+        if (adminNames.length <= 1) {
+            setModal({ type: 'alert', data: {
+                title: '해임할 수 없습니다',
+                body: '관리자는 최소 1명이 있어야 합니다.\n먼저 다른 사람에게 관리자 권한을 준 뒤에 해임해주세요.'
+            }});
+            return;
+        }
+        const isSelf = currentUser?.name === name;
+        setModal({ type: 'confirm', data: {
+            title: '관리자 해임',
+            body: isSelf
+                ? `${name} 님(나 자신)의 관리자 권한을 해임할까요?\n해임하면 설정 창을 포함한 관리자 기능을 더 이상 쓸 수 없습니다.`
+                : `${name} 님의 관리자 권한을 해임할까요?`,
+            onConfirm: async () => {
+                setModal({ type: null, data: null });
+                await saveAdminNames(adminNames.filter(n => n !== name));
+            }
+        }});
     };
 
 // [자동매칭] 현재 활성 인원수 (대기+진행+예정 모두 포함, 휴식 제외, 게스트 포함)
@@ -3421,6 +3513,71 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                                 </p>
                             </div>
                         )}
+                    </div>
+
+                    {/* --- [관리자 권한] 관리자 부여 / 해임 --- */}
+                    <div className="bg-gray-700 p-3 rounded-lg">
+                        <label className="font-semibold text-lg text-yellow-400 arcade-font block mb-1">
+                            👑 관리자 권한 부여
+                        </label>
+                        <p className="text-xs text-gray-400 mb-3">
+                            이름을 입력하고 <b className="text-yellow-300">부여</b>를 누르면 그 사람이 관리자가 되고,
+                            목록의 <b className="text-red-300">✕</b>를 누르면 권한이 해임됩니다. (저장 버튼과 상관없이 바로 적용)
+                        </p>
+
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                list="admin-name-suggestions"
+                                value={adminInput}
+                                onChange={(e) => setAdminInput(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddAdmin(); } }}
+                                placeholder="이름 입력 (예: 홍길동)"
+                                disabled={isAdminBusy}
+                                className="flex-1 min-w-0 bg-gray-800 text-white p-2 rounded-lg border border-gray-600 focus:border-yellow-500 focus:outline-none"
+                            />
+                            <datalist id="admin-name-suggestions">
+                                {rosterNames.map(n => <option key={n} value={n} />)}
+                            </datalist>
+                            <button
+                                type="button"
+                                onClick={handleAddAdmin}
+                                disabled={isAdminBusy}
+                                className="flex-shrink-0 arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-4 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed"
+                            >
+                                부여
+                            </button>
+                        </div>
+
+                        <div className="mt-3 space-y-1.5">
+                            {adminNames.map(name => {
+                                const notInRoster = rosterNames.length > 0 && !rosterNames.includes(name);
+                                const isSelf = currentUser?.name === name;
+                                return (
+                                    <div key={name} className="flex items-center justify-between bg-gray-800 px-3 py-2 rounded-lg">
+                                        <span className="flex items-center gap-2 min-w-0">
+                                            <span className="font-semibold truncate">👑 {name}</span>
+                                            {isSelf && <span className="flex-shrink-0 text-[10px] font-bold text-green-300 bg-green-500/15 border border-green-500/40 rounded-full px-2 py-0.5">나</span>}
+                                            {notInRoster && <span className="flex-shrink-0 text-[10px] font-bold text-orange-300 bg-orange-500/15 border border-orange-500/40 rounded-full px-2 py-0.5">명단에 없음</span>}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveAdmin(name)}
+                                            disabled={isAdminBusy}
+                                            title={`${name} 관리자 해임`}
+                                            className="flex-shrink-0 ml-2 w-7 h-7 flex items-center justify-center rounded-full bg-red-900/50 hover:bg-red-700 text-red-200 font-bold disabled:opacity-50"
+                                        >
+                                            ✕
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <p className="text-xs text-gray-500 mt-2">
+                            · 이름은 <b>입장할 때 쓰는 이름</b>과 정확히 같아야 합니다(띄어쓰기 주의).<br/>
+                            · 관리자는 최소 1명이 필요해서 마지막 한 명은 해임할 수 없습니다.
+                        </p>
                     </div>
 
                     {/* --- 일반 설정 --- */}
