@@ -1192,6 +1192,21 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
 
     const matchList = Object.entries(autoMatches);
 
+    // [매칭 연출] 새로 만들어진 매칭에만 카드가 슬롯머신처럼 착착 꽂히는 애니메이션을 준다.
+    // 선수 구성(시그니처) 기준이라 START로 경기 번호가 당겨지거나 화면이 갱신돼도
+    // 이미 본 매칭은 다시 재생되지 않는다. (모든 접속자 화면에서 동일하게 재생)
+    const dealSeenRef = useRef(new Set());
+    const isFirstDealRef = useRef(true);
+    const matchSig = (match) => (match || []).filter(Boolean).join('|');
+    if (isFirstDealRef.current) {
+        // 접속 직후 첫 렌더에서는 기존 매칭들이 우르르 재생되지 않도록 본 것으로 처리
+        matchList.forEach(([, m]) => { const s = matchSig(m); if (s) dealSeenRef.current.add(s); });
+        isFirstDealRef.current = false;
+    }
+    useEffect(() => {
+        matchList.forEach(([, m]) => { const s = matchSig(m); if (s) dealSeenRef.current.add(s); });
+    });
+
     return (
         <section data-tut="auto">
             <div className="cox-secline mb-2.5 px-1">
@@ -1239,9 +1254,11 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
             <div id="auto-matches" className="flex flex-col gap-2">
                 {matchList.map(([matchIndex, match]) => {
                     const playerCount = match.filter(p => p).length;
+                    // [매칭 연출] 처음 등장하는 구성이면 카드 딜 애니메이션 클래스 부여
+                    const isNewDeal = !!matchSig(match) && !dealSeenRef.current.has(matchSig(match));
                     return (
                         // [UI 수정] 내부 요소 정렬 및 간격 유지
-                        <div key={`auto-match-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
+                        <div key={`auto-match-${matchIndex}`} className={`flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 ${isNewDeal ? 'auto-deal' : ''}`}>
                             <div
                                 className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
                                 onMouseDown={() => handlePressStart(matchIndex)}
