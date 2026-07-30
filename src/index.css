@@ -91,16 +91,18 @@ body {
   margin: 0;
   color: var(--text);
   font-family: 'Noto Sans KR', system-ui, -apple-system, sans-serif;
+  /* [성능] background-attachment:fixed는 모바일에서 스크롤할 때마다 전체 리페인트를
+     일으켜 버벅임의 주범이다 — 그라데이션을 고정 레이어(::before)로 옮겨 합성만으로
+     처리되게 한다. */
+  background: var(--ink);
+}
+/* 배경 그라데이션 + 미세 노이즈 (GPU 합성 레이어로 고정 — 스크롤 비용 0) */
+body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
   background:
     radial-gradient(1100px 700px at 18% -8%,  #16323a 0%, transparent 55%),
-    radial-gradient(900px 600px  at 92% 108%, #2a2210 0%, transparent 50%),
-    var(--ink);
-  background-attachment: fixed;
-}
-/* 미세 노이즈 그레인 */
-body::before{
-  content:""; position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.32;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+    radial-gradient(900px 600px  at 92% 108%, rgba(42,34,16,.9) 0%, transparent 50%);
+  transform: translateZ(0);
 }
 #root{ position:relative; z-index:1; max-width:none; margin:0; padding:0; text-align:left; }
 .cox-dark{ background:transparent !important; color:var(--text); }
@@ -478,51 +480,6 @@ body::before{
 }
 /* 헤더의 접속 인원 수 */
 .cox-online-count{ color:var(--volt); font-weight:800; }
-
-/* 리액션 독 — 하단 왼쪽에 떠 있는 이모지 버튼들 */
-.rx-dock{
-  position:fixed; left:14px; z-index:44;
-  bottom:calc(92px + env(safe-area-inset-bottom, 0px)); /* 하단 네비 위 */
-  display:flex; flex-direction:column; gap:7px;
-}
-@media (min-width: 768px){
-  .rx-dock{ bottom:24px; left:auto; right:24px; flex-direction:row; }
-}
-.rx-btn{
-  width:42px; height:42px; border-radius:14px; border:1px solid var(--line-strong);
-  background:rgba(20,23,29,.82);
-  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
-  font-size:19px; cursor:pointer; line-height:1;
-  box-shadow:0 10px 24px -10px rgba(0,0,0,.7);
-  transition:transform var(--dur-fast) var(--ease-pop), border-color .15s;
-}
-.rx-btn:active{ transform:scale(.86); }
-.rx-btn:hover{ border-color:rgba(205,251,71,.4); }
-.rx-dock.cooldown .rx-btn{ opacity:.55; pointer-events:none; }
-
-/* 떠오르는 이모지 파티클 레이어 */
-.rx-layer{ position:fixed; inset:0; z-index:46; pointer-events:none; overflow:hidden; }
-.rx-particle{
-  position:absolute; bottom:110px;
-  display:flex; flex-direction:column; align-items:center; gap:2px;
-  animation:rxFloat 2.6s var(--ease-pop) both;
-}
-.rx-particle .rx-emoji{
-  font-size:34px; line-height:1;
-  transform:scale(var(--rx-scale, 1));
-  filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));
-}
-.rx-particle .rx-name{
-  font-size:10px; font-weight:800; color:var(--text);
-  background:rgba(20,23,29,.8); border:1px solid var(--line);
-  border-radius:999px; padding:2px 8px; white-space:nowrap;
-}
-@keyframes rxFloat{
-  0%  { transform:translate(0, 0); opacity:0; }
-  8%  { opacity:1; }
-  70% { opacity:1; }
-  100%{ transform:translate(var(--rx-drift, 0px), -52vh); opacity:0; }
-}
 
 /* ══════════════════════════════════════════════════════════════════
    BRAND CI  ·  로고 마크 / 워드마크 / 입장 화면 브랜드 모먼트

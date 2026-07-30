@@ -73,8 +73,6 @@ const rosterRef = collection(db, "roster");
 const somoimSyncRef = doc(db, "config", "somoimSync");
 // [실시간 생명감] 접속 표시(하트비트 맵: {playerId: epoch ms}) — 단일 문서로 관리
 const presenceRef = doc(db, "config", "presence");
-// [실시간 생명감] 라이브 리액션 브로드캐스트 (마지막 리액션 1건만 유지)
-const liveReactionsRef = doc(db, "config", "liveReactions");
 
 
 // --- 2. Service 로직 ---
@@ -84,7 +82,6 @@ let seasonConfigData = null;
 let rosterData = {};
 let somoimSyncData = null;
 let presenceData = {};
-let liveReactionData = null;
 const subscribers = new Set();
 
 let resolveAllPlayers, resolveGameState, resolveSeasonConfig, resolveRoster;
@@ -208,14 +205,6 @@ onSnapshot(presenceRef, (d) => {
     console.error("[접속 표시] 로딩 실패:", error);
 });
 
-// [실시간 생명감] 라이브 리액션 리스너
-onSnapshot(liveReactionsRef, (d) => {
-    liveReactionData = d.exists() ? d.data() : null;
-    notifySubscribers();
-}, (error) => {
-    console.error("[라이브 리액션] 로딩 실패:", error);
-});
-
 function notifySubscribers() {
   subscribers.forEach(callback => callback());
 }
@@ -228,7 +217,6 @@ const firebaseService = {
   getRoster: () => rosterData,
   getSomoimSync: () => somoimSyncData,
   getPresence: () => presenceData,
-  getLiveReaction: () => liveReactionData,
   subscribe: (callback) => {
     subscribers.add(callback);
     return () => subscribers.delete(callback);
@@ -267,12 +255,6 @@ function startPresenceHeartbeat(playerId) {
         // 나갈 때 내 필드 제거 (실패해도 3분 뒤 자연 만료)
         setDoc(presenceRef, { [playerId]: deleteField() }, { merge: true }).catch(() => {});
     };
-}
-
-async function sendLiveReaction(emoji, name, nonce) {
-    await setDoc(liveReactionsRef, {
-        emoji, name: name || '', nonce, at: Date.now(),
-    });
 }
 
 // ===================================================================================
@@ -602,5 +584,5 @@ export {
     firebaseService, readyPromise,
     runDailyResetIfDue, runAutoSomoimSyncIfDue, syncSomoimAttendees, getKstParts, ROSTER_SEED,
     forceReconnect,
-    startPresenceHeartbeat, sendLiveReaction, isPresenceFresh,
+    startPresenceHeartbeat, isPresenceFresh,
 };

@@ -11,7 +11,6 @@ import {
 } from './lib/firebase';
 import { isSoundEnabled, setSoundEnabled, playStart, playFinish } from './lib/sound';
 import { CoxMark } from './components/Logo';
-import { ReactionLayer } from './components/Reactions';
 import {
     getAdminNames, generateId, filterTodayGames, calculateLocations,
     PLAYERS_PER_MATCH, LEVEL_ORDER,
@@ -41,9 +40,19 @@ export default function App() {
     // [선수 명단/소모임 동기화] 명단과 동기화 상태
     const [roster, setRoster] = useState({});
     const [somoimSync, setSomoimSync] = useState(null);
-    // [실시간 생명감] 접속 표시 + 라이브 리액션
-    const [presence, setPresence] = useState({});
-    const [liveReaction, setLiveReaction] = useState(null);
+    // [실시간 생명감] 접속 표시 — 누군가의 하트비트가 올 때마다 전체 화면이 다시
+    // 그려지지 않도록, "접속 중 집합"이 실제로 바뀔 때만 상태를 갱신한다.
+    const [onlineIds, setOnlineIds] = useState(() => new Set());
+    const onlineSigRef = useRef('');
+    const syncOnlineIds = useCallback(() => {
+        const p = firebaseService.getPresence() || {};
+        const ids = Object.entries(p).filter(([, at]) => isPresenceFresh(at)).map(([id]) => id).sort();
+        const sig = ids.join('|');
+        if (sig !== onlineSigRef.current) {
+            onlineSigRef.current = sig;
+            setOnlineIds(new Set(ids));
+        }
+    }, []);
     // [사운드 아이덴티티] 효과음 on/off (localStorage 연동)
     const [soundOn, setSoundOn] = useState(isSoundEnabled);
     const [isRosterOpen, setIsRosterOpen] = useState(false);
@@ -93,33 +102,49 @@ export default function App() {
         let pulling = false;
         let currentPull = 0;
 
-        const onTouchStart = (e) => {
-            if (isRefreshing) return;
-            // 스크롤이 최상단일 때만 당김 제스처 시작
-            if (el.scrollTop <= 0) {
-                startY = e.touches[0].clientY;
-                pulling = true;
-                currentPull = 0;
-            }
-        };
+        // [버그 수정] 실제 스크롤은 body에서 일어난다 — main과 body가 모두 최상단일 때만
+        // 당김으로 인정한다. (예전엔 main만 봐서, 아래로 스크롤한 상태에서 위로 올리면
+        // 스크롤 대신 새로고침이 걸리는 문제가 있었다)
+        const atTop = () =>
+            el.scrollTop <= 0 &&
+            window.scrollY <= 0 &&
+            document.documentElement.scrollTop <= 0;
+
         const onTouchMove = (e) => {
             if (!pulling || isRefreshing) return;
             const delta = e.touches[0].clientY - startY;
-            if (delta > 0 && el.scrollTop <= 0) {
+            if (delta > 0 && atTop()) {
                 e.preventDefault(); // 당기는 동안 콘텐츠 스크롤/바운스 방지
                 currentPull = Math.min(MAX_PULL, delta * 0.55); // 저항감 적용
                 setPullDistance(currentPull);
             } else {
                 // 다시 위로 올리거나 아래로 스크롤하면 취소
-                pulling = false;
-                currentPull = 0;
+                stopPulling();
                 setPullDistance(0);
+            }
+        };
+        // [성능] 비패시브 touchmove를 상시 걸어두면 모든 스크롤이 메인스레드를 기다려
+        // 버벅인다. 최상단에서 시작한 터치에만 동적으로 붙였다 떼어낸다.
+        const stopPulling = () => {
+            if (!pulling) return;
+            pulling = false;
+            currentPull = 0;
+            el.removeEventListener('touchmove', onTouchMove);
+        };
+        const onTouchStart = (e) => {
+            if (isRefreshing) return;
+            if (atTop()) {
+                startY = e.touches[0].clientY;
+                pulling = true;
+                currentPull = 0;
+                el.addEventListener('touchmove', onTouchMove, { passive: false });
             }
         };
         const finishPull = () => {
             if (!pulling) return;
-            pulling = false;
-            if (currentPull >= THRESHOLD) {
+            const finalPull = currentPull;
+            stopPulling();
+            if (finalPull >= THRESHOLD) {
                 setIsRefreshing(true);
                 setPullDistance(THRESHOLD);
                 // [개선] 페이지 전체 리로드 대신 서버 연결만 새로 맺어 최신 데이터를 받아온다.
@@ -137,11 +162,9 @@ export default function App() {
             } else {
                 setPullDistance(0);
             }
-            currentPull = 0;
         };
 
         el.addEventListener('touchstart', onTouchStart, { passive: true });
-        el.addEventListener('touchmove', onTouchMove, { passive: false });
         el.addEventListener('touchend', finishPull, { passive: true });
         el.addEventListener('touchcancel', finishPull, { passive: true });
         return () => {
@@ -260,8 +283,7 @@ export default function App() {
             setSeasonConfig(firebaseService.getSeasonConfig());
             setRoster(firebaseService.getRoster());
             setSomoimSync(firebaseService.getSomoimSync());
-            setPresence(firebaseService.getPresence());
-            setLiveReaction(firebaseService.getLiveReaction());
+            syncOnlineIds();
             setIsLoading(false);
 
             const unsubscribe = firebaseService.subscribe(() => {
@@ -271,8 +293,7 @@ export default function App() {
                 setSeasonConfig(firebaseService.getSeasonConfig());
                 setRoster(firebaseService.getRoster());
                 setSomoimSync(firebaseService.getSomoimSync());
-                setPresence(firebaseService.getPresence());
-                setLiveReaction(firebaseService.getLiveReaction());
+                syncOnlineIds();
 
                 setCurrentUser(prevUser => {
                     if (!prevUser) return null;
@@ -319,14 +340,7 @@ export default function App() {
         return stop;
     }, [currentUser?.id]);
 
-    // [접속 표시] 지금 앱을 보고 있는(하트비트 3분 이내) 선수 id 집합
-    const onlineIds = useMemo(() => {
-        const set = new Set();
-        Object.entries(presence || {}).forEach(([id, at]) => {
-            if (isPresenceFresh(at)) set.add(id);
-        });
-        return set;
-    }, [presence]);
+    // [접속 표시] 접속 중 인원수 (현황판에 있는 선수 기준)
     const onlineCount = useMemo(
         () => Object.keys(activePlayers).filter(id => onlineIds.has(id)).length,
         [activePlayers, onlineIds]
@@ -341,38 +355,53 @@ export default function App() {
     const flipPositionsRef = useRef(new Map());
     const flipPrevTabRef = useRef(activeTab);
     React.useLayoutEffect(() => {
+        // [성능] 카드 배치가 실제로 바뀔 수 있는 렌더(게임 상태·선수·탭 변경)에서만
+        // 실행한다 — 매 렌더 강제 레이아웃 계산은 저사양 폰에서 버벅임의 원인이 된다.
         const tabChanged = flipPrevTabRef.current !== activeTab;
         flipPrevTabRef.current = activeTab;
 
+        // [버그 수정] 스크롤 위치와 무관한 문서 기준 좌표로 기억한다.
+        // (viewport 기준으로 재면, 스크롤 후 아무 갱신에나 카드 전체가 날아다닌다)
+        const scrollX = window.scrollX + (mainScrollRef.current?.scrollLeft || 0);
+        const scrollY = window.scrollY + (mainScrollRef.current?.scrollTop || 0);
+
         const next = new Map();
         document.querySelectorAll('[data-flip-id]').forEach(el => {
-            next.set(el.dataset.flipId, { el, rect: el.getBoundingClientRect() });
+            const r = el.getBoundingClientRect();
+            next.set(el.dataset.flipId, { el, left: r.left + scrollX, top: r.top + scrollY });
         });
 
-        // 탭을 전환한 직후에는 화면 전체가 바뀐 것이므로 연출하지 않는다
         if (!tabChanged) {
-            next.forEach(({ el, rect }, id) => {
+            // 움직인 카드를 먼저 모은다 — 12장 넘게 한꺼번에 움직였으면 레이아웃 전체가
+            // 바뀐 것(창 크기 변경 등)이므로 연출을 생략한다.
+            const movers = [];
+            next.forEach(({ el, left, top }, id) => {
                 const old = flipPositionsRef.current.get(id);
                 if (!old) return;
-                const dx = old.left - rect.left;
-                const dy = old.top - rect.top;
+                const dx = old.left - left;
+                const dy = old.top - top;
                 if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-                // 섹션 간 이동 시 remount 애니메이션(slideInUp)과 겹치지 않게 끈다
-                el.style.animation = 'none';
-                el.animate(
-                    [
-                        { transform: `translate(${dx}px, ${dy}px) scale(1.06)`, boxShadow: '0 10px 26px -8px rgba(205,251,71,.45)', zIndex: 5 },
-                        { transform: 'none', boxShadow: '0 0 0 0 rgba(205,251,71,0)' },
-                    ],
-                    { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' }
-                );
+                movers.push({ el, dx, dy });
             });
+            if (movers.length > 0 && movers.length <= 12) {
+                movers.forEach(({ el, dx, dy }) => {
+                    // 섹션 간 이동 시 remount 애니메이션(slideInUp)과 겹치지 않게 끈다
+                    el.style.animation = 'none';
+                    el.animate(
+                        [
+                            { transform: `translate(${dx}px, ${dy}px) scale(1.06)`, boxShadow: '0 10px 26px -8px rgba(205,251,71,.45)', zIndex: 5 },
+                            { transform: 'none', boxShadow: '0 0 0 0 rgba(205,251,71,0)' },
+                        ],
+                        { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' }
+                    );
+                });
+            }
         }
 
         const positions = new Map();
-        next.forEach(({ rect }, id) => positions.set(id, { left: rect.left, top: rect.top }));
+        next.forEach(({ left, top }, id) => positions.set(id, { left, top }));
         flipPositionsRef.current = positions;
-    });
+    }, [gameState, activePlayers, activeTab]);
 
 useEffect(() => {
         // [개선] 데이터 로딩 완료 시 이미지 미리 불러오기 (Pre-loading)
@@ -1800,9 +1829,6 @@ useEffect(() => {
                     </button>
                 </nav>
             )}
-
-            {/* --- [라이브 리액션] 👏🔥💪 독 + 떠오르는 이모지 레이어 --- */}
-            <ReactionLayer liveReaction={liveReaction} myName={currentUser.name} />
 
             {/* --- [튜트리얼] 인사 화면 → 스포트라이트 안내 (가장 위에 뜬다) --- */}
             {tutorial?.phase === 'intro' && (
