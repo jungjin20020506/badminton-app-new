@@ -6,7 +6,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import {
     db, storage, playersRef, gameStateRef, configRef, somoimSyncRef,
     firebaseService, readyPromise, runDailyResetIfDue, runAutoSomoimSyncIfDue,
-    syncSomoimAttendees, getKstParts,
+    syncSomoimAttendees, getKstParts, forceReconnect,
 } from './lib/firebase';
 import {
     getAdminNames, generateId, filterTodayGames, calculateLocations,
@@ -113,8 +113,18 @@ export default function App() {
             if (currentPull >= THRESHOLD) {
                 setIsRefreshing(true);
                 setPullDistance(THRESHOLD);
-                // 스피너를 잠깐 보여준 뒤 새로고침
-                setTimeout(() => window.location.reload(), 450);
+                // [개선] 페이지 전체 리로드 대신 서버 연결만 새로 맺어 최신 데이터를 받아온다.
+                // 리스너가 그대로 살아 있어 화면이 하얗게 깜빡이지 않고 훨씬 빠르다.
+                (async () => {
+                    try {
+                        await Promise.race([
+                            forceReconnect('당겨서 새로고침'),
+                            new Promise(resolve => setTimeout(resolve, 4000)), // 안전 타임아웃
+                        ]);
+                    } catch (e) { /* 재연결 실패해도 스피너는 멈춘다 */ }
+                    // 재연결 직후 서버 스냅샷이 들어올 짧은 여유를 준 뒤 스피너 종료
+                    setTimeout(() => { setIsRefreshing(false); setPullDistance(0); }, 500);
+                })();
             } else {
                 setPullDistance(0);
             }

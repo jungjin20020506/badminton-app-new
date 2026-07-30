@@ -536,4 +536,5 @@ export {
     playersRef, gameStateRef, configRef, monthlyRankingsRef, notificationsRef, rosterRef, somoimSyncRef,
     firebaseService, readyPromise,
     runDailyResetIfDue, runAutoSomoimSyncIfDue, syncSomoimAttendees, getKstParts, ROSTER_SEED,
+    forceReconnect,
 };
