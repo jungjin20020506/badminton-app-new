@@ -299,6 +299,109 @@ body::before{
 }
 .auto-make-btn.female:hover:not(:disabled){ background:rgba(236,72,153,.30); box-shadow:0 0 14px rgba(236,72,153,.45); }
 
+/* ══════════════════════════════════════════════════════════════════
+   TUTORIAL  ·  첫 접속 온보딩 (스포트라이트 + 설명 카드)
+   z-index 100~102 — 공지/설정/알림 모달(z 50~80)보다 항상 위
+══════════════════════════════════════════════════════════════════ */
+.tut-layer{ position:fixed; inset:0; z-index:100; }
+
+/* 대상 요소를 도려낸 구멍 = 거대한 box-shadow 로 나머지를 한 번에 어둡게 만든다 */
+.tut-spot{
+  position:fixed; z-index:100; border-radius:16px; pointer-events:none;
+  box-shadow:0 0 0 9999px rgba(4,5,8,.80), 0 0 0 2px var(--volt), 0 0 24px 5px var(--volt-soft);
+  animation:tutSpot .3s cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes tutSpot{ from{ opacity:0; } to{ opacity:1; } }
+
+/* 튜트리얼 중 화면 조작·스크롤 차단 (대상이 없는 단계에서는 스스로 어두워진다) */
+.tut-block{ position:fixed; inset:0; z-index:101; background:transparent; touch-action:none; }
+.tut-block.solid{
+  background:rgba(4,5,8,.84);
+  -webkit-backdrop-filter:blur(3px); backdrop-filter:blur(3px);
+}
+
+/* 설명 카드 — 대상이 위쪽이면 아래에, 아래쪽이면 위에 붙는다 */
+.tut-card{
+  position:fixed; z-index:102; left:50%; transform:translateX(-50%);
+  width:min(420px, calc(100vw - 22px));
+  max-height:calc(100vh - 36px); overflow-y:auto;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:22px;
+  padding:16px 18px 15px;
+  box-shadow:0 26px 70px -20px rgba(0,0,0,.92);
+  animation:tutCardIn .26s cubic-bezier(.2,.7,.2,1) both;
+}
+.tut-card.at-bottom{ bottom:calc(16px + env(safe-area-inset-bottom, 0px)); }
+.tut-card.at-top{ top:calc(16px + env(safe-area-inset-top, 0px)); }
+.tut-card.centered{ top:50%; bottom:auto; transform:translate(-50%,-50%); }
+@keyframes tutCardIn{ from{ opacity:0; } to{ opacity:1; } }
+
+.tut-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:11px; }
+.tut-badge{
+  font-size:10px; font-weight:800; letter-spacing:.06em; white-space:nowrap;
+  color:var(--volt); background:var(--volt-soft);
+  border:1px solid rgba(205,251,71,.3); border-radius:999px; padding:4px 10px;
+}
+.tut-x{ background:none; border:none; padding:4px 2px; color:var(--mute); font-size:11.5px; font-weight:700; cursor:pointer; }
+.tut-x:hover{ color:var(--dim); }
+
+.tut-title{ margin:0 0 9px; font-size:17px; font-weight:900; line-height:1.35; color:var(--text); }
+.tut-body{ font-size:13.5px; line-height:1.75; color:#C3C9D4; }
+.tut-body b{ color:var(--text); font-weight:800; }
+.tut-body em{ color:var(--volt); font-style:normal; font-weight:800; }
+.tut-body ul{ margin:7px 0 0; padding-left:17px; }
+.tut-body li{ margin-bottom:4px; }
+.tut-body li::marker{ color:var(--mute); }
+.tut-key{
+  display:inline-block; margin-right:2px; padding:1px 7px;
+  background:var(--card-2); border:1px solid var(--line-strong); border-radius:7px;
+  font-size:12px; font-weight:800; color:var(--text);
+}
+
+.tut-track{ height:3px; margin:15px 0 12px; border-radius:3px; background:var(--line-strong); overflow:hidden; }
+.tut-track span{ display:block; height:100%; border-radius:3px; background:var(--volt); transition:width .28s cubic-bezier(.2,.7,.2,1); }
+
+.tut-actions{ display:flex; align-items:center; gap:8px; }
+.tut-count{ margin-right:auto; font-size:11px; font-weight:800; color:var(--mute); letter-spacing:.04em; }
+.tut-btn{
+  border:none; border-radius:13px; padding:11px 18px; cursor:pointer;
+  font-family:'Noto Sans KR',sans-serif; font-size:13.5px; font-weight:800;
+  transition:transform .12s, filter .15s;
+}
+.tut-btn:active{ transform:scale(.96); }
+.tut-btn.primary{ background:var(--volt); color:#0c0d11; box-shadow:0 8px 22px -10px var(--volt); }
+.tut-btn.primary:hover{ filter:brightness(1.05); }
+.tut-btn.ghost{ background:var(--card-2); color:var(--text); border:1px solid var(--line-strong); }
+
+/* ── 튜트리얼 시작 인사 화면 ── */
+.tut-intro-wrap{
+  position:fixed; inset:0; z-index:100; padding:18px;
+  display:flex; align-items:center; justify-content:center;
+  background:rgba(4,5,8,.88);
+  -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px);
+}
+.tut-intro{
+  width:min(400px,100%); max-height:calc(100vh - 36px); overflow-y:auto;
+  padding:26px 22px 20px; text-align:center;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:26px;
+  box-shadow:0 30px 80px -24px rgba(0,0,0,.92);
+  animation:tutIntroIn .32s cubic-bezier(.2,.7,.2,1) both;
+}
+@keyframes tutIntroIn{ from{ opacity:0; transform:translateY(14px) scale(.97); } to{ opacity:1; transform:none; } }
+.tut-intro .emoji{ font-size:44px; line-height:1; margin-bottom:12px; }
+.tut-intro .who{
+  display:inline-block; margin-bottom:14px; padding:5px 12px;
+  font-size:10px; font-weight:800; letter-spacing:.12em;
+  color:var(--volt); background:var(--volt-soft);
+  border:1px solid rgba(205,251,71,.3); border-radius:999px;
+}
+.tut-intro h3{ margin:0 0 11px; font-size:19px; font-weight:900; line-height:1.45; color:var(--text); }
+.tut-intro p{ margin:0; font-size:13.5px; line-height:1.8; color:#C3C9D4; }
+.tut-intro p b{ color:var(--volt); font-weight:800; }
+.tut-intro-actions{ margin-top:20px; display:flex; flex-direction:column; gap:9px; }
+.tut-intro-actions .tut-btn{ width:100%; padding:13px 18px; font-size:14px; }
+.tut-intro .tut-foot{ margin-top:13px; font-size:10.5px; line-height:1.6; color:var(--mute); }
+.tut-intro .tut-foot b{ color:var(--dim); }
+
 /* ── 모바일 잘림/깨짐 방지 ── */
 main{ -webkit-overflow-scrolling:touch; }
 .cox-secline .lbl > span{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

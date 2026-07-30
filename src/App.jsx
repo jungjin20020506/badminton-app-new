@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import {
-    getFirestore, doc, getDoc, setDoc, onSnapshot,
+    initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+    doc, getDoc, setDoc, onSnapshot,
     collection, deleteDoc, updateDoc, writeBatch, runTransaction,
     query, getDocs, where,
-    enableIndexedDbPersistence
+    disableNetwork, enableNetwork
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage"; // Storage 임포트 추가
 // ===================================================================================
@@ -22,28 +23,43 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+// ============ [실시간 안정화] Firestore 초기화 ============
+// · experimentalAutoDetectLongPolling: WebChannel 스트림이 막히는 통신사/사내망/인앱
+//   환경에서 long-polling으로 자동 전환해 실시간 수신이 끊기지 않게 한다.
+// · persistentLocalCache + MultipleTabManager: 예전 enableIndexedDbPersistence는
+//   두 번째 탭에서 실패(failed-precondition)했지만, 이제 여러 탭이 캐시를 공유한다.
+const db = initializeFirestore(app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    experimentalAutoDetectLongPolling: true,
+});
 const storage = getStorage(app); // Storage 초기화
 
-// ============ [4번 전략 적용] 오프라인 지속성 활성화 ============
-// db 객체를 만든 직후, 다른 Firestore 작업을 하기 전에 호출합니다.
-try {
-  enableIndexedDbPersistence(db)
-    .then(() => {
-      // 개발자 도구(F12) 콘솔에서 성공 여부를 확인할 수 있습니다.
-      console.log("Firestore 오프라인 지속성 활성화 성공");
-    })
-    .catch((err) => {
-      // 여러 브라우저 탭에 앱이 동시에 열려있으면 실패할 수 있습니다. (정상)
-      if (err.code == 'failed-precondition') {
-        console.warn("Firestore: 여러 탭이 열려 있어 오프라인 지속성을 활성화할 수 없습니다.");
-      } else if (err.code == 'unimplemented') {
-        console.warn("Firestore: 현재 브라우저가 오프라인 지속성을 지원하지 않습니다.");
-      }
-    });
-} catch (err) {
-  console.error("Firestore 오프라인 지속성 설정 오류:", err);
-}
+// ============ [실시간 안정화] 연결 감시자 (Reconnect Watchdog) ============
+// 폰 화면을 껐다 켜거나, Wi-Fi↔LTE가 바뀌면 Firestore 스트림이 조용히 죽어서
+// "서버엔 반영됐는데 내 화면은 새로고침해야 바뀌는" 증상이 생긴다.
+// 화면 복귀/네트워크 복구 순간에 연결을 강제로 새로 맺어 즉시 최신 상태를 받아온다.
+let lastHiddenAt = 0;
+let reconnectInFlight = false;
+const forceReconnect = async (reason) => {
+    if (reconnectInFlight) return;
+    reconnectInFlight = true;
+    try {
+        await disableNetwork(db);
+        await enableNetwork(db);
+        console.log('[실시간] 연결 재수립:', reason);
+    } catch (e) {
+        console.error('[실시간] 재연결 실패:', e);
+    } finally {
+        reconnectInFlight = false;
+    }
+};
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { lastHiddenAt = Date.now(); return; }
+    // 잠깐 앱 전환(15초 미만)은 그대로 두고, 오래 나갔다 왔을 때만 새로 연결
+    if (lastHiddenAt && Date.now() - lastHiddenAt > 15 * 1000) forceReconnect('화면 복귀');
+});
+window.addEventListener('online', () => forceReconnect('네트워크 복구'));
+window.addEventListener('pageshow', (e) => { if (e.persisted) forceReconnect('뒤로가기 복귀'); });
 // ==========================================================
 
 const playersRef = collection(db, "players");
@@ -1068,7 +1084,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
     const totalWaiting = maleWaitingPlayers.length + femaleWaitingPlayers.length;
 
     return (
-        <section className="bg-gray-800/50 rounded-lg p-2.5">
+        <section className="bg-gray-800/50 rounded-lg p-2.5" data-tut="waiting">
             <div className="cox-secline mb-2.5">
                 <div className="lbl">
                     <span className="tick"></span>
@@ -1077,7 +1093,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                 </div>
                 {/* [신규 기능] 대기자 전체 내보내기 버튼 */}
                 {isAdmin && totalWaiting > 0 && (
-                    <button onClick={onClearAllWaitingPlayers} className="cox-pill-danger">
+                    <button onClick={onClearAllWaitingPlayers} className="cox-pill-danger" data-tut="waiting-clear">
                         전체 내보내기
                     </button>
                 )}
@@ -1112,7 +1128,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
     const hasMatches = Object.values(scheduledMatches).some(m => m && m.some(p => p !== null));
 
     return (
-        <section>
+        <section data-tut="scheduled">
             <div className="cox-secline mb-2.5 px-1">
                 <div className="lbl cyan">
                     <span className="tick"></span>
@@ -1177,7 +1193,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
     const matchList = Object.entries(autoMatches);
 
     return (
-        <section>
+        <section data-tut="auto">
             <div className="cox-secline mb-2.5 px-1">
                  <div className="auto-head-left">
                      <div className="lbl green">
@@ -1191,7 +1207,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
             </div>
             {/* [신규] 누를 때마다 1경기씩 생성하는 '매칭 만들기' 버튼 (관리자 전용) */}
             {isAdmin && (
-                <div className="auto-make-row mb-2.5">
+                <div className="auto-make-row mb-2.5" data-tut="auto-make">
                     <button
                         type="button"
                         className="auto-make-btn male"
@@ -1343,7 +1359,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
 
 const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
     return (
-        <section>
+        <section data-tut="courts">
             <div className="cox-secline mb-2.5 px-1">
                 <div className="lbl coral">
                     <span className="tick"></span>
@@ -1408,6 +1424,11 @@ export default function App() {
     const [activeTab, setActiveTab] = useState('matching');
     // [디자인 개편] 상단 아바타 프로필 메뉴 열림 상태
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+
+    // [튜트리얼] { mode: 'admin' | 'user', phase: 'intro' | 'run', step: number } · null이면 끔
+    const [tutorial, setTutorial] = useState(null);
+    // 자동 실행은 한 접속당 한 번만 시도한다(닫은 뒤 다시 뜨는 것 방지)
+    const tutorialAutoTriedRef = useRef(false);
 
     // [당겨서 새로고침] PWA standalone 모드에는 브라우저 기본 새로고침이 없으므로 직접 구현
     const mainScrollRef = useRef(null);
@@ -1620,6 +1641,80 @@ useEffect(() => {
             setModal({ type: 'season', data: seasonConfig });
         }
     }, [isLoading, seasonConfig, isSeasonModalDismissed, modal]);
+
+    // ── [튜트리얼] 첫 접속 온보딩 ─────────────────────────────────────────────
+    // 공지창이 뜰 차례라면 튜트리얼은 기다린다. (두 창이 겹쳐 뜨는 것 방지)
+    const seasonModalPending = useMemo(() => {
+        if (isLoading || !seasonConfig) return true;
+        if (seasonConfig.announcementType === 'none') return false;
+        if (isSeasonModalDismissed) return false;
+        return localStorage.getItem(`seen-${seasonConfig.seasonId}`) !== new Date().toDateString();
+    }, [isLoading, seasonConfig, isSeasonModalDismissed]);
+
+    // 관리자 권한을 받은 뒤 첫 1회 / 일반 선수 첫 입장 1회 자동 실행
+    useEffect(() => {
+        if (isLoading || !currentUser || isInAppBrowser) return;
+        if (tutorial || tutorialAutoTriedRef.current) return;
+        if (seasonModalPending || modal?.type || isSettingsOpen || isRosterOpen) return;
+
+        // 선수 문서 기록이 기준이고, 로컬 기록은 오프라인 대비 보조 수단이다.
+        const seen = { ...readLocalTutorialSeen(currentUser.id), ...(currentUser.tutorialSeen || {}) };
+        const mode = isAdmin ? (seen.admin ? null : 'admin') : (seen.user ? null : 'user');
+        if (!mode) return;
+
+        const timer = setTimeout(() => {
+            tutorialAutoTriedRef.current = true;
+            setTutorial({ mode, phase: 'intro', step: 0 });
+        }, 700);
+        return () => clearTimeout(timer);
+    }, [isLoading, currentUser, isAdmin, isInAppBrowser, tutorial, seasonModalPending, modal, isSettingsOpen, isRosterOpen]);
+
+    // 환경에 없는 단계(모바일 전용 등)는 걸러낸다
+    const tutorialSteps = useMemo(() => {
+        if (!tutorial) return [];
+        const raw = tutorial.mode === 'admin' ? TUTORIAL_ADMIN_STEPS : TUTORIAL_USER_STEPS;
+        return raw.filter(s => !s.only || (s.only === 'mobile' ? isMobile : !isMobile));
+    }, [tutorial, isMobile]);
+
+    // 각 단계가 요구하는 화면(설정창·명단창·프로필 메뉴·모바일 탭)을 열어준다
+    const prepareTutorialStep = useCallback((step) => {
+        const surface = step?.surface || 'main';
+        setIsProfileMenuOpen(surface === 'menu');
+        setIsSettingsOpen(surface === 'settings' || surface === 'roster');
+        setIsRosterOpen(surface === 'roster');
+        if (step?.tab && isMobile) setActiveTab(step.tab);
+    }, [isMobile]);
+
+    const finishTutorial = useCallback((mode) => {
+        setTutorial(null);
+        setIsProfileMenuOpen(false);
+        setIsSettingsOpen(false);
+        setIsRosterOpen(false);
+        setActiveTab('matching'); // 끝나면 기본 화면(경기 예정 탭)으로
+        if (currentUser) markTutorialSeen(currentUser.id, mode);
+    }, [currentUser]);
+
+    const handleTutorialNext = useCallback(() => {
+        if (!tutorial) return;
+        if (tutorial.step >= tutorialSteps.length - 1) {
+            finishTutorial(tutorial.mode);
+            return;
+        }
+        setTutorial({ ...tutorial, step: tutorial.step + 1 });
+    }, [tutorial, tutorialSteps.length, finishTutorial]);
+
+    const handleTutorialPrev = useCallback(() => {
+        setTutorial(t => (t ? { ...t, step: Math.max(0, t.step - 1) } : t));
+    }, []);
+
+    // 프로필 메뉴 ▸ 튜트리얼 다시 보기 (관리자는 관리자용, 일반 선수는 사용자용)
+    const handleReplayTutorial = useCallback(() => {
+        tutorialAutoTriedRef.current = true;
+        setModal({ type: null, data: null });
+        setIsSettingsOpen(false);
+        setIsRosterOpen(false);
+        setTutorial({ mode: isAdmin ? 'admin' : 'user', phase: 'intro', step: 0 });
+    }, [isAdmin]);
 
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
@@ -2767,6 +2862,7 @@ useEffect(() => {
                         className={`cox-avatar-btn ${isAdmin ? 'admin' : ''}`}
                         onClick={() => setIsProfileMenuOpen(o => !o)}
                         aria-label="프로필 메뉴"
+                        data-tut="avatar"
                     >
                         {currentUser.name.slice(-2)}
                     </button>
@@ -2774,7 +2870,7 @@ useEffect(() => {
                     {isProfileMenuOpen && (
                         <>
                             <div className="cox-menu-backdrop" onClick={() => setIsProfileMenuOpen(false)} />
-                            <div className="cox-menu">
+                            <div className="cox-menu" data-tut="menu">
                                 <div className="cox-menu-head">
                                     <div className={`cox-avatar-btn ${isAdmin ? 'admin' : ''}`} style={{ width: 38, height: 38, borderRadius: 12, pointerEvents: 'none' }}>
                                         {currentUser.name.slice(-2)}
@@ -2797,11 +2893,22 @@ useEffect(() => {
                                     <button
                                         className="cox-menu-item"
                                         onClick={() => { setIsProfileMenuOpen(false); setIsSettingsOpen(true); }}
+                                        data-tut="menu-settings"
                                     >
                                         <i className="fas fa-sliders"></i>
                                         관리자 설정
                                     </button>
                                 )}
+
+                                {/* [튜트리얼] 언제든 다시 볼 수 있게 프로필 메뉴에 넣어 둔다 */}
+                                <button
+                                    className="cox-menu-item"
+                                    onClick={() => { setIsProfileMenuOpen(false); handleReplayTutorial(); }}
+                                    data-tut="menu-tutorial"
+                                >
+                                    <i className="fas fa-graduation-cap"></i>
+                                    튜트리얼 다시 보기
+                                </button>
 
                                 <button
                                     className="cox-menu-item danger"
@@ -2861,7 +2968,7 @@ useEffect(() => {
 
             {/* --- COX 하단 글래스 네비게이션 (모바일) + 가운데 라임 FAB --- */}
             {isMobile && (
-                <nav className="cox-bottomnav">
+                <nav className="cox-bottomnav" data-tut="nav">
                     <button
                         className={`cox-nav-btn ${activeTab === 'matching' ? 'active' : ''}`}
                         onClick={() => setActiveTab('matching')}
@@ -2873,7 +2980,7 @@ useEffect(() => {
                         <span>경기 예정</span>
                     </button>
 
-                    <button className="cox-fab" onClick={handleLocateMe} title="내 위치 찾기" aria-label="내 위치 찾기">
+                    <button className="cox-fab" onClick={handleLocateMe} title="내 위치 찾기" aria-label="내 위치 찾기" data-tut="fab">
                         <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="12" cy="12" r="3.2" />
                             <circle cx="12" cy="12" r="8" />
@@ -2891,6 +2998,27 @@ useEffect(() => {
                         <span>경기 진행</span>
                     </button>
                 </nav>
+            )}
+
+            {/* --- [튜트리얼] 인사 화면 → 스포트라이트 안내 (가장 위에 뜬다) --- */}
+            {tutorial?.phase === 'intro' && (
+                <TutorialIntroModal
+                    mode={tutorial.mode}
+                    userName={currentUser.name}
+                    onStart={() => setTutorial(t => (t ? { ...t, phase: 'run', step: 0 } : t))}
+                    onSkip={() => finishTutorial(tutorial.mode)}
+                />
+            )}
+            {tutorial?.phase === 'run' && tutorialSteps.length > 0 && (
+                <TutorialOverlay
+                    mode={tutorial.mode}
+                    steps={tutorialSteps}
+                    stepIndex={Math.min(tutorial.step, tutorialSteps.length - 1)}
+                    prepare={prepareTutorialStep}
+                    onPrev={handleTutorialPrev}
+                    onNext={handleTutorialNext}
+                    onSkip={() => finishTutorial(tutorial.mode)}
+                />
             )}
         </div>
     );
@@ -3429,7 +3557,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                 <div className="flex-grow overflow-y-auto pr-2 space-y-4">
 
                     {/* --- 자동 매칭 설정 --- */}
-                    <div className="bg-gray-700 p-3 rounded-lg">
+                    <div className="bg-gray-700 p-3 rounded-lg" data-tut="set-auto">
                         <div className="flex justify-between items-center mb-3">
                             <label className="font-semibold text-lg text-green-400 arcade-font">
                                 🤖 콕스타 자동 매칭
@@ -3516,7 +3644,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
 
                     {/* --- [관리자 권한] 관리자 부여 / 해임 --- */}
-                    <div className="bg-gray-700 p-3 rounded-lg">
+                    <div className="bg-gray-700 p-3 rounded-lg" data-tut="set-admin">
                         <label className="font-semibold text-lg text-yellow-400 arcade-font block mb-1">
                             👑 관리자 권한 부여
                         </label>
@@ -3581,7 +3709,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
 
                     {/* --- 일반 설정 --- */}
-                    <div className="bg-gray-700 p-3 rounded-lg">
+                    <div className="bg-gray-700 p-3 rounded-lg" data-tut="set-general">
                         <span className="font-semibold mb-2 block text-center">일반 설정</span>
                         <div className="flex items-center justify-around">
                             <div className="text-center">
@@ -3602,7 +3730,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                             </div>
                         </div>
                     </div>
-                   <div className="bg-gray-700 p-3 rounded-lg space-y-3">
+                   <div className="bg-gray-700 p-3 rounded-lg space-y-3" data-tut="set-notice">
                         <label className="font-semibold block text-center border-b border-gray-600 pb-2">시즌 공지 설정</label>
                    <div className="flex flex-wrap justify-center gap-3 mb-2 text-sm">
     <label className="flex items-center gap-1.5 cursor-pointer">
@@ -3649,7 +3777,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
 
                  {/* --- [소모임 연동] 선수 정보 관리 + 정모 동기화 --- */}
-                    <div className="bg-gray-700 p-3 rounded-lg space-y-3">
+                    <div className="bg-gray-700 p-3 rounded-lg space-y-3" data-tut="set-somoim">
                         <label className="font-semibold block text-center border-b border-gray-600 pb-2">🏸 소모임 연동</label>
 
                         <button
@@ -3697,7 +3825,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
 
                  {/* --- 선수 수동 추가 --- */}
-                    <div className="bg-gray-700 p-3 rounded-lg space-y-2">
+                    <div className="bg-gray-700 p-3 rounded-lg space-y-2" data-tut="set-addplayer">
                         <div
                             className="flex justify-between items-center cursor-pointer"
                             onClick={() => setShowAddPlayerForm(!showAddPlayerForm)}
@@ -3754,7 +3882,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                     </div>
 
                   {/* --- 고급 기능 --- */}
-                    <div className="bg-gray-700 p-3 rounded-lg space-y-2">
+                    <div className="bg-gray-700 p-3 rounded-lg space-y-2" data-tut="set-advanced">
                         <label className="font-semibold mb-2 block text-center">고급 기능</label>
                         
                         {/* 테스트 로봇 생성 섹션 */}
@@ -3807,7 +3935,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                         </button>
                     </div>
                 </div>
-                <div className="mt-6 flex gap-4 flex-shrink-0">
+                <div className="mt-6 flex gap-4 flex-shrink-0" data-tut="set-save">
                      <button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 font-bold py-2 rounded-lg">취소</button>
                     <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">저장</button>
                 </div>
@@ -4053,7 +4181,7 @@ function RosterManageModal({ roster, onClose, setModal }) {
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[70] p-4">
-            <div className="bg-gray-800 rounded-lg p-5 w-full max-w-md text-white shadow-lg flex flex-col" style={{ maxHeight: '90vh' }}>
+            <div className="bg-gray-800 rounded-lg p-5 w-full max-w-md text-white shadow-lg flex flex-col" style={{ maxHeight: '90vh' }} data-tut="roster">
                 <div className="flex justify-between items-center mb-3 flex-shrink-0">
                     <h3 className="text-lg font-bold text-yellow-400 arcade-font">👥 선수 정보 관리</h3>
                     <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white leading-none">&times;</button>
@@ -4197,6 +4325,552 @@ function SomoimSyncResultModal({ result, onClose }) {
                     )}
                 </div>
                 <button onClick={onClose} className="mt-4 w-full arcade-button bg-teal-500 hover:bg-teal-600 text-black font-bold py-2 rounded-lg flex-shrink-0">확인</button>
+            </div>
+        </div>
+    );
+}
+
+// ===================================================================================
+// [튜트리얼] 첫 접속 온보딩 — 관리자용 / 사용자용
+// -----------------------------------------------------------------------------------
+// 다른 앱들처럼 실제 화면의 해당 부분에 스포트라이트를 비추고 말풍선으로 설명한다.
+//   · 관리자용: 관리자 권한을 받고 처음 1회 자동으로 뜬다. 관리자 기능 전체를 훑는다.
+//   · 사용자용: 일반 선수가 처음 입장할 때 뜨고, "듣기 / 괜찮아요" 를 고를 수 있다.
+// 시청 여부는 선수 문서(players/<id>.tutorialSeen)에 남기므로 기기를 바꿔도 다시 뜨지
+// 않는다. localStorage 는 오프라인/쓰기 실패 대비 보조 기록이다.
+// 언제든 프로필 메뉴 ▸ '튜트리얼 다시 보기' 로 재생할 수 있다.
+//
+// 단계(step) 스펙
+//   target  : 스포트라이트를 비출 요소의 선택자(data-tut). 없거나 못 찾으면 화면 중앙 카드
+//   surface : 그 단계에서 열어 둘 화면 ('main' | 'menu' | 'settings' | 'roster')
+//   tab     : 모바일에서 전환할 탭 ('matching' | 'inProgress')
+//   only    : 'mobile' | 'desktop' — 해당 환경에서만 보여줄 단계
+// ===================================================================================
+
+const TUT_LS_KEY = (playerId) => `cox-tutorial-seen-${playerId}`;
+
+const readLocalTutorialSeen = (playerId) => {
+    try {
+        return JSON.parse(localStorage.getItem(TUT_LS_KEY(playerId))) || {};
+    } catch (e) {
+        return {};
+    }
+};
+
+// 시청 기록 저장 — 실패해도 튜트리얼 진행을 막지 않는다(로컬 기록은 남는다).
+const markTutorialSeen = async (playerId, mode) => {
+    if (!playerId || !mode) return;
+    const now = new Date().toISOString();
+    try {
+        localStorage.setItem(TUT_LS_KEY(playerId), JSON.stringify({ ...readLocalTutorialSeen(playerId), [mode]: now }));
+    } catch (e) { /* 시크릿 모드 등 */ }
+    try {
+        await setDoc(doc(playersRef, playerId), { tutorialSeen: { [mode]: now } }, { merge: true });
+    } catch (e) {
+        console.error('[튜트리얼] 시청 기록 저장 실패:', e);
+    }
+};
+
+// ── 관리자용 튜트리얼 (현재 코드에 있는 관리자 기능 전부) ──
+const TUTORIAL_ADMIN_STEPS = [
+    {
+        title: '먼저 큰 흐름만 잡고 갈게요',
+        body: (<>
+            선수는 <b>왼쪽에서 오른쪽으로</b> 딱 한 방향으로만 움직입니다.
+            <ul>
+                <li><em>대기 명단</em> — 지금 체육관에 온 사람</li>
+                <li><em>자동 매칭 / 경기 예정</em> — 다음에 칠 4명</li>
+                <li><em>경기 진행</em> — 코트에서 치는 중</li>
+            </ul>
+            이 셋만 기억하시면 끝이에요. 하나씩 볼게요!
+        </>),
+    },
+    {
+        target: '[data-tut="waiting"]', tab: 'matching',
+        title: '① 대기 명단 — 지금 온 사람들',
+        body: (<>
+            입장한 선수가 <b>남자 줄 · 여자 줄</b>로 나뉘어 쌓입니다.
+            카드에 <b>급수</b>와 <b>오늘 몇 경기 했는지(3G)</b>가 같이 보여요.
+            <ul>
+                <li><b>회색</b> 카드 = 휴식 중 (매칭에서 빠짐)</li>
+                <li><b>흐린</b> 카드 = 이미 코트에서 경기 중</li>
+            </ul>
+        </>),
+    },
+    {
+        target: '[data-tut="waiting"]', tab: 'matching',
+        title: '선수 카드 다루는 법 3가지',
+        body: (<>
+            <ul>
+                <li><span className="tut-key">한 번 탭</span> 선택 (여러 명 연속 선택 가능)</li>
+                <li><span className="tut-key">✕</span> 그 선수 내보내기 (기록은 남아요)</li>
+                <li><span className="tut-key">1초 꾹 누르기</span> 선수 정보 관리 창</li>
+            </ul>
+            꾹 누르면 <b>휴식 전환 · 게임 수 ± 손보기 · 오늘 누구와 쳤는지 · 완전 삭제</b>까지 할 수 있어요.
+        </>),
+    },
+    {
+        target: '[data-tut="waiting-clear"]', tab: 'matching',
+        title: '운동 끝났을 때는 전체 내보내기',
+        body: (<>
+            대기 중인 사람을 <b>한 번에 전부</b> 퇴장시킵니다. 기록은 지워지지 않아요.
+            <br/>(버튼이 안 보이면 대기 인원이 없는 겁니다)
+        </>),
+    },
+    {
+        target: '[data-tut="auto-make"]', tab: 'matching',
+        title: '② 자동 매칭 — 가장 많이 쓰실 기능',
+        body: (<>
+            <em>👨 남자 매칭 만들기</em> / <em>👩 여자 매칭 만들기</em>를 누르면
+            <b> 누를 때마다 한 경기</b>가 만들어집니다.
+            <br/>두 경기가 필요하면 두 번 누르시면 돼요. 그게 전부입니다!
+        </>),
+    },
+    {
+        title: '자동 매칭은 이 순서로 고릅니다',
+        body: (<>
+            <ul>
+                <li><em>1순위</em> 적게 친 사람 · 오래 기다린 사람 먼저</li>
+                <li><em>2순위</em> 그 안에서 최대한 <b>안 친 사람</b>끼리</li>
+                <li><em>3순위</em> 양 팀 <b>급수</b>도 맞춰서</li>
+            </ul>
+            방금 친 4명이 <b>그대로 또 나오는 일은 아예 차단</b>돼 있어요.
+            휴식 중인 사람도 자동으로 빠집니다.
+        </>),
+    },
+    {
+        target: '[data-tut="auto"]', tab: 'matching',
+        title: '만들어진 경기 손보기',
+        body: (<>
+            <ul>
+                <li>카드 탭 → 다른 카드 탭 = <b>자리 교환</b> (경기 예정과도 교환돼요)</li>
+                <li>빈칸 탭 = 대기에서 고른 선수를 <b>그 자리에</b></li>
+                <li><span className="tut-key">✕</span> 대기로 돌려보내기</li>
+                <li>왼쪽 <b>번호를 꾹</b> 누르면 그 경기만 삭제</li>
+            </ul>
+            마음에 들면 오른쪽 <em>START</em> 를 눌러 코트로 올립니다.
+        </>),
+    },
+    {
+        title: '"매칭 난이도를 낮춰주세요"가 뜨면?',
+        body: (<>
+            지금 만들 수 있는 조합이 전부 기준에 못 미친다는 뜻이에요.
+            (예: 방금 같이 친 사람들만 남은 경우)
+            <br/><b>잠깐 기다려 경기가 끝나거나</b>, 설정에서 <b>매칭 민감도를 한 단계 낮추면</b> 바로 만들어집니다.
+        </>),
+    },
+    {
+        target: '[data-tut="scheduled"]', tab: 'matching',
+        title: '③ 경기 예정 — 직접 짜고 싶을 때',
+        body: (<>
+            대기 명단에서 <b>선수를 탭해 고르고</b>, 여기 <b>빈칸을 탭</b>하면 들어갑니다.
+            여러 명을 골라 두면 순서대로 채워져요.
+            <br/>왼쪽 <b>번호를 꾹</b> = 그 경기 삭제, <em>START</em> = 경기 시작.
+        </>),
+    },
+    {
+        target: '[data-tut="courts"]', tab: 'inProgress',
+        title: '④ 경기 진행 — 끝나면 FINISH',
+        body: (<>
+            코트마다 <b>경기 시간</b>이 자동으로 흘러갑니다.
+            경기가 끝나면 <em>FINISH</em> 한 번!
+            <br/>그때 <b>누구와 같은 편이었고 누구와 붙었는지</b>가 기록돼서,
+            다음 자동 매칭이 더 정확해집니다.
+        </>),
+    },
+    {
+        target: '[data-tut="courts"]', tab: 'inProgress',
+        title: '★ 경기 중인 코트 바꾸는 법',
+        body: (<>
+            코트가 바뀌었을 때 쓰는 기능이에요.
+            <ul>
+                <li>왼쪽 <b>코트 번호를 0.8초 꾹</b> 누르면 노란 테두리가 생겨요</li>
+                <li>그 상태로 <b>옮길 코트를 탭</b>하면 끝!</li>
+            </ul>
+            빈 코트면 <b>이동</b>, 경기 중인 코트면 <b>서로 맞교환</b>됩니다.
+            취소는 같은 코트를 다시 탭하세요.
+        </>),
+    },
+    {
+        target: '[data-tut="courts"]', tab: 'inProgress',
+        title: '경기 중에 누가 그냥 가버렸어요',
+        body: (<>
+            그 자리는 <b>🚪 나간 선수</b> 카드로 남습니다. 카드가 사라지지 않으니
+            <b> FINISH 를 그대로 누르면</b> 정상적으로 경기가 종료돼요.
+        </>),
+    },
+    {
+        target: '[data-tut="nav"]', only: 'mobile',
+        title: '화면 전환은 아래 두 버튼',
+        body: (<>
+            <b>경기 예정</b>과 <b>경기 진행</b>을 오갑니다.
+            가운데 라임색 버튼은 <b>내 카드가 어디 있는지</b> 찾아서 반짝여 줘요.
+            <br/>화면을 <b>아래로 당기면</b> 새로고침도 됩니다.
+        </>),
+    },
+    {
+        surface: 'menu', target: '[data-tut="menu"]',
+        title: '내 메뉴 (오른쪽 위 동그라미)',
+        body: (<>
+            <ul>
+                <li><b>잠시 휴식하기</b> — 매칭에서 빠져요 (복귀도 여기서)</li>
+                <li><b>관리자 설정</b> — 아래에서 하나씩 볼게요</li>
+                <li><b>튜트리얼 다시 보기</b> — 이 설명을 또 볼 수 있어요</li>
+                <li><b>나가기</b> — 현황판에서 퇴장</li>
+            </ul>
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-auto"]',
+        title: '설정 ① 매칭 민감도',
+        body: (<>
+            <b>낮음</b>은 바로바로 경기를 만들고(회전율), <b>높음·최고</b>는
+            안 친 사람끼리 만나도록 더 깐깐하게 고릅니다.
+            <ul>
+                <li>잘 모르겠으면 <em>보통</em> 그대로 두세요</li>
+                <li>사람이 적으면 낮음~보통, 많으면 높음~최고</li>
+                <li><b>남/여 따로</b> 체크하면 성별별로 다르게 줄 수 있어요</li>
+            </ul>
+            📖 <b>사용설명서</b> 버튼에 요약본도 있습니다.
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-admin"]',
+        title: '설정 ② 관리자 권한 주기 / 빼기',
+        body: (<>
+            이름을 적고 <b>부여</b>를 누르면 그 사람도 관리자가 됩니다.
+            목록의 <b>✕</b> 는 해임이에요.
+            <ul>
+                <li><b>저장 버튼과 상관없이 바로 적용</b>됩니다</li>
+                <li>입장할 때 쓰는 이름과 <b>똑같이</b> (띄어쓰기 주의)</li>
+                <li>'명단에 없음' 배지가 뜨면 오타일 수 있어요</li>
+                <li>관리자는 최소 1명이라 마지막 한 명은 못 빼요</li>
+            </ul>
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-general"]',
+        title: '설정 ③ 코트 수 맞추기',
+        body: (<>
+            체육관 사정에 맞춰 <b>경기 진행 코트 수</b>를 바꾸세요.
+            <b>경기 예정</b>은 미리 짜 둘 경기 칸 수입니다.
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-notice"]',
+        title: '설정 ④ 공지 띄우기',
+        body: (<>
+            접속하면 처음 뜨는 공지창이에요. 4가지 중에 고르시면 됩니다.
+            <ul>
+                <li><b>없음</b> — 공지창 없이 바로 입장</li>
+                <li><b>일반 텍스트</b> — 적은 글만 깔끔하게</li>
+                <li><b>포스터</b> — 콕스타 포스터 디자인에 글이 얹혀요</li>
+                <li><b>사진 업로드</b> — 만들어 둔 이미지 그대로</li>
+            </ul>
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-somoim"]',
+        title: '설정 ⑤ 소모임 연동',
+        body: (<>
+            정모가 있는 날 <b>오후 6시에 참석자 카드가 저절로</b> 만들어집니다.
+            지금 바로 하고 싶으면 <b>🔄 동기화</b> 버튼을 누르세요. (여러 번 눌러도 안전)
+            <br/>결과에 <b>⚠ 명단 미등록</b>이 있으면 그 사람은 명단에 추가한 뒤 다시 눌러주세요.
+        </>),
+    },
+    {
+        surface: 'roster', target: '[data-tut="roster"]',
+        title: '설정 ⑥ 선수 정보 관리 (명단)',
+        body: (<>
+            여기 등록된 사람만 <b>이름만 적고 입장</b>할 수 있어요. (급수·성별을 자동으로 가져갑니다)
+            <ul>
+                <li><b>+ 추가</b> 로 새 회원 등록</li>
+                <li><b>이름을 탭</b>하면 급수·성별 수정 / 삭제</li>
+                <li><b>🔗</b> 표시는 소모임 계정과 연결됐다는 뜻</li>
+            </ul>
+            "등록된 선수 정보가 없다"는 문의가 오면 여기를 확인하세요.
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-addplayer"]',
+        title: '설정 ⑦ 선수 임의 추가',
+        body: (<>
+            휴대폰이 없거나 급하게 온 손님을 <b>관리자가 대신 입장</b>시킵니다.
+            이름·급수·성별만 넣으면 되고, 모임 회원이 아니면 <b>게스트</b>에 체크하세요.
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-advanced"]',
+        title: '설정 ⑧ 고급 기능 (조심!)',
+        body: (<>
+            <ul>
+                <li><b>🤖 테스트 로봇</b> — 연습용 가짜 선수 만들기</li>
+                <li><b>모두 대기로 이동</b> — 진행·예정·자동매칭을 비우고 전원 대기로</li>
+                <li><b>선수 히스토리 삭제</b> — 오늘 경기 기록을 0으로 (되돌릴 수 없어요)</li>
+            </ul>
+        </>),
+    },
+    {
+        surface: 'settings', target: '[data-tut="set-save"]',
+        title: '마지막에 저장 꼭 눌러주세요',
+        body: (<>
+            <b>코트 수 · 공지 · 매칭 민감도</b>는 <em>저장</em>을 눌러야 반영됩니다.
+            <br/>(관리자 권한 부여/해임만 예외로 즉시 적용돼요)
+        </>),
+    },
+    {
+        title: '가만히 둬도 알아서 되는 것들',
+        body: (<>
+            <ul>
+                <li><b>매일 새벽 2시</b> — 전원 퇴장 + 오늘 기록 정리 + 코트 비우기</li>
+                <li><b>정모일 오후 6시</b> — 소모임 참석자 카드 자동 생성</li>
+            </ul>
+            매일 손으로 초기화하지 않으셔도 됩니다.
+        </>),
+    },
+    {
+        title: '준비 끝! 하루는 이렇게 흘러갑니다 🎉',
+        body: (<>
+            <b>사람들이 입장 → 매칭 만들기 → START → FINISH</b> 이 반복이 전부예요.
+            <br/><br/>다시 보고 싶으면 오른쪽 위 <b>내 메뉴 ▸ 튜트리얼 다시 보기</b>.
+            즐거운 운동 되세요!
+        </>),
+    },
+];
+
+// ── 사용자용 튜트리얼 (일반 선수) ──
+const TUTORIAL_USER_STEPS = [
+    {
+        title: '콕스타는 이런 앱이에요',
+        body: (<>
+            오늘 온 사람들을 모아서 <b>다음에 칠 4명</b>을 정해주고,
+            코트 상황을 <b>모두에게 실시간으로</b> 보여줍니다.
+            <br/>순서를 눈치보며 기다리지 않아도 돼요. 화면만 보시면 됩니다!
+        </>),
+    },
+    {
+        target: '[data-tut="waiting"]', tab: 'matching',
+        title: '① 여기 어딘가에 내 카드가 있어요',
+        body: (<>
+            <b>주황색 테두리</b>가 나입니다.
+            카드에는 <b>급수</b>와 <b>오늘 몇 경기 했는지(3G)</b>가 적혀 있어요.
+            <br/>회색으로 바뀌면 휴식 중, 흐릿하면 지금 코트에서 치고 있다는 뜻입니다.
+        </>),
+    },
+    {
+        target: '[data-tut="fab"]', only: 'mobile',
+        title: '내 카드 못 찾겠으면 이 버튼',
+        body: (<>
+            누르면 <b>내 카드로 화면이 이동</b>하면서 반짝여 줍니다.
+            사람이 많은 날 아주 편해요.
+        </>),
+    },
+    {
+        target: '[data-tut="auto"]', tab: 'matching',
+        title: '② 자동 매칭 — 콕스타의 핵심 ★',
+        body: (<>
+            여기에 <b>내 이름이 올라오면 다음 경기</b>예요.
+            관리자님이 매칭을 만들면 자동으로 나타납니다.
+            <br/>이 4명을 어떻게 고르는지가 중요한데, 다음 장에서 알려드릴게요!
+        </>),
+    },
+    {
+        title: '★ 원칙 1 — 적게 친 사람이 먼저',
+        body: (<>
+            콕스타는 <b>운동을 못 한 사람을 먼저 끌어올립니다.</b>
+            <ul>
+                <li>오늘 <b>경기 수가 적은 사람</b>이 우선</li>
+                <li><b>오래 기다린 사람</b>일수록 우선</li>
+            </ul>
+            그래서 <b>"나만 계속 못 치는"</b> 일이 생기지 않아요.
+            목소리 큰 사람이 먼저 치는 구조가 아닙니다.
+        </>),
+    },
+    {
+        title: '★ 원칙 2 — 최대한 안 친 사람과',
+        body: (<>
+            같은 사람들끼리만 계속 치지 않도록,
+            <ul>
+                <li><b>방금 같은 편이었던 사람</b>은 크게 뒤로</li>
+                <li><b>방금 상대였던 사람</b>도 뒤로</li>
+                <li><b>오늘 아직 안 만난 사람</b>은 앞으로!</li>
+            </ul>
+            방금 친 <b>4명이 그대로 또 붙는 일은 아예 막혀</b> 있어요.
+            덕분에 하루 운동하면 <b>여러 사람과 골고루</b> 치게 됩니다.
+        </>),
+    },
+    {
+        title: '★ 원칙 3 — 실력도 맞춰서',
+        body: (<>
+            위 두 조건을 지키면서 <b>양 팀 급수 합이 비슷해지도록</b> 편을 나눕니다.
+            한 팀만 너무 세지 않게요.
+            <br/><br/>정리하면 <em>공평하게 → 다양하게 → 재미있게</em>.
+            사람 손이 아니라 <b>규칙</b>이 정하는 겁니다.
+        </>),
+    },
+    {
+        target: '[data-tut="scheduled"]', tab: 'matching',
+        title: '③ 경기 예정',
+        body: (<>
+            관리자님이 <b>직접 짜 둔 경기</b>가 올라오는 칸입니다.
+            자동 매칭과 똑같이, 내 이름이 있으면 다음 차례예요.
+        </>),
+    },
+    {
+        target: '[data-tut="courts"]', tab: 'inProgress',
+        title: '④ 경기 진행 — 내 이름 있으면 코트로!',
+        body: (<>
+            지금 각 코트에서 <b>누가 몇 분째</b> 치고 있는지 보여줍니다.
+            여기에 내 이름이 뜨면 <b>바로 그 번호 코트로</b> 가시면 돼요.
+        </>),
+    },
+    {
+        surface: 'menu', target: '[data-tut="menu"]',
+        title: '쉬고 싶을 때 · 집에 갈 때',
+        body: (<>
+            오른쪽 위 <b>내 동그라미</b>를 누르면,
+            <ul>
+                <li><b>잠시 휴식하기</b> — 매칭에서 빠집니다. 물 마시거나 쉴 때!</li>
+                <li><b>경기 복귀하기</b> — 다시 매칭에 들어갑니다</li>
+                <li><b>나가기</b> — 현황판에서 퇴장 (기록은 남아요)</li>
+            </ul>
+            <b>꼭 눌러주세요.</b> 안 누르고 가시면 없는 사람으로 매칭이 잡혀요!
+        </>),
+    },
+    {
+        title: '작은 팁 두 가지',
+        body: (<>
+            <ul>
+                <li>화면이 멈춘 것 같으면 <b>아래로 쭉 당겨</b> 새로고침</li>
+                <li>처음 뜨는 <b>공지</b>는 '오늘 하루 보지 않기'로 넘길 수 있어요</li>
+            </ul>
+            카카오톡에서 열면 실시간 연결이 끊길 수 있어요.
+            안내가 뜨면 <b>크롬·사파리로 열어주세요.</b>
+        </>),
+    },
+    {
+        title: '설명 끝! 즐겁게 운동하세요 🏸',
+        body: (<>
+            <b>입장 → 화면 보고 기다리기 → 내 이름 뜨면 코트로</b>. 이게 전부예요.
+            <br/><br/>다시 보고 싶으면 <b>내 메뉴 ▸ 튜트리얼 다시 보기</b>.
+            <br/>불편한 점은 관리자에게 편하게 말씀해주세요!
+        </>),
+    },
+];
+
+// [튜트리얼] 시작 화면 — 인사와 함께 들을지 말지 고른다
+function TutorialIntroModal({ mode, userName, onStart, onSkip }) {
+    const isAdminMode = mode === 'admin';
+    return (
+        <div className="tut-intro-wrap">
+            <div className="tut-intro">
+                <div className="emoji">{isAdminMode ? '👑' : '🏸'}</div>
+                <span className="who">{isAdminMode ? 'COCKSTAR ADMIN' : 'COCKSTAR GUIDE'}</span>
+                {isAdminMode ? (
+                    <>
+                        <h3>안녕하세요!<br/>콕스타 관리자가 되신 것을<br/>진심으로 축하합니다~</h3>
+                        <p>
+                            {userName ? `${userName} 님, ` : ''}이제 매칭·코트·설정을 모두 다루실 수 있어요.
+                            <br/>어렵지 않습니다. <b>2분만</b> 함께 화면을 짚어볼게요!
+                        </p>
+                    </>
+                ) : (
+                    <>
+                        <h3>안녕하세요!<br/>콕스타 개발자 정형진입니다</h3>
+                        <p>
+                            {userName ? `${userName} 님, ` : ''}반갑습니다 :)
+                            <br/>처음이시면 <b>1분짜리 사용법</b>을 보여드릴게요.
+                            이미 써보셨다면 바로 시작하셔도 됩니다!
+                        </p>
+                    </>
+                )}
+                <div className="tut-intro-actions">
+                    <button className="tut-btn primary" onClick={onStart}>
+                        {isAdminMode ? '관리자 튜트리얼 시작하기' : '튜트리얼 듣기'}
+                    </button>
+                    <button className="tut-btn ghost" onClick={onSkip}>
+                        {isAdminMode ? '나중에 볼게요' : '괜찮아요! 사용해봤어요'}
+                    </button>
+                </div>
+                <p className="tut-foot">나중에 <b>내 메뉴 ▸ 튜트리얼 다시 보기</b>에서 언제든 볼 수 있어요</p>
+            </div>
+        </div>
+    );
+}
+
+// [튜트리얼] 스포트라이트 오버레이 — 실제 화면 요소를 비추고 말풍선으로 설명한다
+function TutorialOverlay({ mode, steps, stepIndex, prepare, onPrev, onNext, onSkip }) {
+    const [rect, setRect] = useState(null);
+    const step = steps[stepIndex];
+
+    useEffect(() => {
+        if (!step) return;
+        let cancelled = false;
+        setRect(null);
+        prepare(step);
+
+        // 대상 요소가 그려질 때까지 잠깐 기다렸다가(설정창 열기 등) 위치를 잰다.
+        // 끝까지 못 찾으면 대상 없는 단계처럼 화면 중앙 카드로 보여준다.
+        const measure = (tries) => {
+            if (cancelled) return;
+            if (!step.target) { setRect(null); return; }
+            const el = document.querySelector(step.target);
+            if (!el || el.getBoundingClientRect().height === 0) {
+                if (tries < 15) setTimeout(() => measure(tries + 1), 70);
+                else setRect(null);
+                return;
+            }
+            el.scrollIntoView({ block: 'center', inline: 'nearest' });
+            // rAF는 탭이 백그라운드면 멈추므로 setTimeout으로 잰다 (scrollIntoView는 즉시 적용됨)
+            setTimeout(() => {
+                if (cancelled) return;
+                const r = el.getBoundingClientRect();
+                setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+            }, 50);
+        };
+
+        const timer = setTimeout(() => measure(0), 110);
+        const onResize = () => measure(0);
+        window.addEventListener('resize', onResize);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+            window.removeEventListener('resize', onResize);
+        };
+    }, [step, prepare]);
+
+    if (!step) return null;
+
+    const total = steps.length;
+    const isLast = stepIndex === total - 1;
+    // 대상이 화면 위쪽에 있으면 설명 카드를 아래에, 아래쪽에 있으면 위에 붙인다.
+    const atBottom = !rect || (rect.top + rect.height / 2) < window.innerHeight * 0.5;
+    const cardPos = !rect ? 'centered' : (atBottom ? 'at-bottom' : 'at-top');
+
+    return (
+        <div className="tut-layer">
+            {rect && (
+                <div
+                    className="tut-spot"
+                    style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12 }}
+                />
+            )}
+            {/* 오버레이 위 조작을 막는 투명막 (대상이 없을 때만 스스로 어둡게) */}
+            <div className={`tut-block ${rect ? '' : 'solid'}`} />
+
+            <div className={`tut-card ${cardPos}`}>
+                <div className="tut-top">
+                    <span className="tut-badge">{mode === 'admin' ? '👑 관리자 튜트리얼' : '🏸 콕스타 사용법'}</span>
+                    <button className="tut-x" onClick={onSkip}>건너뛰기</button>
+                </div>
+                <h4 className="tut-title">{step.title}</h4>
+                <div className="tut-body">{step.body}</div>
+                <div className="tut-track"><span style={{ width: `${((stepIndex + 1) / total) * 100}%` }} /></div>
+                <div className="tut-actions">
+                    <span className="tut-count">{stepIndex + 1} / {total}</span>
+                    {stepIndex > 0 && <button className="tut-btn ghost" onClick={onPrev}>이전</button>}
+                    <button className="tut-btn primary" onClick={onNext}>{isLast ? '시작하기 🎉' : '다음'}</button>
+                </div>
             </div>
         </div>
     );
