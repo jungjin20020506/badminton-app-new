@@ -4,7 +4,7 @@ import { isAdminName, getLevelColor } from '../lib/helpers';
 // ===================================================================================
 // 자식 컴포넌트들
 // ===================================================================================
-const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false }) => {
+const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false, isOnline = false }) => {
     const pressTimerRef = useRef(null);
     const cardRef = useRef(null);
 
@@ -89,6 +89,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         <div
             ref={cardRef}
             id={isCurrentUser ? 'my-player-card' : undefined}
+            data-flip-id={player.id} /* [고스트 무브] 카드 이동을 부드럽게 연출하기 위한 식별자 */
             // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
             style={cardStyle}
@@ -98,6 +99,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             onMouseLeave={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
             onContextMenu={handleContextMenu}
         >
+            {/* [접속 표시] 지금 앱을 보고 있는 선수의 초록 펄스 점 */}
+            {isOnline && !player.isResting && <span className="cox-online-dot" title="접속 중" />}
             <div>
                 <div className={playerNameClass}>{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>

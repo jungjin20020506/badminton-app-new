@@ -3,6 +3,7 @@ import {
     initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
     disableNetwork, enableNetwork,
     collection, doc, onSnapshot, query, where, getDocs, writeBatch, runTransaction, setDoc,
+    deleteField,
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAdminNames, setAdminNamesCache, generateId, filterTodayGames } from './helpers';
@@ -70,6 +71,10 @@ const notificationsRef = collection(db, "notifications");
 const rosterRef = collection(db, "roster");
 // [소모임 동기화] 자동/수동 동기화 상태 기록 (실패 시 배너 표시용)
 const somoimSyncRef = doc(db, "config", "somoimSync");
+// [실시간 생명감] 접속 표시(하트비트 맵: {playerId: epoch ms}) — 단일 문서로 관리
+const presenceRef = doc(db, "config", "presence");
+// [실시간 생명감] 라이브 리액션 브로드캐스트 (마지막 리액션 1건만 유지)
+const liveReactionsRef = doc(db, "config", "liveReactions");
 
 
 // --- 2. Service 로직 ---
@@ -78,6 +83,8 @@ let gameStateData = null;
 let seasonConfigData = null;
 let rosterData = {};
 let somoimSyncData = null;
+let presenceData = {};
+let liveReactionData = null;
 const subscribers = new Set();
 
 let resolveAllPlayers, resolveGameState, resolveSeasonConfig, resolveRoster;
@@ -193,6 +200,22 @@ onSnapshot(somoimSyncRef, (d) => {
     console.error("[소모임 동기화] 상태 로딩 실패:", error);
 });
 
+// [실시간 생명감] 접속 표시 리스너 (로딩을 막지 않음)
+onSnapshot(presenceRef, (d) => {
+    presenceData = d.exists() ? d.data() : {};
+    notifySubscribers();
+}, (error) => {
+    console.error("[접속 표시] 로딩 실패:", error);
+});
+
+// [실시간 생명감] 라이브 리액션 리스너
+onSnapshot(liveReactionsRef, (d) => {
+    liveReactionData = d.exists() ? d.data() : null;
+    notifySubscribers();
+}, (error) => {
+    console.error("[라이브 리액션] 로딩 실패:", error);
+});
+
 function notifySubscribers() {
   subscribers.forEach(callback => callback());
 }
@@ -204,11 +227,53 @@ const firebaseService = {
   getSeasonConfig: () => seasonConfigData,
   getRoster: () => rosterData,
   getSomoimSync: () => somoimSyncData,
+  getPresence: () => presenceData,
+  getLiveReaction: () => liveReactionData,
   subscribe: (callback) => {
     subscribers.add(callback);
     return () => subscribers.delete(callback);
   },
 };
+
+// ===================================================================================
+// [실시간 생명감] 접속 하트비트 / 라이브 리액션
+// -----------------------------------------------------------------------------------
+// · 하트비트: 접속 중인 선수가 70초마다 자기 필드에 현재 시각을 기록한다.
+//   화면이 백그라운드면 쉬고, 복귀하면 즉시 1회 기록. 나가면 자기 필드를 지운다.
+//   "접속 중" 판정은 마지막 기록이 3분 이내인지로 한다(수신 측 계산).
+// · 리액션: 마지막 리액션 1건을 덮어쓰는 브로드캐스트. nonce로 중복 재생을 막는다.
+// ===================================================================================
+const PRESENCE_INTERVAL_MS = 70 * 1000;
+const PRESENCE_FRESH_MS = 3 * 60 * 1000;
+
+const isPresenceFresh = (at) => typeof at === 'number' && (Date.now() - at) < PRESENCE_FRESH_MS;
+
+function startPresenceHeartbeat(playerId) {
+    if (!playerId) return () => {};
+    let stopped = false;
+    const beat = () => {
+        if (stopped || document.visibilityState === 'hidden') return;
+        setDoc(presenceRef, { [playerId]: Date.now() }, { merge: true })
+            .catch((e) => console.error('[접속 표시] 하트비트 실패:', e));
+    };
+    beat();
+    const timer = setInterval(beat, PRESENCE_INTERVAL_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') beat(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+        stopped = true;
+        clearInterval(timer);
+        document.removeEventListener('visibilitychange', onVisible);
+        // 나갈 때 내 필드 제거 (실패해도 3분 뒤 자연 만료)
+        setDoc(presenceRef, { [playerId]: deleteField() }, { merge: true }).catch(() => {});
+    };
+}
+
+async function sendLiveReaction(emoji, name, nonce) {
+    await setDoc(liveReactionsRef, {
+        emoji, name: name || '', nonce, at: Date.now(),
+    });
+}
 
 // ===================================================================================
 // [새벽 2시 자동 초기화] 클라이언트 측 구현
@@ -537,4 +602,5 @@ export {
     firebaseService, readyPromise,
     runDailyResetIfDue, runAutoSomoimSyncIfDue, syncSomoimAttendees, getKstParts, ROSTER_SEED,
     forceReconnect,
+    startPresenceHeartbeat, sendLiveReaction, isPresenceFresh,
 };

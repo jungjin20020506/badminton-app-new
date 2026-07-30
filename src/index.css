@@ -77,6 +77,12 @@ img{ max-width:100%; }
   --text: #F3F5F8;
   --dim:  #8C93A1;
   --mute: #565D6B;
+  /* [브랜드 CI] 모션 언어 — 모든 움직임이 같은 손맛을 내도록 하는 공용 토큰 */
+  --ease-pop:    cubic-bezier(.2,.8,.2,1);      /* 빠르게 나와 부드럽게 멈춤 (기본) */
+  --ease-spring: cubic-bezier(.2,.8,.3,1.15);   /* 살짝 튕기는 탄성 (등장 연출) */
+  --dur-fast: .15s;
+  --dur-med:  .3s;
+  --dur-slow: .5s;
 }
 
 /* ─── Base / Atmosphere ─── */
@@ -120,11 +126,11 @@ body::before{
 @keyframes slideInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes modalScaleIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
 .player-card  { animation: slideInUp 0.22s ease-out both; }
-.modal-content{ animation: modalScaleIn 0.2s cubic-bezier(.2,.7,.2,1) both; }
+.modal-content{ animation: modalScaleIn 0.2s var(--ease-pop) both; }
 .tab-fade-in  { animation: paneIn 0.4s cubic-bezier(.2,.7,.2,1) both; }
 
 /* ─── Buttons (라임 누름 모션) ─── */
-.arcade-button{ transition:transform .12s cubic-bezier(.2,.7,.2,1), box-shadow .15s, background-color .15s, filter .15s; }
+.arcade-button{ transition:transform .12s var(--ease-pop), box-shadow .15s, background-color .15s, filter .15s; }
 .arcade-button:active{ transform:scale(.96); }
 
 /* ─── Player card / slot (둥근 카드) ─── */
@@ -457,6 +463,85 @@ body::before{
 .tut-intro-actions .tut-btn{ width:100%; padding:13px 18px; font-size:14px; }
 .tut-intro .tut-foot{ margin-top:13px; font-size:10.5px; line-height:1.6; color:var(--mute); }
 .tut-intro .tut-foot b{ color:var(--dim); }
+
+/* ══════════════════════════════════════════════════════════════════
+   LIVE LAYER  ·  실시간 생명감 (접속 점 / 라이브 리액션)
+══════════════════════════════════════════════════════════════════ */
+/* 접속 중인 선수의 초록 펄스 점 (카드 왼쪽 위 모서리) */
+.cox-online-dot{
+  position:absolute; top:-3px; left:-3px; z-index:2;
+  width:10px; height:10px; border-radius:50%;
+  background:#34E27A; border:2px solid #0c0d11;
+  box-shadow:0 0 6px rgba(52,226,122,.8);
+  animation:coxPulse 2s infinite;
+  pointer-events:none;
+}
+/* 헤더의 접속 인원 수 */
+.cox-online-count{ color:var(--volt); font-weight:800; }
+
+/* 리액션 독 — 하단 왼쪽에 떠 있는 이모지 버튼들 */
+.rx-dock{
+  position:fixed; left:14px; z-index:44;
+  bottom:calc(92px + env(safe-area-inset-bottom, 0px)); /* 하단 네비 위 */
+  display:flex; flex-direction:column; gap:7px;
+}
+@media (min-width: 768px){
+  .rx-dock{ bottom:24px; left:auto; right:24px; flex-direction:row; }
+}
+.rx-btn{
+  width:42px; height:42px; border-radius:14px; border:1px solid var(--line-strong);
+  background:rgba(20,23,29,.82);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  font-size:19px; cursor:pointer; line-height:1;
+  box-shadow:0 10px 24px -10px rgba(0,0,0,.7);
+  transition:transform var(--dur-fast) var(--ease-pop), border-color .15s;
+}
+.rx-btn:active{ transform:scale(.86); }
+.rx-btn:hover{ border-color:rgba(205,251,71,.4); }
+.rx-dock.cooldown .rx-btn{ opacity:.55; pointer-events:none; }
+
+/* 떠오르는 이모지 파티클 레이어 */
+.rx-layer{ position:fixed; inset:0; z-index:46; pointer-events:none; overflow:hidden; }
+.rx-particle{
+  position:absolute; bottom:110px;
+  display:flex; flex-direction:column; align-items:center; gap:2px;
+  animation:rxFloat 2.6s var(--ease-pop) both;
+}
+.rx-particle .rx-emoji{
+  font-size:34px; line-height:1;
+  transform:scale(var(--rx-scale, 1));
+  filter:drop-shadow(0 4px 10px rgba(0,0,0,.5));
+}
+.rx-particle .rx-name{
+  font-size:10px; font-weight:800; color:var(--text);
+  background:rgba(20,23,29,.8); border:1px solid var(--line);
+  border-radius:999px; padding:2px 8px; white-space:nowrap;
+}
+@keyframes rxFloat{
+  0%  { transform:translate(0, 0); opacity:0; }
+  8%  { opacity:1; }
+  70% { opacity:1; }
+  100%{ transform:translate(var(--rx-drift, 0px), -52vh); opacity:0; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   BRAND CI  ·  로고 마크 / 워드마크 / 입장 화면 브랜드 모먼트
+══════════════════════════════════════════════════════════════════ */
+.cox-appbar-mark{ flex-shrink:0; border-radius:11px; }
+.cox-entry-mark{
+  display:flex; justify-content:center; margin-bottom:14px;
+  animation:coxMarkIn .7s var(--ease-spring) both;
+}
+@keyframes coxMarkIn{
+  0%  { opacity:0; transform:translateY(-14px) scale(.7) rotate(-8deg); }
+  60% { opacity:1; transform:translateY(2px) scale(1.06) rotate(1deg); }
+  100%{ opacity:1; transform:none; }
+}
+.cox-wordmark{ display:flex; align-items:center; gap:10px; }
+.cox-wordmark-text .line1{
+  font-family:'Anton','Noto Sans KR',sans-serif; font-size:20px; letter-spacing:.05em; color:var(--text);
+}
+.cox-wordmark-text .line1 em{ color:var(--volt); font-style:normal; }
 
 /* ══════════════════════════════════════════════════════════════════
    SKELETON LOADING  ·  데이터 로딩 중 자리표시자 (은은한 시머)

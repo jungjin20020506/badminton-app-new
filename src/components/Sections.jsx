@@ -1,8 +1,9 @@
 import React, { useEffect, useCallback, useRef } from 'react';
 import { PLAYERS_PER_MATCH } from '../lib/helpers';
+import { playDeal } from '../lib/sound';
 import { PlayerCard, EmptySlot, LeftPlayerCard, CourtTimer } from './PlayerCard';
 
-const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onClearAllWaitingPlayers }) => {
+const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onClearAllWaitingPlayers, onlineIds }) => {
     const renderPlayerGrid = (players) => (
         <div className="grid grid-cols-5 gap-1">
             {players.map(player => (
@@ -16,6 +17,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                     onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})}
                     isCurrentUser={currentUser && player.id === currentUser.id}
                     isPlaying={inProgressPlayerIds.has(player.id)}
+                    isOnline={!!onlineIds && onlineIds.has(player.id)}
                 />
             ))}
         </div>
@@ -50,7 +52,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
 });
 
 
-const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds }) => {
+const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds, onlineIds }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -99,7 +101,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                     const playerId = match[slotIndex];
                                     const player = players[playerId];
                                     const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -115,7 +117,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
 
 // [자동매칭] 자동 매칭 섹션 컴포넌트 (UI 변경)
 // [수정] 자동 ON/OFF(일정 주기 생성) → '남자/여자 매칭 만들기' 버튼으로 1경기씩 생성
-const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender }) => {
+const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender, onlineIds }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -144,6 +146,12 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
         isFirstDealRef.current = false;
     }
     useEffect(() => {
+        // [사운드] 처음 보는 매칭이 등장하면 카드 딜 아르페지오 재생 (효과음 켠 사람만)
+        const hasNewDeal = matchList.some(([, m]) => {
+            const s = matchSig(m);
+            return s && !dealSeenRef.current.has(s);
+        });
+        if (hasNewDeal) playDeal();
         matchList.forEach(([, m]) => { const s = matchSig(m); if (s) dealSeenRef.current.add(s); });
     });
 
@@ -223,7 +231,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                                     const cardKey = playerId ? `${playerId}-${matchIndex}-${slotIndex}` : `auto-empty-${matchIndex}-${slotIndex}`;
                                     const isSelected = selectedAutoMatchSlot && selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex;
                                     return player ?
-                                        (<PlayerCard key={cardKey} player={player} context={{location: 'auto', selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={handleReturnToWaiting} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} />) :
+                                        (<PlayerCard key={cardKey} player={player} context={{location: 'auto', selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={handleReturnToWaiting} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} />) :
                                         (<EmptySlot key={cardKey} onSlotClick={() => handleAutoMatchSlotClick(matchIndex, slotIndex)} />)
                                 })}
                             </div>
@@ -238,7 +246,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
     );
 });
 
-const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
+const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds }) => {
     const pressTimerRef = useRef(null);
     const courtRef = useRef(null);
 
@@ -311,7 +319,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
                         const displayName = player?.name || allPlayers?.[playerId]?.name || '나간 선수';
                         return <LeftPlayerCard key={`court-left-${courtIndex}-${slotIndex}`} name={displayName} />;
                     }
-                    return <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} />;
+                    return <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} isOnline={!!onlineIds && onlineIds.has(playerId)} />;
                 })}
             </div>
             <div className="flex-shrink-0 w-14 text-center">
@@ -323,7 +331,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
 });
 
 
-const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt }) => {
+const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds }) => {
     return (
         <section data-tut="courts">
             <div className="cox-secline mb-2.5 px-1">
@@ -346,6 +354,7 @@ const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCou
                         courtMove={courtMove}
                         setCourtMove={setCourtMove}
                         handleMoveOrSwapCourt={handleMoveOrSwapCourt}
+                        onlineIds={onlineIds}
                     />
                 ))}
             </div>

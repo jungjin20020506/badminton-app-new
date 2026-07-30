@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getDoc, doc } from 'firebase/firestore';
 import { playersRef } from '../lib/firebase';
+import { CoxMark } from './Logo';
 
 // ===================================================================================
 // 신규 및 복구된 페이지/모달 컴포넌트들
@@ -68,8 +69,12 @@ function EntryPage({ onEnter, roster }) {
     return (
               <div className="cox-dark text-white min-h-screen flex items-center justify-center font-sans p-4 relative">
             <div className="modal-content bg-gray-800 p-8 w-full max-w-sm" style={{ borderRadius: '26px' }}>
+                {/* [브랜드 CI] 볼트 셔틀 마크 — 브랜드 첫 인상 */}
+                <div className="cox-entry-mark">
+                    <CoxMark size={64} glow />
+                </div>
                 <p className="cox-label text-center mb-2" style={{ color: 'var(--volt)' }}>Premium Match System</p>
-                <h1 className="text-3xl font-bold text-yellow-400 mb-1 text-center arcade-font flicker-text" style={{ letterSpacing: '.06em' }}>⚡ COCKSLIGHTING</h1>
+                <h1 className="text-3xl font-bold text-yellow-400 mb-1 text-center arcade-font flicker-text" style={{ letterSpacing: '.06em' }}>COCKSLIGHTING</h1>
                 <p className="text-center text-gray-500 text-xs mb-6 tracking-wide">실시간 배드민턴 경기 관리</p>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <input type="text" name="name" placeholder="이름" value={formData.name} onChange={handleChange} className="w-full bg-gray-700 text-white p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-400" required />

@@ -7,7 +7,11 @@ import {
     db, storage, playersRef, gameStateRef, configRef, somoimSyncRef,
     firebaseService, readyPromise, runDailyResetIfDue, runAutoSomoimSyncIfDue,
     syncSomoimAttendees, getKstParts, forceReconnect,
+    startPresenceHeartbeat, isPresenceFresh,
 } from './lib/firebase';
+import { isSoundEnabled, setSoundEnabled, playStart, playFinish } from './lib/sound';
+import { CoxMark } from './components/Logo';
+import { ReactionLayer } from './components/Reactions';
 import {
     getAdminNames, generateId, filterTodayGames, calculateLocations,
     PLAYERS_PER_MATCH, LEVEL_ORDER,
@@ -37,6 +41,11 @@ export default function App() {
     // [선수 명단/소모임 동기화] 명단과 동기화 상태
     const [roster, setRoster] = useState({});
     const [somoimSync, setSomoimSync] = useState(null);
+    // [실시간 생명감] 접속 표시 + 라이브 리액션
+    const [presence, setPresence] = useState({});
+    const [liveReaction, setLiveReaction] = useState(null);
+    // [사운드 아이덴티티] 효과음 on/off (localStorage 연동)
+    const [soundOn, setSoundOn] = useState(isSoundEnabled);
     const [isRosterOpen, setIsRosterOpen] = useState(false);
        const [currentUser, setCurrentUser] = useState(null);
 
@@ -251,6 +260,8 @@ export default function App() {
             setSeasonConfig(firebaseService.getSeasonConfig());
             setRoster(firebaseService.getRoster());
             setSomoimSync(firebaseService.getSomoimSync());
+            setPresence(firebaseService.getPresence());
+            setLiveReaction(firebaseService.getLiveReaction());
             setIsLoading(false);
 
             const unsubscribe = firebaseService.subscribe(() => {
@@ -260,6 +271,8 @@ export default function App() {
                 setSeasonConfig(firebaseService.getSeasonConfig());
                 setRoster(firebaseService.getRoster());
                 setSomoimSync(firebaseService.getSomoimSync());
+                setPresence(firebaseService.getPresence());
+                setLiveReaction(firebaseService.getLiveReaction());
 
                 setCurrentUser(prevUser => {
                     if (!prevUser) return null;
@@ -298,6 +311,68 @@ export default function App() {
         const intervalId = setInterval(runAutoSomoimSyncIfDue, 60 * 1000);
         return () => clearInterval(intervalId);
     }, [isLoading]);
+
+    // [접속 표시] 입장해 있는 동안 70초마다 하트비트, 나가면 정리
+    useEffect(() => {
+        if (!currentUser?.id) return;
+        const stop = startPresenceHeartbeat(currentUser.id);
+        return stop;
+    }, [currentUser?.id]);
+
+    // [접속 표시] 지금 앱을 보고 있는(하트비트 3분 이내) 선수 id 집합
+    const onlineIds = useMemo(() => {
+        const set = new Set();
+        Object.entries(presence || {}).forEach(([id, at]) => {
+            if (isPresenceFresh(at)) set.add(id);
+        });
+        return set;
+    }, [presence]);
+    const onlineCount = useMemo(
+        () => Object.keys(activePlayers).filter(id => onlineIds.has(id)).length,
+        [activePlayers, onlineIds]
+    );
+
+    // ===================================================================================
+    // [고스트 무브] FLIP 애니메이션 — 카드가 순간이동하지 않고 옛 자리에서 새 자리로
+    // 미끄러지듯 이동한다. 관리자가 카드를 옮기면 모든 접속자의 화면에서 같은 연출.
+    //   원리: 렌더마다 data-flip-id 요소들의 위치를 기억해 두고, 다음 렌더에서 위치가
+    //   바뀐 요소를 "예전 위치 → 현 위치"로 transform 애니메이션한다. (First-Last-Invert-Play)
+    // ===================================================================================
+    const flipPositionsRef = useRef(new Map());
+    const flipPrevTabRef = useRef(activeTab);
+    React.useLayoutEffect(() => {
+        const tabChanged = flipPrevTabRef.current !== activeTab;
+        flipPrevTabRef.current = activeTab;
+
+        const next = new Map();
+        document.querySelectorAll('[data-flip-id]').forEach(el => {
+            next.set(el.dataset.flipId, { el, rect: el.getBoundingClientRect() });
+        });
+
+        // 탭을 전환한 직후에는 화면 전체가 바뀐 것이므로 연출하지 않는다
+        if (!tabChanged) {
+            next.forEach(({ el, rect }, id) => {
+                const old = flipPositionsRef.current.get(id);
+                if (!old) return;
+                const dx = old.left - rect.left;
+                const dy = old.top - rect.top;
+                if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+                // 섹션 간 이동 시 remount 애니메이션(slideInUp)과 겹치지 않게 끈다
+                el.style.animation = 'none';
+                el.animate(
+                    [
+                        { transform: `translate(${dx}px, ${dy}px) scale(1.06)`, boxShadow: '0 10px 26px -8px rgba(205,251,71,.45)', zIndex: 5 },
+                        { transform: 'none', boxShadow: '0 0 0 0 rgba(205,251,71,0)' },
+                    ],
+                    { duration: 480, easing: 'cubic-bezier(.2,.8,.2,1)' }
+                );
+            });
+        }
+
+        const positions = new Map();
+        next.forEach(({ rect }, id) => positions.set(id, { left: rect.left, top: rect.top }));
+        flipPositionsRef.current = positions;
+    });
 
 useEffect(() => {
         // [개선] 데이터 로딩 완료 시 이미지 미리 불러오기 (Pre-loading)
@@ -840,6 +915,7 @@ useEffect(() => {
             };
 
             await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다. 다른 관리자가 먼저 시작했을 수 있습니다.');
+            playStart(); // [사운드] 경기 시작 차임 (효과음 켠 사람만)
 
            setModal({type: null, data: null});
         };
@@ -925,6 +1001,7 @@ useEffect(() => {
                             newState.inProgressCourts[courtIndex] = null;
                             transaction.set(gameStateRef, newState);
                         });
+                        playFinish(); // [사운드] 경기 종료 마무리 화음 (효과음 켠 사람만)
                     } catch(e) {
                         console.error(e);
                         setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
@@ -1551,10 +1628,15 @@ useEffect(() => {
         />}
 
             <header className="cox-appbar">
+                {/* [브랜드 CI] 볼트 셔틀 마크 */}
+                <CoxMark size={36} className="cox-appbar-mark" />
                 <div className="cox-appbar-brand">
                     <div className="cox-hello">
                         <span className="cox-livedot"></span>
-                        <span>{isAdmin ? '👑 관리자' : `${currentUser.name} 님`} · 콕스라이팅</span>
+                        <span>
+                            {isAdmin ? '👑 관리자' : `${currentUser.name} 님`}
+                            {onlineCount > 0 && <b className="cox-online-count"> · {onlineCount}명 접속 중</b>}
+                        </span>
                     </div>
                     <h1 className="cox-title">
                         {activeTab === 'inProgress'
@@ -1616,6 +1698,19 @@ useEffect(() => {
                                     튜트리얼 다시 보기
                                 </button>
 
+                                {/* [사운드 아이덴티티] 효과음 on/off (기본 꺼짐) */}
+                                <button
+                                    className={`cox-menu-item ${soundOn ? 'accent' : ''}`}
+                                    onClick={() => {
+                                        const next = !soundOn;
+                                        setSoundEnabled(next);
+                                        setSoundOn(next);
+                                    }}
+                                >
+                                    <i className={`fas fa-volume-${soundOn ? 'high' : 'xmark'}`}></i>
+                                    효과음 {soundOn ? '켜짐' : '꺼짐'}
+                                </button>
+
                                 <button
                                     className="cox-menu-item danger"
                                     onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }}
@@ -1651,23 +1746,23 @@ useEffect(() => {
                     <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
-                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender}/>
-                                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
+                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} onlineIds={onlineIds} />
+                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
+                                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
                                 </div>
                             )}
                             {activeTab === 'inProgress' && (
                                 <div key="tab-inprogress" className="tab-fade-in">
-                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
+                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} />
                                 </div>
                             )}
                     </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} />
-                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender}/>
-                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} />
-                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} />
+                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} onlineIds={onlineIds} />
+                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
+                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
+                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} />
                 </div>
             )}
             </main>
@@ -1705,6 +1800,9 @@ useEffect(() => {
                     </button>
                 </nav>
             )}
+
+            {/* --- [라이브 리액션] 👏🔥💪 독 + 떠오르는 이모지 레이어 --- */}
+            <ReactionLayer liveReaction={liveReaction} myName={currentUser.name} />
 
             {/* --- [튜트리얼] 인사 화면 → 스포트라이트 안내 (가장 위에 뜬다) --- */}
             {tutorial?.phase === 'intro' && (
