@@ -298,6 +298,13 @@ body::before{
   border-color:rgba(236,72,153,.55); box-shadow:0 0 10px rgba(236,72,153,.25);
 }
 .auto-make-btn.female:hover:not(:disabled){ background:rgba(236,72,153,.30); box-shadow:0 0 14px rgba(236,72,153,.45); }
+/* [혼복 매칭] 남녀 버튼 아래 한 줄 전체를 차지하는 보라색 버튼 */
+.auto-make-btn.mixed{
+  grid-column:1 / -1;
+  color:#ede9fe; background:rgba(168,85,247,.18);
+  border-color:rgba(168,85,247,.55); box-shadow:0 0 10px rgba(168,85,247,.25);
+}
+.auto-make-btn.mixed:hover:not(:disabled){ background:rgba(168,85,247,.30); box-shadow:0 0 14px rgba(168,85,247,.45); }
 
 /* ── [매칭 연출] 새 자동 매칭 — 카드 4장이 슬롯머신처럼 착착 꽂히는 딜 애니메이션 ── */
 .auto-deal{

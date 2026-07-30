@@ -803,6 +803,52 @@ function findSingleBestMatch(pool, allPlayers, minScore, fairnessCtx) {
 }
 
 /**
+ * [혼복 매칭] 남자 2명 + 여자 2명 조합으로 "한 경기"를 만든다.
+ * 점수 기준(공평·다양성·급수·고인물 차단)은 calculateMatchScore를 그대로 사용하고,
+ * 조합만 남2+여2로 제한한다.
+ * @returns findSingleBestMatch와 동일한 형태 (+notEnough일 때 남/여 인원수)
+ */
+function findSingleBestMixedMatch(malePool, femalePool, allPlayers, minScore, fairnessCtx) {
+    const m = malePool ? malePool.length : 0;
+    const f = femalePool ? femalePool.length : 0;
+    if (m < 2 || f < 2) return { status: 'notEnough', maleCount: m, femaleCount: f };
+
+    const pool = [...malePool, ...femalePool];
+    const poolAvgGames = pool.reduce(
+        (acc, p) => acc + (allPlayers[p.id]?.todayRecentGames?.length ?? p.todayRecentGames?.length ?? 0), 0
+    ) / pool.length;
+
+    // 남자 2명 조합 × 여자 2명 조합 = 모든 혼복 조합
+    const malePairs = getAllCombinations(malePool, 2);
+    const femalePairs = getAllCombinations(femalePool, 2);
+    let best = null;
+    for (const mp of malePairs) {
+        for (const fp of femalePairs) {
+            const combo = [...mp, ...fp];
+            const score = calculateMatchScore(combo, allPlayers, poolAvgGames, fairnessCtx);
+            if (!best || score > best.score) best = { combo, score };
+        }
+    }
+    if (best.score < minScore) {
+        return { status: 'belowMinScore', bestScore: best.score, minScore };
+    }
+    return { status: 'ok', match: best.combo, score: best.score };
+}
+
+/**
+ * [혼복 매칭] 팀 나누기 — 혼복은 반드시 남1+여1 vs 남1+여1.
+ * 두 가지 짝 조합 중 팀 간 급수합 차이가 작은 쪽을 골라
+ * 슬롯 순서 [남A, 여A, 남B, 여B]로 반환한다. (0,1 = 팀A / 2,3 = 팀B)
+ */
+function getBestMixedLevelSplit(combo, allPlayers) {
+    const [m1, m2, f1, f2] = combo; // findSingleBestMixedMatch가 [남,남,여,여] 순으로 만든다
+    const v = (p) => getLevelValue(p, allPlayers);
+    const d1 = Math.abs((v(m1) + v(f1)) - (v(m2) + v(f2))); // (m1,f1) vs (m2,f2)
+    const d2 = Math.abs((v(m1) + v(f2)) - (v(m2) + v(f1))); // (m1,f2) vs (m2,f1)
+    return d1 <= d2 ? [m1, f1, m2, f2] : [m1, f2, m2, f1];
+}
+
+/**
  * [자동매칭] 전체 접속 인원(해당 성별: 경기대기 + 경기예정 + 경기진행, 휴식 제외)에 따른
  * "최소 매칭 점수" 커트라인.
  *
@@ -1238,6 +1284,15 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                         disabled={!!generatingGender}
                     >
                         {generatingGender === '여' ? '만드는 중...' : '👩 여자 매칭 만들기'}
+                    </button>
+                    {/* [혼복 매칭] 남2+여2 (팀은 남1+여1) */}
+                    <button
+                        type="button"
+                        className="auto-make-btn mixed"
+                        onClick={() => handleGenerateMatch('혼복')}
+                        disabled={!!generatingGender}
+                    >
+                        {generatingGender === '혼복' ? '만드는 중...' : '💑 혼복 매칭 만들기 (남1+여1 팀)'}
                     </button>
                 </div>
             )}
@@ -2268,11 +2323,13 @@ useEffect(() => {
         });
     }, [gameState, updateGameState]); // 트랜잭션 사용으로 allPlayers 의존성 제거됨
 
-    // [자동 매칭] '매칭 만들기' — 버튼을 누를 때마다 해당 성별로 "한 경기"만 생성한다.
+    // [자동 매칭] '매칭 만들기' — 버튼을 누를 때마다 "한 경기"만 생성한다.
     //  (기존: ON/OFF + 3초 주기 자동 생성 → 변경: 관리자가 누를 때마다 1경기)
     //  매칭 기준(점수·민감도·급수 밸런스·휴식 제외)은 기존 자동매칭과 완전히 동일하다.
+    //  gender: '남' | '여' | '혼복'(남2+여2, 팀은 남1+여1로 배치)
     const handleGenerateMatch = useCallback(async (gender) => {
-        const genderLabel = gender === '남' ? '남자' : '여자';
+        const isMixed = gender === '혼복';
+        const genderLabel = isMixed ? '혼복' : (gender === '남' ? '남자' : '여자');
 
         if (!isAdmin || isGeneratingRef.current) return;
         if (!allPlayers || !gameState) {
@@ -2292,38 +2349,46 @@ useEffect(() => {
 
             // '휴식' 중이거나 이미 '자동 매칭' 목록에 있는 선수는 풀에서 제외
             const pool = waitingPlayers.filter(p =>
-                p.gender === gender &&
+                (isMixed || p.gender === gender) &&
                 !autoMatchedPlayerIds.has(p.id) &&
                 !p.isResting // <-- 휴식 선수 제외
             );
 
             // 커트라인은 "대기석"이 아니라 현재 접속 중인 전체 인원 기준으로 계산한다.
             //  (경기대기 + 경기예정 + 경기진행에 있는 해당 성별 선수 모두 포함, 휴식/비활성 제외, 게스트 포함)
+            //  혼복은 남녀 전체 인원 기준.
             const genderActive = Object.values(allPlayers)
-                .filter(p => p.status === 'active' && !p.isResting && p.gender === gender);
+                .filter(p => p.status === 'active' && !p.isResting && (isMixed || p.gender === gender));
 
-            // [자동매칭] 민감도 프리셋 → 커트라인 오프셋 (성별별 따로 설정 가능)
+            // [자동매칭] 민감도 프리셋 → 커트라인 오프셋 (성별별 따로 설정 가능, 혼복은 대표 민감도 사용)
             const masterSens = config.sensitivity || 'normal';
             const perGender = !!config.perGenderSensitivity;
-            const sensKey = perGender
+            const sensKey = (perGender && !isMixed)
                 ? ((gender === '남' ? config.maleSensitivity : config.femaleSensitivity) || masterSens)
                 : masterSens;
             const sens = getSensitivity(sensKey);
             const appliedMinScore = getAutoMatchMinScore(genderActive.length) + sens.offset;
 
-            // [공평 강화] 대기시간/경기차 보정용 컨텍스트 (해당 성별 최다 경기수 기준)
+            // [공평 강화] 대기시간/경기차 보정용 컨텍스트 (해당 풀 최다 경기수 기준)
             const fairnessCtx = {
                 now: Date.now(),
                 maxGames: genderActive.reduce((m, p) => Math.max(m, p.todayRecentGames?.length ?? 0), 0),
             };
 
-            const result = findSingleBestMatch(pool, allPlayers, appliedMinScore, fairnessCtx);
+            const result = isMixed
+                ? findSingleBestMixedMatch(
+                    pool.filter(p => p.gender === '남'),
+                    pool.filter(p => p.gender === '여'),
+                    allPlayers, appliedMinScore, fairnessCtx)
+                : findSingleBestMatch(pool, allPlayers, appliedMinScore, fairnessCtx);
 
-            // (1) 매칭 가능한 대기 인원이 4명 미만
+            // (1) 매칭 가능한 대기 인원 부족
             if (result.status === 'notEnough') {
                 setModal({ type: 'alert', data: {
                     title: `${genderLabel} 매칭 불가`,
-                    body: `매칭할 수 있는 ${genderLabel} 대기 선수가 4명 이상이어야 합니다.\n(현재 ${result.poolSize}명 · 휴식/이미 매칭된 선수 제외)`
+                    body: isMixed
+                        ? `혼복 매칭은 남자 2명, 여자 2명 이상 대기해야 합니다.\n(현재 남 ${result.maleCount}명 · 여 ${result.femaleCount}명 · 휴식/이미 매칭된 선수 제외)`
+                        : `매칭할 수 있는 ${genderLabel} 대기 선수가 4명 이상이어야 합니다.\n(현재 ${result.poolSize}명 · 휴식/이미 매칭된 선수 제외)`
                 }});
                 return;
             }
@@ -2354,7 +2419,10 @@ useEffect(() => {
                 }
 
                 // [급수 밸런스] 두 팀(슬롯 0,1 / 2,3)의 급수가 최대한 맞도록 선수 순서 재배열
-                const balancedOrder = getBestLevelSplit(result.match, allPlayers).order;
+                // 혼복은 반드시 남1+여1 vs 남1+여1이 되도록 전용 분배를 쓴다
+                const balancedOrder = isMixed
+                    ? getBestMixedLevelSplit(result.match, allPlayers)
+                    : getBestLevelSplit(result.match, allPlayers).order;
                 const nextIndex = Object.keys(newState.autoMatches).length;
                 newState.autoMatches[String(nextIndex)] = balancedOrder.map(p => p.id); // Store IDs
                 return { newState };
@@ -2847,6 +2915,7 @@ useEffect(() => {
             courtCount={gameState.numInProgressCourts}
             seasonConfig={seasonConfig}
             activePlayers={activePlayers} /* [수정] '대기'가 아닌 '전체 활성' 선수 전달 */
+            allPlayers={allPlayers}       /* [하루 요약 카드] 나간 사람 포함 오늘 참석자 집계용 */
             currentUser={currentUser}     /* [관리자 권한] 자기 자신 해임 확인용 */
             roster={roster}               /* [관리자 권한] 이름 자동완성/명단 확인용 */
             onSave={handleSettingsUpdate} // [수정] App 컴포넌트에서 정의된 함수 전달
@@ -3445,12 +3514,15 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
 }
 
 // [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, currentUser, roster, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, allPlayers, currentUser, roster, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync }) {
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
     const [robotMaleCount, setRobotMaleCount] = useState(0);
     const [robotFemaleCount, setRobotFemaleCount] = useState(0);
+
+    // [하루 요약 카드] 모달 표시 상태
+    const [showDailySummary, setShowDailySummary] = useState(false);
 
     // 수동 선수 추가 폼 상태
     const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
@@ -3841,6 +3913,21 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                         </p>
                     </div>
 
+                 {/* --- [하루 요약 카드] 오늘의 운동 리포트 공유 --- */}
+                    <div className="bg-gray-700 p-3 rounded-lg space-y-2" data-tut="set-summary">
+                        <label className="font-semibold block text-center border-b border-gray-600 pb-2">📸 오늘의 운동 요약</label>
+                        <button
+                            onClick={() => setShowDailySummary(true)}
+                            className="w-full arcade-button bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-lg"
+                        >
+                            📸 하루 요약 카드 만들기
+                        </button>
+                        <p className="text-[10px] text-gray-500 text-center leading-relaxed">
+                            오늘 참석 멤버(게스트 포함)·총 경기 수·1인 평균 경기 수를<br/>
+                            멋진 카드 한 장으로 만들어 <b>단톡방에 바로 공유</b>합니다.
+                        </p>
+                    </div>
+
                  {/* --- 선수 수동 추가 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg space-y-2" data-tut="set-addplayer">
                         <div
@@ -3960,6 +4047,9 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 
             {/* [자동매칭] 사용설명서 모달 */}
             {showAutoGuide && <AutoMatchGuideModal onClose={() => setShowAutoGuide(false)} />}
+
+            {/* [하루 요약 카드] 미리보기/공유 모달 */}
+            {showDailySummary && <DailySummaryModal allPlayers={allPlayers} onClose={() => setShowDailySummary(false)} />}
         </div>
     );
 }
@@ -3994,8 +4084,9 @@ function AutoMatchGuideModal({ onClose }) {
                     <div>
                         <p className="font-bold text-green-300 mb-1">③ 만드는 법</p>
                         <p className="text-gray-300 leading-relaxed">
-                            메인 화면 '🤖 자동 매칭'의 <b className="text-blue-300">👨 남자 매칭 만들기</b> / <b className="text-pink-300">👩 여자 매칭 만들기</b>를 누르면
+                            메인 화면 '🤖 자동 매칭'의 <b className="text-blue-300">👨 남자</b> / <b className="text-pink-300">👩 여자</b> / <b className="text-purple-300">💑 혼복</b> 매칭 만들기를 누르면
                             <b> 누를 때마다 한 경기</b>가 만들어집니다. 두 경기가 필요하면 두 번 누르면 돼요.
+                            <br/>혼복은 <b>남2+여2</b>를 뽑아 <b>남1+여1 팀</b>으로 자동 배치합니다.
                         </p>
                     </div>
                     <div>
@@ -4348,6 +4439,275 @@ function SomoimSyncResultModal({ result, onClose }) {
 }
 
 // ===================================================================================
+// [하루 요약 카드] 오늘의 운동 리포트 — 관리자 설정 ▸ 📸 하루 요약 카드
+// -----------------------------------------------------------------------------------
+// 오늘 참석한 모든 인원(나간 사람·게스트 포함)과 경기 통계를 모아
+// 단톡방에 공유할 수 있는 세로형 이미지 카드 한 장을 캔버스로 그린다.
+// 공유 버튼 → 폰 공유 시트(카카오톡 선택) / 지원 안 되면 이미지 저장 폴백.
+// ===================================================================================
+
+function computeDailySummary(allPlayers) {
+    const isToday = (iso) => {
+        if (!iso) return false;
+        const d = new Date(iso);
+        return !isNaN(d) && d.toDateString() === new Date().toDateString();
+    };
+    // 오늘 참석 = 오늘 입장했거나(entryTime) 오늘 경기 기록이 있는 선수 (테스트 로봇 제외)
+    const attendees = Object.values(allPlayers || {}).filter(p =>
+        p && p.name && !String(p.id || '').startsWith('Test_') &&
+        (isToday(p.entryTime) || (p.todayRecentGames || []).some(g => isToday(g.timestamp)))
+    );
+    const gamesOf = (p) => (p.todayRecentGames || []).filter(g => isToday(g.timestamp)).length;
+
+    // 총 경기 수: 4명에게 같은 timestamp로 기록되므로 고유 timestamp 개수 = 실제 경기 수
+    const tsSet = new Set();
+    attendees.forEach(p => (p.todayRecentGames || []).forEach(g => {
+        if (!g.isManual && isToday(g.timestamp)) tsSet.add(g.timestamp);
+    }));
+    const totalPart = attendees.reduce((a, p) => a + gamesOf(p), 0);
+    const sorted = [...attendees].sort((a, b) => gamesOf(b) - gamesOf(a) || (a.name || '').localeCompare(b.name || '', 'ko'));
+    const ace = sorted[0] && gamesOf(sorted[0]) > 0 ? { name: sorted[0].name, games: gamesOf(sorted[0]) } : null;
+
+    return {
+        date: new Date(),
+        attendees: sorted.map(p => ({ name: p.name, level: p.level, isGuest: !!p.isGuest, games: gamesOf(p) })),
+        memberCount: attendees.filter(p => !p.isGuest).length,
+        guestCount: attendees.filter(p => p.isGuest).length,
+        maleCount: attendees.filter(p => p.gender === '남').length,
+        femaleCount: attendees.filter(p => p.gender === '여').length,
+        totalGames: tsSet.size,
+        avgGames: attendees.length ? Math.round((totalPart / attendees.length) * 10) / 10 : 0,
+        ace,
+    };
+}
+
+// 요약 카드를 캔버스에 그린다 (세로형, 참석자 수에 따라 높이 자동)
+function drawSummaryCard(canvas, s) {
+    const W = 1080, PAD = 64;
+    const VOLT = '#CDFB47', BG = '#0A0A0C', CARD = '#171A21',
+          LINE = 'rgba(255,255,255,0.09)', TEXT = '#F3F5F8', DIM = '#8C93A1';
+    const ctx = canvas.getContext('2d');
+    const rr = (x, y, w, h, r) => {
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
+        else ctx.rect(x, y, w, h);
+    };
+
+    // ── 참석자 칩 줄 수를 먼저 계산해 캔버스 높이를 정한다 ──
+    const chipFont = '700 30px "Noto Sans KR", sans-serif';
+    const chipH = 62, chipGapX = 14, chipGapY = 16, innerW = W - PAD * 2;
+    ctx.font = chipFont;
+    const chips = s.attendees.map(a => {
+        const label = a.games > 0 ? `${a.name} ${a.games}` : a.name;
+        return { ...a, label, w: Math.ceil(ctx.measureText(label).width) + 74 };
+    });
+    let rows = chips.length ? 1 : 0, x = 0;
+    chips.forEach(c => {
+        if (x > 0 && x + c.w > innerW) { rows++; x = 0; }
+        x += c.w + chipGapX;
+    });
+
+    const chipsStartY = s.ace ? 928 : 812;
+    const H = chipsStartY + rows * (chipH + chipGapY) + 172;
+    canvas.width = W; canvas.height = H;
+
+    // ── 배경 ──
+    ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+    let grd = ctx.createRadialGradient(W * 0.2, -100, 0, W * 0.2, -100, 900);
+    grd.addColorStop(0, 'rgba(22,50,58,0.75)'); grd.addColorStop(1, 'rgba(22,50,58,0)');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+    grd = ctx.createRadialGradient(W, H, 0, W, H, 800);
+    grd.addColorStop(0, 'rgba(42,34,16,0.6)'); grd.addColorStop(1, 'rgba(42,34,16,0)');
+    ctx.fillStyle = grd; ctx.fillRect(0, 0, W, H);
+
+    // ── 헤더 ──
+    ctx.fillStyle = VOLT; ctx.fillRect(0, 0, W, 10);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = DIM; ctx.font = '700 24px "Noto Sans KR", sans-serif';
+    ctx.fillText('C O C K S L I G H T I N G   O F F I C I A L', PAD, 88);
+    ctx.textAlign = 'right';
+    ctx.fillText('DAILY REPORT', W - PAD, 88);
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = VOLT; ctx.font = '900 104px "Noto Sans KR", sans-serif';
+    ctx.fillText('콕스라이팅', PAD, 212);
+    ctx.fillStyle = DIM; ctx.font = '400 34px "Anton", "Noto Sans KR", sans-serif';
+    ctx.fillText('TODAY MATCH REPORT', PAD + 6, 262);
+
+    const d = s.date;
+    const dateStr = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${['일','월','화','수','목','금','토'][d.getDay()]})`;
+    ctx.fillStyle = TEXT; ctx.font = '700 42px "Noto Sans KR", sans-serif';
+    ctx.fillText(dateStr, PAD, 340);
+
+    // ── 통계 타일 3개 ──
+    const tileY = 400, tileH = 210, tileGap = 22;
+    const tileW = (innerW - tileGap * 2) / 3;
+    const tiles = [
+        { v: `${s.attendees.length}`, u: '명', k: `참석 인원 (남${s.maleCount}·여${s.femaleCount})` },
+        { v: `${s.totalGames}`, u: '경기', k: '오늘 총 경기' },
+        { v: `${s.avgGames}`, u: '게임', k: '1인 평균' },
+    ];
+    tiles.forEach((t, i) => {
+        const tx = PAD + i * (tileW + tileGap);
+        ctx.fillStyle = CARD; rr(tx, tileY, tileW, tileH, 26); ctx.fill();
+        ctx.strokeStyle = LINE; ctx.lineWidth = 2; rr(tx, tileY, tileW, tileH, 26); ctx.stroke();
+        ctx.fillStyle = i === 0 ? VOLT : TEXT;
+        ctx.font = '900 84px "Noto Sans KR", sans-serif';
+        const vw = ctx.measureText(t.v).width;
+        ctx.fillText(t.v, tx + 34, tileY + 118);
+        ctx.fillStyle = DIM; ctx.font = '700 32px "Noto Sans KR", sans-serif';
+        ctx.fillText(t.u, tx + 34 + vw + 8, tileY + 116);
+        ctx.font = '500 26px "Noto Sans KR", sans-serif';
+        ctx.fillText(t.k, tx + 34, tileY + 172);
+    });
+
+    // ── 오늘의 에이스 ──
+    if (s.ace) {
+        const ay = 664, ah = 122;
+        ctx.fillStyle = 'rgba(205,251,71,0.10)'; rr(PAD, ay, innerW, ah, 26); ctx.fill();
+        ctx.strokeStyle = 'rgba(205,251,71,0.45)'; ctx.lineWidth = 2; rr(PAD, ay, innerW, ah, 26); ctx.stroke();
+        ctx.font = '900 46px "Noto Sans KR", sans-serif'; ctx.fillStyle = TEXT;
+        ctx.fillText(`🔥 오늘의 에이스  ${s.ace.name}`, PAD + 40, ay + 78);
+        ctx.textAlign = 'right'; ctx.fillStyle = VOLT;
+        ctx.fillText(`${s.ace.games}경기`, W - PAD - 40, ay + 78);
+        ctx.textAlign = 'left';
+    }
+
+    // ── 참석 멤버 칩 ──
+    ctx.fillStyle = VOLT; ctx.font = '700 27px "Noto Sans KR", sans-serif';
+    const label = `TODAY'S PLAYERS · ${s.attendees.length}명${s.guestCount > 0 ? ` (게스트 ${s.guestCount})` : ''}`;
+    ctx.fillText(label, PAD, chipsStartY - 34);
+
+    let cx = PAD, cy = chipsStartY;
+    chips.forEach(c => {
+        if (cx > PAD && cx + c.w > W - PAD) { cx = PAD; cy += chipH + chipGapY; }
+        ctx.fillStyle = CARD; rr(cx, cy, c.w, chipH, 31); ctx.fill();
+        ctx.strokeStyle = LINE; ctx.lineWidth = 2; rr(cx, cy, c.w, chipH, 31); ctx.stroke();
+        // 급수 색 점 (게스트는 하늘색)
+        ctx.fillStyle = getLevelColor(c.level, c.isGuest);
+        ctx.beginPath(); ctx.arc(cx + 32, cy + chipH / 2, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = TEXT; ctx.font = chipFont;
+        ctx.fillText(c.label, cx + 54, cy + chipH / 2 + 11);
+        cx += c.w + chipGapX;
+    });
+
+    // ── 푸터 ──
+    const fy = H - 96;
+    ctx.strokeStyle = LINE; ctx.beginPath(); ctx.moveTo(PAD, fy - 42); ctx.lineTo(W - PAD, fy - 42); ctx.stroke();
+    ctx.fillStyle = TEXT; ctx.font = '700 34px "Noto Sans KR", sans-serif';
+    ctx.fillText('오늘도 함께해서 즐거웠습니다. 다음 운동에서 만나요! 🏸', PAD, fy + 10);
+    ctx.fillStyle = DIM; ctx.font = '500 24px "Noto Sans KR", sans-serif';
+    ctx.fillText('⚡ COCKSLIGHTING · 실시간 배드민턴 매칭 시스템', PAD, fy + 56);
+}
+
+// [하루 요약 카드] 미리보기 + 공유/저장 모달
+function DailySummaryModal({ allPlayers, onClose }) {
+    const [imgUrl, setImgUrl] = useState(null);
+    const [blob, setBlob] = useState(null);
+    const [shareMsg, setShareMsg] = useState(null);
+    const summary = useMemo(() => computeDailySummary(allPlayers), [allPlayers]);
+
+    useEffect(() => {
+        let cancelled = false;
+        let objectUrl = null;
+        (async () => {
+            // 캔버스에서 웹폰트가 바로 나오도록 로드를 기다린다
+            try {
+                await Promise.all([
+                    document.fonts.load('900 104px "Noto Sans KR"'),
+                    document.fonts.load('700 30px "Noto Sans KR"'),
+                    document.fonts.load('400 34px "Anton"'),
+                ]);
+            } catch (e) { /* 폰트 실패해도 시스템 폰트로 그린다 */ }
+            if (cancelled) return;
+            const canvas = document.createElement('canvas');
+            drawSummaryCard(canvas, summary);
+            canvas.toBlob((b) => {
+                if (cancelled || !b) return;
+                objectUrl = URL.createObjectURL(b);
+                setBlob(b);
+                setImgUrl(objectUrl);
+            }, 'image/png');
+        })();
+        return () => { cancelled = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+    }, [summary]);
+
+    const fileName = () => {
+        const d = summary.date;
+        return `콕스라이팅_${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}_운동요약.png`;
+    };
+
+    const handleDownload = () => {
+        if (!blob) return;
+        const a = document.createElement('a');
+        a.href = imgUrl; a.download = fileName(); a.click();
+        setShareMsg('이미지가 저장되었어요. 단톡방에 사진으로 첨부해주세요!');
+    };
+
+    const handleShare = async () => {
+        if (!blob) return;
+        const file = new File([blob], fileName(), { type: 'image/png' });
+        // 폰 공유 시트(카카오톡 선택 가능) — 미지원 환경은 저장 폴백
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    files: [file],
+                    title: '콕스라이팅 오늘의 운동',
+                    text: `🏸 콕스라이팅 오늘의 운동 — 참석 ${summary.attendees.length}명 · 총 ${summary.totalGames}경기`,
+                });
+            } catch (e) {
+                if (e && e.name !== 'AbortError') handleDownload();
+            }
+            return;
+        }
+        handleDownload();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[70] p-4" onClick={onClose}>
+            <div
+                className="bg-gray-800 rounded-2xl w-full max-w-md text-white shadow-lg flex flex-col"
+                style={{ maxHeight: '92vh' }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="flex justify-between items-center p-4 pb-3 flex-shrink-0 border-b border-gray-700">
+                    <h3 className="text-lg font-bold text-yellow-400 arcade-font">📸 하루 요약 카드</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white leading-none">&times;</button>
+                </div>
+
+                <div className="flex-grow overflow-y-auto p-4">
+                    {!imgUrl ? (
+                        <div className="text-center text-gray-400 py-16">카드를 만들고 있어요...</div>
+                    ) : (
+                        <img src={imgUrl} alt="오늘의 운동 요약 카드" className="w-full rounded-xl shadow-2xl" />
+                    )}
+                    {shareMsg && (
+                        <p className="text-center text-xs text-green-300 mt-3 whitespace-pre-line">{shareMsg}</p>
+                    )}
+                </div>
+
+                <div className="p-4 flex flex-col gap-2 flex-shrink-0 border-t border-gray-700">
+                    <button
+                        onClick={handleShare}
+                        disabled={!blob}
+                        className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg disabled:opacity-50"
+                    >
+                        📤 단톡방에 공유하기
+                    </button>
+                    <button
+                        onClick={handleDownload}
+                        disabled={!blob}
+                        className="w-full arcade-button bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 rounded-lg text-sm disabled:opacity-50"
+                    >
+                        💾 이미지로 저장
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ===================================================================================
 // [튜트리얼] 첫 접속 온보딩 — 관리자용 / 사용자용
 // -----------------------------------------------------------------------------------
 // 다른 앱들처럼 실제 화면의 해당 부분에 스포트라이트를 비추고 말풍선으로 설명한다.
@@ -4438,9 +4798,10 @@ const TUTORIAL_ADMIN_STEPS = [
         target: '[data-tut="auto-make"]', tab: 'matching',
         title: '② 자동 매칭 — 가장 많이 쓰실 기능',
         body: (<>
-            <em>👨 남자 매칭 만들기</em> / <em>👩 여자 매칭 만들기</em>를 누르면
+            <em>👨 남자</em> / <em>👩 여자</em> / <em>💑 혼복</em> 매칭 만들기를 누르면
             <b> 누를 때마다 한 경기</b>가 만들어집니다.
-            <br/>두 경기가 필요하면 두 번 누르시면 돼요. 그게 전부입니다!
+            두 경기가 필요하면 두 번 누르시면 돼요.
+            <br/>혼복은 <b>남2+여2</b>를 뽑아 자동으로 <b>남1+여1 팀</b>으로 나눠줍니다.
         </>),
     },
     {
@@ -4596,8 +4957,17 @@ const TUTORIAL_ADMIN_STEPS = [
         </>),
     },
     {
+        surface: 'settings', target: '[data-tut="set-summary"]',
+        title: '설정 ⑥ 하루 요약 카드',
+        body: (<>
+            운동이 끝나면 눌러보세요. 오늘 <b>참석 멤버 · 총 경기 수 · 1인 평균</b>이 담긴
+            멋진 카드 한 장이 만들어집니다.
+            <br/><b>📤 공유하기</b>를 누르면 단톡방에 바로 올릴 수 있어요. 모임 자랑에 최고!
+        </>),
+    },
+    {
         surface: 'roster', target: '[data-tut="roster"]',
-        title: '설정 ⑥ 선수 정보 관리 (명단)',
+        title: '설정 ⑦ 선수 정보 관리 (명단)',
         body: (<>
             여기 등록된 사람만 <b>이름만 적고 입장</b>할 수 있어요. (급수·성별을 자동으로 가져갑니다)
             <ul>
@@ -4610,7 +4980,7 @@ const TUTORIAL_ADMIN_STEPS = [
     },
     {
         surface: 'settings', target: '[data-tut="set-addplayer"]',
-        title: '설정 ⑦ 선수 임의 추가',
+        title: '설정 ⑧ 선수 임의 추가',
         body: (<>
             휴대폰이 없거나 급하게 온 손님을 <b>관리자가 대신 입장</b>시킵니다.
             이름·급수·성별만 넣으면 되고, 모임 회원이 아니면 <b>게스트</b>에 체크하세요.
@@ -4618,7 +4988,7 @@ const TUTORIAL_ADMIN_STEPS = [
     },
     {
         surface: 'settings', target: '[data-tut="set-advanced"]',
-        title: '설정 ⑧ 고급 기능 (조심!)',
+        title: '설정 ⑨ 고급 기능 (조심!)',
         body: (<>
             <ul>
                 <li><b>🤖 테스트 로봇</b> — 연습용 가짜 선수 만들기</li>
