@@ -563,15 +563,16 @@ useEffect(() => {
     }, []);
 
     // [히든 키] 대기자 전체 내보내기 — 눈에 보이는 버튼 대신, 왼쪽 위 콕스라이팅 로고를
-    // 연속 7번 탭하면 키 입력창이 열리고, 히든 키가 맞아야만 실행된다.
+    // 연속 5번 탭(탭 사이 3초 이내)하면 키 입력창이 열리고, 히든 키가 맞아야만 실행된다.
+    // onPointerDown: 손가락이 닿는 순간 바로 세므로 빠르게 탭해도 놓치지 않는다.
     const logoTapRef = useRef({ count: 0, last: 0 });
     const handleLogoSecretTap = useCallback(() => {
         if (!isAdmin) return;
         const now = Date.now();
-        if (now - logoTapRef.current.last > 1500) logoTapRef.current.count = 0;
+        if (now - logoTapRef.current.last > 3000) logoTapRef.current.count = 0;
         logoTapRef.current.last = now;
         logoTapRef.current.count += 1;
-        if (logoTapRef.current.count >= 7) {
+        if (logoTapRef.current.count >= 5) {
             logoTapRef.current.count = 0;
             setModal({ type: 'hiddenKey', data: {} });
         }
@@ -1682,8 +1683,16 @@ useEffect(() => {
         />}
 
             <header className="cox-appbar">
-                {/* [브랜드 CI] 볼트 셔틀 마크 — [히든 키] 연속 7번 탭 시 전체 내보내기 키 입력창 */}
-                <span onClick={handleLogoSecretTap} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                {/* [브랜드 CI] 볼트 셔틀 마크 — [히든 키] 연속 5번 탭 시 전체 내보내기 키 입력창 */}
+                <span
+                    onPointerDown={handleLogoSecretTap}
+                    style={{
+                        display: 'flex', alignItems: 'center', flexShrink: 0,
+                        // 보이는 크기는 그대로 두고 손가락이 닿는 영역만 사방 12px 넓힌다
+                        padding: 12, margin: -12,
+                        touchAction: 'manipulation', userSelect: 'none', WebkitUserSelect: 'none',
+                    }}
+                >
                     <CoxMark size={36} className="cox-appbar-mark" />
                 </span>
                 <div className="cox-appbar-brand">
