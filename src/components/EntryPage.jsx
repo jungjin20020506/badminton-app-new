@@ -41,6 +41,13 @@ function EntryPage({ onEnter, roster }) {
         const name = (formData.name || '').trim();
         if (!name) { setEntryError('이름을 입력해주세요.'); return; }
 
+        // [유령 관리자] 이름을 '관리자'로 입력하면 선수 카드 없이 관리자 기능만 사용한다.
+        // 명단/게스트 검사를 모두 건너뛴다 (급수·성별 불필요).
+        if (name === '관리자') {
+            onEnter({ name, isGhostAdmin: true });
+            return;
+        }
+
         if (formData.isGuest) {
             onEnter({ name, level: formData.level, gender: formData.gender, isGuest: true });
             return;

@@ -31,12 +31,14 @@ const readLocalTutorialSeen = (playerId) => {
 };
 
 // 시청 기록 저장 — 실패해도 튜트리얼 진행을 막지 않는다(로컬 기록은 남는다).
-const markTutorialSeen = async (playerId, mode) => {
+const markTutorialSeen = async (playerId, mode, { remote = true } = {}) => {
     if (!playerId || !mode) return;
     const now = new Date().toISOString();
     try {
         localStorage.setItem(TUT_LS_KEY(playerId), JSON.stringify({ ...readLocalTutorialSeen(playerId), [mode]: now }));
     } catch (e) { /* 시크릿 모드 등 */ }
+    // [유령 관리자] 선수 문서가 없는 유령 모드는 remote: false로 로컬에만 기록한다
+    if (!remote) return;
     try {
         await setDoc(doc(playersRef, playerId), { tutorialSeen: { [mode]: now } }, { merge: true });
     } catch (e) {

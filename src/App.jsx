@@ -33,6 +33,14 @@ import {
 } from './tutorial/Tutorial';
 
 // ===================================================================================
+// [유령 관리자] 이름을 '관리자'로 입장하면 선수 카드(Firestore 문서)를 만들지 않고
+// 관리자 기능만 사용한다. 대기 명단·접속 표시 어디에도 나타나지 않는다 — 유령처럼.
+// ===================================================================================
+const GHOST_ADMIN_NAME = '관리자';
+const GHOST_ADMIN_LS_KEY = 'badminton-ghost-admin';
+const makeGhostAdminUser = () => ({ id: 'ghost-admin', name: GHOST_ADMIN_NAME, isGhostAdmin: true });
+
+// ===================================================================================
 // Main App Component
 // ===================================================================================
 export default function App() {
@@ -206,7 +214,8 @@ export default function App() {
 
     // [관리자 권한] 설정에서 관리하는 관리자 목록(config/season.adminNames) 기준으로 판정
     const adminNames = useMemo(() => getAdminNames(seasonConfig), [seasonConfig]);
-    const isAdmin = !!currentUser && adminNames.includes(currentUser.name);
+    // [유령 관리자] 유령 모드는 관리자 목록과 무관하게 항상 관리자 권한
+    const isAdmin = !!currentUser && (currentUser.isGhostAdmin || adminNames.includes(currentUser.name));
     const autoMatches = gameState?.autoMatches || {};
     // [자동매칭] '매칭 만들기' 중복 실행 방지 (버튼 연타 방지)
     const isGeneratingRef = useRef(false);
@@ -274,11 +283,16 @@ export default function App() {
             const playersFromDB = firebaseService.getAllPlayers();
             setAllPlayers(playersFromDB);
 
-            const savedUserId = localStorage.getItem('badminton-currentUser-id');
-            if (savedUserId && playersFromDB[savedUserId] && playersFromDB[savedUserId].status === 'active') {
-                setCurrentUser(playersFromDB[savedUserId]);
-            } else if (savedUserId) {
-                localStorage.removeItem('badminton-currentUser-id');
+            // [유령 관리자] 유령 모드로 입장해 있었다면 선수 문서 없이 그대로 복원한다
+            if (localStorage.getItem(GHOST_ADMIN_LS_KEY) === '1') {
+                setCurrentUser(makeGhostAdminUser());
+            } else {
+                const savedUserId = localStorage.getItem('badminton-currentUser-id');
+                if (savedUserId && playersFromDB[savedUserId] && playersFromDB[savedUserId].status === 'active') {
+                    setCurrentUser(playersFromDB[savedUserId]);
+                } else if (savedUserId) {
+                    localStorage.removeItem('badminton-currentUser-id');
+                }
             }
 
             setGameState(firebaseService.getGameState());
@@ -299,6 +313,8 @@ export default function App() {
 
                 setCurrentUser(prevUser => {
                     if (!prevUser) return null;
+                    // [유령 관리자] 선수 문서가 없으므로 자동 로그아웃 검사에서 제외
+                    if (prevUser.isGhostAdmin) return prevUser;
                     const updatedUser = updatedPlayers[prevUser.id];
                     if (!updatedUser || updatedUser.status !== 'active') {
                         localStorage.removeItem('badminton-currentUser-id');
@@ -337,10 +353,11 @@ export default function App() {
 
     // [접속 표시] 입장해 있는 동안 70초마다 하트비트, 나가면 정리
     useEffect(() => {
-        if (!currentUser?.id) return;
+        // [유령 관리자] 유령 모드는 접속 표시(하트비트)도 남기지 않는다
+        if (!currentUser?.id || currentUser.isGhostAdmin) return;
         const stop = startPresenceHeartbeat(currentUser.id);
         return stop;
-    }, [currentUser?.id]);
+    }, [currentUser?.id, currentUser?.isGhostAdmin]);
 
     // [접속 표시] 접속 중 인원수 (현황판에 있는 선수 기준)
     const onlineCount = useMemo(
@@ -474,7 +491,8 @@ useEffect(() => {
         setIsSettingsOpen(false);
         setIsRosterOpen(false);
         setActiveTab('matching'); // 끝나면 기본 화면(경기 예정 탭)으로
-        if (currentUser) markTutorialSeen(currentUser.id, mode);
+        // [유령 관리자] 선수 문서가 없으므로 시청 기록은 로컬에만 남긴다
+        if (currentUser) markTutorialSeen(currentUser.id, mode, { remote: !currentUser.isGhostAdmin });
     }, [currentUser]);
 
     const handleTutorialNext = useCallback(() => {
@@ -615,6 +633,14 @@ useEffect(() => {
         const isGuest = !!formData.isGuest;
         if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' }}); return; }
 
+        // [유령 관리자] '관리자' 이름 입장 — 선수 카드를 만들지 않고 로컬에만 기록한다
+        if (formData.isGhostAdmin || name === GHOST_ADMIN_NAME) {
+            localStorage.setItem(GHOST_ADMIN_LS_KEY, '1');
+            localStorage.removeItem('badminton-currentUser-id');
+            setCurrentUser(makeGhostAdminUser());
+            return;
+        }
+
         // [선수 명단] 일반(회원) 선수는 급수를 선택하지 않는다 — 명단에서 자동으로 가져온다.
         // 명단에 없으면 입장 불가 (EntryPage에서 1차로 걸러지지만, 이중 안전장치)
         if (!isGuest) {
@@ -664,6 +690,19 @@ useEffect(() => {
 
    const handleLogout = useCallback(() => {
         if (!currentUser) return;
+        // [유령 관리자] 서버에 아무 기록이 없으므로 로컬 상태만 정리하면 끝
+        if (currentUser.isGhostAdmin) {
+            setModal({ type: 'confirm', data: {
+                title: '나가기',
+                body: '관리자 모드를 종료하시겠습니까?',
+                onConfirm: () => {
+                    localStorage.removeItem(GHOST_ADMIN_LS_KEY);
+                    setCurrentUser(null);
+                    setModal({ type: null, data: null });
+                }
+            }});
+            return;
+        }
         setModal({ type: 'confirm', data: {
             title: '나가기',
             body: '나가시면 현황판에서 제외됩니다. 정말 나가시겠습니까? (기록은 유지됩니다)',
@@ -1535,7 +1574,8 @@ useEffect(() => {
 
 
     const handleToggleRest = useCallback(async () => {
-        if (!currentUser) return;
+        // [유령 관리자] 선수 카드가 없으므로 휴식 기능 없음
+        if (!currentUser || currentUser.isGhostAdmin) return;
         const playerDocRef = doc(playersRef, currentUser.id);
         const newRestingState = !currentUser.isResting;
 
@@ -1555,7 +1595,8 @@ useEffect(() => {
 
     // [COX UI] 하단 FAB: 내 카드 위치로 스크롤 + 하이라이트 (모바일에선 알맞은 탭으로 전환)
     const handleLocateMe = useCallback(() => {
-        if (!currentUser) return;
+        // [유령 관리자] 내 카드가 없으므로 찾을 위치도 없다
+        if (!currentUser || currentUser.isGhostAdmin) return;
         const onCourt = inProgressPlayerIds.has(currentUser.id);
         if (isMobile) setActiveTab(onCourt ? 'inProgress' : 'matching');
         setTimeout(() => {
@@ -1717,7 +1758,7 @@ useEffect(() => {
                         aria-label="프로필 메뉴"
                         data-tut="avatar"
                     >
-                        {currentUser.name.slice(-2)}
+                        {currentUser.isGhostAdmin ? '👻' : currentUser.name.slice(-2)}
                     </button>
 
                     {isProfileMenuOpen && (
@@ -1726,21 +1767,24 @@ useEffect(() => {
                             <div className="cox-menu" data-tut="menu">
                                 <div className="cox-menu-head">
                                     <div className={`cox-avatar-btn ${isAdmin ? 'admin' : ''}`} style={{ width: 38, height: 38, borderRadius: 12, pointerEvents: 'none' }}>
-                                        {currentUser.name.slice(-2)}
+                                        {currentUser.isGhostAdmin ? '👻' : currentUser.name.slice(-2)}
                                     </div>
                                     <div className="min-w-0">
                                         <div className="nm truncate">{currentUser.name}</div>
-                                        <div className="rl">{isAdmin ? '관리자 계정' : `${currentUser.level} · ${currentUser.isGuest ? '게스트' : '회원'}`}</div>
+                                        <div className="rl">{currentUser.isGhostAdmin ? '유령 모드 · 선수 카드 없음' : isAdmin ? '관리자 계정' : `${currentUser.level} · ${currentUser.isGuest ? '게스트' : '회원'}`}</div>
                                     </div>
                                 </div>
 
-                                <button
-                                    className={`cox-menu-item ${currentUser.isResting ? 'accent' : ''}`}
-                                    onClick={() => { setIsProfileMenuOpen(false); handleToggleRest(); }}
-                                >
-                                    <i className={`fas fa-${currentUser.isResting ? 'play' : 'mug-hot'}`}></i>
-                                    {currentUser.isResting ? '경기 복귀하기' : '잠시 휴식하기'}
-                                </button>
+                                {/* [유령 관리자] 선수 카드가 없으므로 휴식 기능은 숨긴다 */}
+                                {!currentUser.isGhostAdmin && (
+                                    <button
+                                        className={`cox-menu-item ${currentUser.isResting ? 'accent' : ''}`}
+                                        onClick={() => { setIsProfileMenuOpen(false); handleToggleRest(); }}
+                                    >
+                                        <i className={`fas fa-${currentUser.isResting ? 'play' : 'mug-hot'}`}></i>
+                                        {currentUser.isResting ? '경기 복귀하기' : '잠시 휴식하기'}
+                                    </button>
+                                )}
 
                                 {isAdmin && (
                                     <button
