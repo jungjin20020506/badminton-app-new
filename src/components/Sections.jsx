@@ -3,22 +3,7 @@ import { PLAYERS_PER_MATCH } from '../lib/helpers';
 import { playDeal } from '../lib/sound';
 import { PlayerCard, EmptySlot, LeftPlayerCard, CourtTimer } from './PlayerCard';
 
-const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onClearAllWaitingPlayers, onlineIds }) => {
-    // [히든 키] 전체 내보내기 히든 제스처 — 관리자가 대기 명단의 인원수 배지를
-    // 1.5초 안에 이어서 7번 탭하면 히든 키 입력창이 열린다. (버튼은 화면에서 제거)
-    const secretTapRef = useRef({ count: 0, last: 0 });
-    const handleSecretTap = () => {
-        if (!isAdmin) return;
-        const now = Date.now();
-        if (now - secretTapRef.current.last > 1500) secretTapRef.current.count = 0;
-        secretTapRef.current.last = now;
-        secretTapRef.current.count += 1;
-        if (secretTapRef.current.count >= 7) {
-            secretTapRef.current.count = 0;
-            onClearAllWaitingPlayers();
-        }
-    };
-
+const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onlineIds }) => {
     const renderPlayerGrid = (players) => (
         <div className="grid grid-cols-5 gap-1">
             {players.map(player => (
@@ -46,7 +31,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                 <div className="lbl">
                     <span className="tick"></span>
                     <span>대기 명단</span>
-                    <span className="count" onClick={handleSecretTap}>{totalWaiting}</span>
+                    <span className="count">{totalWaiting}</span>
                 </div>
             </div>
             <div className="flex flex-col gap-2">

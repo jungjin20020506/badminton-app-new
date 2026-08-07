@@ -9,7 +9,7 @@
 //   2) 출력된 해시값을 아래 HIDDEN_KEY_HASH에 붙여넣기
 //   3) 배포하면 끝
 // ===================================================================================
-export const HIDDEN_KEY_HASH = '614cb3fc60cb6dc183a042b4603f2a88d5c7fdf4ec626f13b8e5121af01f09ea';
+export const HIDDEN_KEY_HASH = '4bc7352b40467e6333de62dafee073a7bae5dbd1bb792c949b7fe7235f3e7726';
 
 // 입력한 키가 맞는지 확인 (브라우저 내장 암호화 사용, https에서만 동작)
 export async function verifyHiddenKey(input) {

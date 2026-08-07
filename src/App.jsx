@@ -562,11 +562,20 @@ useEffect(() => {
         }});
     }, []);
 
-    // [히든 키] 대기자 전체 내보내기 — 눈에 보이는 버튼 대신, 대기 명단의 인원수 배지를
+    // [히든 키] 대기자 전체 내보내기 — 눈에 보이는 버튼 대신, 왼쪽 위 콕스라이팅 로고를
     // 연속 7번 탭하면 키 입력창이 열리고, 히든 키가 맞아야만 실행된다.
-    const handleClearAllWaitingPlayers = useCallback(() => {
-        setModal({ type: 'hiddenKey', data: {} });
-    }, []);
+    const logoTapRef = useRef({ count: 0, last: 0 });
+    const handleLogoSecretTap = useCallback(() => {
+        if (!isAdmin) return;
+        const now = Date.now();
+        if (now - logoTapRef.current.last > 1500) logoTapRef.current.count = 0;
+        logoTapRef.current.last = now;
+        logoTapRef.current.count += 1;
+        if (logoTapRef.current.count >= 7) {
+            logoTapRef.current.count = 0;
+            setModal({ type: 'hiddenKey', data: {} });
+        }
+    }, [isAdmin]);
 
     const handleHiddenKeySubmit = useCallback(async (inputKey) => {
         const ok = await verifyHiddenKey(inputKey);
@@ -1673,8 +1682,10 @@ useEffect(() => {
         />}
 
             <header className="cox-appbar">
-                {/* [브랜드 CI] 볼트 셔틀 마크 */}
-                <CoxMark size={36} className="cox-appbar-mark" />
+                {/* [브랜드 CI] 볼트 셔틀 마크 — [히든 키] 연속 7번 탭 시 전체 내보내기 키 입력창 */}
+                <span onClick={handleLogoSecretTap} style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                    <CoxMark size={36} className="cox-appbar-mark" />
+                </span>
                 <div className="cox-appbar-brand">
                     <div className="cox-hello">
                         <span className="cox-livedot"></span>
@@ -1791,7 +1802,7 @@ useEffect(() => {
                     <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
-                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} onlineIds={onlineIds} />
+                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
                                     <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
                                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
                                 </div>
@@ -1804,7 +1815,7 @@ useEffect(() => {
                     </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onClearAllWaitingPlayers={handleClearAllWaitingPlayers} onlineIds={onlineIds} />
+                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
                     <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
                     <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} />
