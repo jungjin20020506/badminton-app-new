@@ -24,9 +24,24 @@ const somoimDevApi = () => ({
   },
 })
 
+// [업데이트 안내] 빌드할 때마다 새로 찍히는 빌드 번호. 코드(__BUILD_ID__)와
+// 서버 파일(version.json) 양쪽에 새겨져, 앱이 두 값을 비교해 새 버전을 감지한다.
+const buildId = new Date().toISOString();
+const versionJson = () => ({
+  name: 'emit-version-json',
+  apply: 'build',
+  generateBundle() {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ buildId }) });
+  },
+});
+
 export default defineConfig({
+  define: {
+    __BUILD_ID__: JSON.stringify(buildId),
+  },
   plugins: [
     somoimDevApi(),
+    versionJson(),
     react(),
     VitePWA({
       strategies: 'injectManifest',

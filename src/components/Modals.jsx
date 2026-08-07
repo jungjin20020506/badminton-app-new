@@ -294,6 +294,41 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
 
 // [자동매칭] 설정 모달 대규모 업데이트 (수정됨)
 
+// [히든 키] 전체 내보내기 비밀 키 입력 모달 — 키를 아는 사람만 실행할 수 있다.
+function HiddenKeyModal({ onSubmit, onCancel }) {
+    const [value, setValue] = useState('');
+    const [busy, setBusy] = useState(false);
+    const submit = async () => {
+        if (busy || !value.trim()) return;
+        setBusy(true);
+        try { await onSubmit(value); } finally { setBusy(false); }
+    };
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80] p-4">
+            <div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg">
+                <h3 className="text-xl font-bold text-white mb-2">🔒 히든 키</h3>
+                <p className="text-gray-400 text-sm mb-4">대기자 전체 내보내기를 실행하려면<br/>관리자 히든 키를 입력하세요.</p>
+                <input
+                    type="password"
+                    inputMode="text"
+                    autoFocus
+                    value={value}
+                    onChange={e => setValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') submit(); }}
+                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-3 text-center text-white text-lg tracking-widest mb-4 focus:outline-none focus:border-yellow-400"
+                    placeholder="••••"
+                />
+                <div className="flex gap-4">
+                    <button onClick={onCancel} disabled={busy} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button>
+                    <button onClick={submit} disabled={busy || !value.trim()} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors disabled:bg-gray-500">
+                        {busy ? '확인 중...' : '실행'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80] p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
 
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
@@ -447,4 +482,4 @@ function MyHistoryModal({ player, allPlayers, onClose }) {
     );
 }
 
-export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal };
+export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal };

@@ -2,8 +2,8 @@ import { initializeApp } from 'firebase/app';
 import {
     initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
     disableNetwork, enableNetwork,
-    collection, doc, onSnapshot, query, where, getDocs, writeBatch, runTransaction, setDoc,
-    deleteField,
+    collection, doc, onSnapshot, query, where, getDocs, getDoc, writeBatch, runTransaction, setDoc,
+    addDoc, serverTimestamp, deleteField,
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAdminNames, setAdminNamesCache, generateId, filterTodayGames } from './helpers';
@@ -73,6 +73,48 @@ const rosterRef = collection(db, "roster");
 const somoimSyncRef = doc(db, "config", "somoimSync");
 // [실시간 생명감] 접속 표시(하트비트 맵: {playerId: epoch ms}) — 단일 문서로 관리
 const presenceRef = doc(db, "config", "presence");
+// [감사 로그] 전체 내보내기·새벽 초기화 등 위험한 작업의 실행 기록
+const logsRef = collection(db, "logs");
+// [시계 오류 방어] 서버 시간 확인용 문서
+const clockCheckRef = doc(db, "config", "clockCheck");
+
+// ===================================================================================
+// [감사 로그] 누가 · 언제 · 무엇을 했는지 Firestore logs 컬렉션에 남긴다.
+// Firebase 콘솔 > Firestore Database > logs 에서 최근 기록을 확인할 수 있다.
+// ===================================================================================
+const writeAuditLog = async (action, detail = {}) => {
+    try {
+        await addDoc(logsRef, {
+            action,                                                        // 무엇을 (예: '전체내보내기')
+            detail,                                                        // 부가 정보 (누가, 몇 명 등)
+            byPlayerId: localStorage.getItem('badminton-currentUser-id') || null, // 이 기기로 입장한 선수 ID
+            userAgent: navigator.userAgent,                                // 기기/브라우저 정보
+            at: serverTimestamp(),                                         // 서버 기준 시각 (조작 불가)
+            atLocal: new Date().toISOString(),                             // 그 기기의 시계 (틀린 시계 탐지용)
+        });
+    } catch (e) {
+        console.error('[감사 로그] 기록 실패:', e);
+    }
+};
+
+// ===================================================================================
+// [시계 오류 방어] 기기 시계를 믿지 않고 Firebase 서버 시간을 얻는다.
+// serverTimestamp()를 한 번 기록했다가 읽어서 "서버시간 - 내시계" 오차를 계산해 두고,
+// 이후로는 오차를 보정한 시간을 쓴다. (오프라인이면 실패 → 초기화가 실행되지 않아 안전)
+// ===================================================================================
+let serverClockOffsetMs = null;
+const getServerNow = async () => {
+    if (serverClockOffsetMs === null) {
+        await setDoc(clockCheckRef, { at: serverTimestamp() });
+        const snap = await getDoc(clockCheckRef);
+        const at = snap.data()?.at;
+        if (!at || typeof at.toDate !== 'function') throw new Error('서버 시간을 확인하지 못했습니다.');
+        serverClockOffsetMs = at.toDate().getTime() - Date.now();
+        const offsetMin = Math.round(serverClockOffsetMs / 60000);
+        if (Math.abs(offsetMin) >= 10) console.warn(`[시계 오류 방어] 이 기기의 시계가 서버와 약 ${offsetMin}분 차이납니다.`);
+    }
+    return new Date(Date.now() + serverClockOffsetMs);
+};
 
 
 // --- 2. Service 로직 ---
@@ -286,19 +328,26 @@ let dailyResetInFlight = false;
 // 운영일이 바뀌었는데 아직 초기화 기록이 없으면 초기화를 수행한다.
 const runDailyResetIfDue = async () => {
     if (dailyResetInFlight) return;
-    const todayKey = getDailyResetKey();
 
-    // 빠른 사전 확인: 이미 오늘 초기화가 끝났으면 트랜잭션조차 시도하지 않는다.
-    if (gameStateData && gameStateData.lastDailyResetKey === todayKey) return;
+    // 빠른 사전 확인(기기 시계 기준): 이미 오늘 초기화가 끝났으면 아무것도 하지 않는다.
+    if (gameStateData && gameStateData.lastDailyResetKey === getDailyResetKey()) return;
 
     dailyResetInFlight = true;
     try {
+        // [시계 오류 방어] 기기 시계가 틀린 폰(날짜가 하루 빠르거나 느린 폰)이 접속만 해도
+        // 한낮에 전체 초기화가 터지던 버그 수정 — 날짜 판정은 반드시 '서버 시간'으로 한다.
+        const serverNow = await getServerNow();
+        const todayKey = getDailyResetKey(serverNow);
+        if (gameStateData && gameStateData.lastDailyResetKey === todayKey) return;
+
         // 1) 트랜잭션으로 '운영일 키'를 선점 + 경기방(경기진행/예정/자동매칭) 비우기.
         //    이미 다른 기기가 처리했다면 won=false로 빠져나간다.
         const won = await runTransaction(db, async (tx) => {
             const gsSnap = await tx.get(gameStateRef);
             const gs = gsSnap.exists() ? gsSnap.data() : {};
-            if (gs.lastDailyResetKey === todayKey) return false;
+            // 저장된 키보다 '뒤 날짜'로 넘어갈 때만 초기화한다. 같거나 과거 날짜면 무시 —
+            // 잘못된 키가 저장돼 있어도 기기들끼리 초기화를 주고받는 핑퐁이 생기지 않는다.
+            if (gs.lastDailyResetKey && gs.lastDailyResetKey >= todayKey) return false;
             const numCourts = gs.numInProgressCourts || 4;
             tx.set(gameStateRef, {
                 lastDailyResetKey: todayKey,
@@ -334,6 +383,7 @@ const runDailyResetIfDue = async () => {
         if (count % 400 !== 0) await batch.commit();
 
         console.log(`[새벽 2시 초기화] ${todayKey} 기준 ${count}명 선수 기록 삭제 및 내보내기 완료`);
+        writeAuditLog('새벽초기화', { key: todayKey, count });
     } catch (e) {
         console.error("[새벽 2시 초기화] 실패:", e);
     } finally {
@@ -585,4 +635,5 @@ export {
     runDailyResetIfDue, runAutoSomoimSyncIfDue, syncSomoimAttendees, getKstParts, ROSTER_SEED,
     forceReconnect,
     startPresenceHeartbeat, isPresenceFresh,
+    writeAuditLog,
 };

@@ -7,8 +7,9 @@ import {
     db, storage, playersRef, gameStateRef, configRef, somoimSyncRef,
     firebaseService, readyPromise, runDailyResetIfDue, runAutoSomoimSyncIfDue,
     syncSomoimAttendees, getKstParts, forceReconnect,
-    startPresenceHeartbeat, isPresenceFresh,
+    startPresenceHeartbeat, isPresenceFresh, writeAuditLog,
 } from './lib/firebase';
+import { verifyHiddenKey } from './lib/secret';
 import { isSoundEnabled, setSoundEnabled, playStart, playFinish } from './lib/sound';
 import { CoxMark } from './components/Logo';
 import {
@@ -21,8 +22,9 @@ import {
 } from './lib/matching';
 import { WaitingListSection, ScheduledMatchesSection, AutoMatchesSection, InProgressCourtsSection } from './components/Sections';
 import { EntryPage } from './components/EntryPage';
-import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal } from './components/Modals';
+import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal } from './components/Modals';
 import { SkeletonScreen } from './components/Skeleton';
+import { UpdateBanner } from './components/UpdateBanner';
 import { SettingsModal } from './components/SettingsModal';
 import { RosterManageModal } from './components/RosterManageModal';
 import {
@@ -560,32 +562,42 @@ useEffect(() => {
         }});
     }, []);
 
-    // [신규 기능] 대기자 전체 내보내기
+    // [히든 키] 대기자 전체 내보내기 — 눈에 보이는 버튼 대신, 대기 명단의 인원수 배지를
+    // 연속 7번 탭하면 키 입력창이 열리고, 히든 키가 맞아야만 실행된다.
     const handleClearAllWaitingPlayers = useCallback(() => {
-        setModal({ type: 'confirm', data: {
-            title: '대기자 전체 내보내기',
-            body: `정말로 '경기대기' 중인 모든 선수(${waitingPlayers.length}명)를 내보내시겠습니까? 선수들이 현황판에서 퇴장됩니다.`,
-            onConfirm: async () => {
-                if (waitingPlayers.length === 0) {
-                    setModal({ type: 'alert', data: { title: '오류', body: '내보낼 선수가 없습니다.' }});
-                    return;
-                }
+        setModal({ type: 'hiddenKey', data: {} });
+    }, []);
 
-                try {
-                    const batch = writeBatch(db);
-                    waitingPlayers.forEach(player => {
-                        const playerDocRef = doc(playersRef, player.id);
-                        batch.update(playerDocRef, { status: 'inactive' });
-                    });
-                    await batch.commit();
-                    setModal({ type: 'alert', data: { title: '완료', body: '대기 중인 모든 선수를 내보냈습니다.' }});
-                } catch (error) {
-                    setModal({ type: 'alert', data: { title: '오류', body: '선수들을 내보내는 중 오류가 발생했습니다.' }});
-                    console.error("Failed to clear all waiting players:", error);
-                }
-            }
-        }});
-    }, [waitingPlayers]); // [수정] waitingPlayers가 휴식 선수를 포함하므로 올바르게 동작
+    const handleHiddenKeySubmit = useCallback(async (inputKey) => {
+        const ok = await verifyHiddenKey(inputKey);
+        if (!ok) {
+            // 틀린 키 시도도 기록한다 — 누가 몰래 시도했는지 추적 가능
+            writeAuditLog('전체내보내기-키오류', { by: currentUser?.name || null });
+            setModal({ type: 'alert', data: { title: '오류', body: '히든 키가 올바르지 않습니다.' }});
+            return;
+        }
+        if (waitingPlayers.length === 0) {
+            setModal({ type: 'alert', data: { title: '오류', body: '내보낼 선수가 없습니다.' }});
+            return;
+        }
+        try {
+            const batch = writeBatch(db);
+            waitingPlayers.forEach(player => {
+                const playerDocRef = doc(playersRef, player.id);
+                batch.update(playerDocRef, { status: 'inactive' });
+            });
+            await batch.commit();
+            writeAuditLog('전체내보내기', {
+                by: currentUser?.name || null,
+                count: waitingPlayers.length,
+                names: waitingPlayers.map(p => p.name),
+            });
+            setModal({ type: 'alert', data: { title: '완료', body: '대기 중인 모든 선수를 내보냈습니다.' }});
+        } catch (error) {
+            setModal({ type: 'alert', data: { title: '오류', body: '선수들을 내보내는 중 오류가 발생했습니다.' }});
+            console.error("Failed to clear all waiting players:", error);
+        }
+    }, [waitingPlayers, currentUser]); // waitingPlayers가 휴식 선수를 포함하므로 올바르게 동작
 
     const handleEnter = useCallback(async (formData) => {
         const name = (formData.name || '').trim();
@@ -1593,7 +1605,7 @@ useEffect(() => {
     }
 
    if (!currentUser) {
-        return <EntryPage onEnter={handleEnter} roster={roster} />;
+        return <><EntryPage onEnter={handleEnter} roster={roster} /><UpdateBanner /></>;
     }
 
     // [소모임 동기화] 오늘 자동 동기화가 실패했는지 (실패 배너 표시 조건)
@@ -1603,7 +1615,10 @@ useEffect(() => {
 
     return (
         <div className="cox-dark text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-            
+
+            {/* --- [업데이트 안내] 새 버전 배포 감지 배너 --- */}
+            <UpdateBanner />
+
             {/* --- [소모임 동기화] 자동 동기화 실패 배너 --- */}
             {showSyncErrorBanner && (
                 <div className="bg-orange-600 text-white p-3 flex items-center justify-between shadow-lg sticky top-0 z-[54]">
@@ -1629,6 +1644,7 @@ useEffect(() => {
             }} />}
             {modal?.type === 'adminEditPlayer' && <AdminEditPlayerModal player={modal.data.player} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} setModal={setModal} />}
             {modal?.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
+            {modal?.type === 'hiddenKey' && <HiddenKeyModal onSubmit={handleHiddenKeySubmit} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'somoimSyncResult' && <SomoimSyncResultModal result={modal.data} onClose={() => setModal({ type: null, data: null })} />}
