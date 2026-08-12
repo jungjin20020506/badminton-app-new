@@ -511,19 +511,6 @@ body::before{
 .amg-lead .hl{ color:var(--volt, #CDFB47); }
 .amg-desc{ font-size:12.5px; line-height:1.65; color:#b6bdc9; margin-bottom:11px; word-break:keep-all; }
 
-/* 표지 3줄 요약 */
-.amg-cover-list{ margin:14px 0 12px; display:flex; flex-direction:column; gap:7px; }
-.amg-cover-list > div{
-  display:flex; align-items:flex-start; gap:9px; font-size:12.5px; line-height:1.5;
-  color:#dbe1ea; background:rgba(255,255,255,.045); border-radius:11px; padding:9px 11px;
-  word-break:keep-all;
-}
-.amg-cover-list span{
-  flex-shrink:0; width:18px; height:18px; border-radius:50%; margin-top:1px;
-  background:var(--volt, #CDFB47); color:#0c0d11;
-  font-size:11px; font-weight:900; display:flex; align-items:center; justify-content:center;
-}
-
 /* 안내 상자 */
 .amg-box{ margin-top:12px; border-radius:12px; padding:10px 12px; border:1px solid; }
 .amg-box.plain{ background:rgba(255,255,255,.045); border-color:rgba(255,255,255,.09); }
@@ -533,114 +520,10 @@ body::before{
 .amg-box-body{ font-size:12px; line-height:1.62; color:#c2c9d5; word-break:keep-all; }
 .amg-box.warn .amg-box-body{ color:#ffe3a3; }
 
-/* 예전 → 지금 비교 */
-.amg-ba{ display:flex; flex-direction:column; gap:6px; }
-.amg-ba-col{ border-radius:13px; padding:11px 12px; border:1px solid; }
-.amg-ba-col.old{ background:rgba(255,106,82,.06); border-color:rgba(255,106,82,.25); }
-.amg-ba-col.nw { background:rgba(205,251,71,.07); border-color:rgba(205,251,71,.32); }
-.amg-ba-head{ font-size:11.5px; font-weight:900; margin-bottom:6px; }
-.amg-ba-col.old .amg-ba-head{ color:#ff9d8a; }
-.amg-ba-col.nw  .amg-ba-head{ color:var(--volt, #CDFB47); }
-.amg-ba-col ul{ display:flex; flex-direction:column; gap:4px; }
-.amg-ba-col li{
-  position:relative; padding-left:11px; font-size:12px; line-height:1.55; color:#c2c9d5;
-  word-break:keep-all;
-}
-.amg-ba-col li::before{
-  content:''; position:absolute; left:2px; top:7px; width:4px; height:4px;
-  border-radius:50%; background:currentColor; opacity:.45;
-}
-.amg-ba-arrow{ text-align:center; font-size:13px; color:#5f6672; line-height:1; }
-
-/* 후보 범위 목록 */
-.amg-pool{ display:flex; flex-direction:column; gap:6px; }
-.amg-pool-row{
-  display:flex; align-items:flex-start; gap:9px; padding:10px 11px; border-radius:12px;
-  font-size:12.5px; line-height:1.45; border:1px solid; word-break:keep-all;
-}
-.amg-pool-row.ok{ background:rgba(52,226,122,.06); border-color:rgba(52,226,122,.22); color:#e2e8f0; }
-.amg-pool-row.no{ background:rgba(255,255,255,.035); border-color:rgba(255,255,255,.08); color:#98a0ad; }
-.amg-pool-row.new{ background:rgba(205,251,71,.09); border-color:rgba(205,251,71,.4); }
-.amg-pool-mark{ flex-shrink:0; font-size:13px; line-height:1.35; }
-.amg-pool-row .sub{ font-size:11px; color:#8d95a2; margin-top:2px; line-height:1.45; }
-.amg-new{
-  display:inline-block; margin-left:5px; font-size:8.5px; font-weight:900; vertical-align:middle;
-  color:#0c0d11; background:var(--volt, #CDFB47); border-radius:4px; padding:1px 5px;
-}
-
-/* 선택지 예시 묶음 */
-.amg-optlist{ display:flex; flex-direction:column; gap:8px; }
-.amg-optlist .mo-card{ pointer-events:none; }
-
-/* 색깔 설명 */
-.amg-legend{ display:flex; flex-direction:column; gap:8px; }
-.amg-legend-row{
-  display:flex; align-items:flex-start; gap:9px; font-size:12.5px; line-height:1.5;
-  background:rgba(255,255,255,.04); border-radius:11px; padding:9px 11px;
-}
-.amg-legend-row .dot{ flex-shrink:0; width:9px; height:9px; border-radius:50%; margin-top:5px; }
-.amg-legend-row .dot.good{ background:#8ee9b0; }
-.amg-legend-row .dot.mid { background:#b9bfc9; }
-.amg-legend-row .dot.bad { background:#ffab9a; }
-.amg-legend-row .dot.wait{ background:#a8b4c8; }
-.amg-legend-row .ex{ font-size:11.5px; color:#98a0ad; margin-top:3px; word-break:keep-all; }
 .amg-body .tone-good{ color:#8ee9b0; font-weight:800; }
 .amg-body .tone-mid { color:#b9bfc9; font-weight:800; }
 .amg-body .tone-bad { color:#ffab9a; font-weight:800; }
 .amg-body .tone-wait{ color:#a8b4c8; font-weight:800; }
-
-/* 시뮬레이션 */
-.amg-sim{
-  background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.09);
-  border-radius:14px; padding:10px;
-}
-.amg-sim-label{ font-size:10.5px; font-weight:800; color:#8b919c; margin-bottom:7px; }
-.amg-sim-btn{
-  width:100%; margin-top:10px; padding:11px; border-radius:12px; cursor:pointer;
-  font-size:12.5px; font-weight:900; color:#0c0d11; background:var(--volt, #CDFB47);
-  border:none; transition:transform .12s var(--ease-pop), filter .15s;
-}
-.amg-sim-btn:active{ transform:scale(.97); }
-.amg-sim-caption{
-  margin-top:9px; font-size:11.5px; line-height:1.6; color:#a8b0bd; word-break:keep-all;
-}
-.amg-sim-caption.done{ color:#8ee9b0; }
-
-/* 매칭 기준 순위 */
-.amg-rank{ display:flex; flex-direction:column; gap:7px; }
-.amg-rank-row{
-  display:flex; align-items:flex-start; gap:10px; padding:10px 11px; border-radius:12px;
-  font-size:12.5px; line-height:1.45; color:#dbe1ea;
-  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); word-break:keep-all;
-}
-.amg-rank-row.new{ background:rgba(205,251,71,.09); border-color:rgba(205,251,71,.4); }
-.amg-rank-row .n{
-  flex-shrink:0; width:20px; height:20px; border-radius:7px; margin-top:1px;
-  background:rgba(255,255,255,.1); color:#fff;
-  font-size:11.5px; font-weight:900; display:flex; align-items:center; justify-content:center;
-}
-.amg-rank-row.new .n{ background:var(--volt, #CDFB47); color:#0c0d11; }
-.amg-rank-row .sub{ font-size:11px; color:#949ca9; margin-top:3px; line-height:1.5; }
-
-/* 자주 묻는 질문 */
-.amg-qa{ display:flex; flex-direction:column; gap:10px; }
-.amg-qa .q{ font-size:12.5px; font-weight:900; color:#fff; margin-bottom:3px; word-break:keep-all; }
-.amg-qa .a{ font-size:12px; line-height:1.6; color:#adb5c2; word-break:keep-all; }
-
-/* 민감도 표 */
-.amg-sens{ display:flex; flex-direction:column; gap:6px; }
-.amg-sens > div{
-  display:grid; grid-template-columns:auto auto 1fr; align-items:center; gap:8px;
-  padding:9px 11px; border-radius:11px; font-size:12.5px;
-  background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07);
-}
-.amg-sens > div.hot{ background:rgba(205,251,71,.08); border-color:rgba(205,251,71,.32); }
-.amg-sens > div > span{
-  font-size:10.5px; font-weight:900; color:#0c0d11; background:#9aa0aa;
-  border-radius:5px; padding:2px 7px; white-space:nowrap;
-}
-.amg-sens > div.hot > span{ background:var(--volt, #CDFB47); }
-.amg-sens .sub{ grid-column:1 / -1; font-size:11px; color:#949ca9; line-height:1.45; word-break:keep-all; }
 
 /* 하루 운영 흐름 */
 .amg-flow{ display:flex; flex-direction:column; gap:6px; }
@@ -655,26 +538,71 @@ body::before{
   font-size:11px; font-weight:900; display:flex; align-items:center; justify-content:center;
 }
 
-/* 아래 진행 막대 + 버튼 */
-.amg-foot{
-  flex-shrink:0; padding:10px 14px; border-top:1px solid rgba(255,255,255,.07);
-  background:#12141a; padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+/* ── [게임형 안내] 코치 말풍선 — 화면 아래에서 🤖 코치가 한 줄씩 알려준다 ── */
+.amg2-coach{
+  flex-shrink:0; border-top:1px solid rgba(255,255,255,.08); background:#171a21;
+  padding:11px 14px; padding-bottom:calc(11px + env(safe-area-inset-bottom, 0px));
+  display:flex; flex-direction:column; gap:9px;
 }
-.amg-track{ height:3px; border-radius:99px; background:rgba(255,255,255,.1); overflow:hidden; }
-.amg-track span{
-  display:block; height:100%; border-radius:99px; background:var(--volt, #CDFB47);
-  transition:width .3s var(--ease-pop);
+.amg2-coach-row{ display:flex; align-items:flex-start; gap:10px; }
+.amg2-coach-emoji{ flex-shrink:0; font-size:26px; line-height:1.15; }
+.amg2-coach-text{
+  flex:1 1 auto; font-size:13px; font-weight:600; line-height:1.62; color:#e8ecf3;
+  word-break:keep-all; white-space:pre-line;
 }
-.amg-actions{ display:flex; align-items:center; gap:7px; margin-top:9px; }
-.amg-count{ flex:1 1 auto; font-size:11px; font-weight:800; color:#6f7786; }
-.amg-btn{
-  padding:10px 16px; border-radius:11px; cursor:pointer; border:1px solid transparent;
-  font-size:12.5px; font-weight:900; white-space:nowrap;
+.amg2-coach-text b{ color:var(--volt, #CDFB47); }
+.amg2-coach-btn{
+  width:100%; padding:12px; border-radius:12px; cursor:pointer; border:none;
+  font-size:13.5px; font-weight:900; color:#0c0d11; background:var(--volt, #CDFB47);
   transition:transform .12s var(--ease-pop), filter .15s;
 }
-.amg-btn:active{ transform:scale(.96); }
-.amg-btn.ghost{ background:rgba(255,255,255,.07); border-color:rgba(255,255,255,.12); color:#d7dce4; }
-.amg-btn.primary{ background:var(--volt, #CDFB47); color:#0c0d11; }
+.amg2-coach-btn:active{ transform:scale(.97); }
+.amg2-dots{ display:flex; justify-content:center; gap:5px; }
+.amg2-dot{ width:6px; height:6px; border-radius:99px; background:rgba(255,255,255,.16); transition:all .25s; }
+.amg2-dot.on{ width:18px; background:var(--volt, #CDFB47); }
+
+/* 지금 주목할 것 — 라임색 링이 숨쉬듯 빛난다 */
+.amg2-hi{
+  position:relative; z-index:2; border-radius:15px;
+  animation:amg2HiPulse 1.6s ease-in-out infinite;
+}
+@keyframes amg2HiPulse{
+  0%,100%{ box-shadow:0 0 0 2px var(--volt, #CDFB47), 0 0 14px rgba(205,251,71,.25); }
+  50%    { box-shadow:0 0 0 3px var(--volt, #CDFB47), 0 0 26px rgba(205,251,71,.55); }
+}
+/* 지금은 안 보는 것 — 흐리게 + 누를 수 없게 */
+.amg2-dim{ opacity:.25; filter:saturate(.4); pointer-events:none; transition:opacity .25s; }
+
+/* 눌러야 하는 것 위에서 통통 튀는 손가락 */
+.amg2-fingerbox{ position:relative; }
+.amg2-finger{
+  position:absolute; top:-34px; left:50%; z-index:3; pointer-events:none;
+  font-size:28px; text-shadow:0 3px 8px rgba(0,0,0,.6);
+  animation:amg2Finger .85s ease-in-out infinite;
+}
+@keyframes amg2Finger{ 0%,100%{ transform:translate(-50%,0); } 50%{ transform:translate(-50%,9px); } }
+
+/* 연습 화면 라벨 · 진행중 코트 알림 · 축하 */
+.amg2-stage-label{
+  font-size:10px; font-weight:800; letter-spacing:.4px; color:#7c828e; margin-bottom:7px;
+}
+.amg2-court-chip{
+  display:flex; align-items:center; gap:6px; margin-bottom:9px;
+  font-size:11px; font-weight:700; color:#ffbdb0; line-height:1.4;
+  background:rgba(255,106,82,.09); border:1px solid rgba(255,106,82,.28);
+  border-radius:9px; padding:6px 9px;
+}
+.amg2-party{
+  text-align:center; font-size:46px; line-height:1; margin:8px 0 12px;
+  animation:amg2Pop .5s var(--ease-pop) both;
+}
+@keyframes amg2Pop{
+  0%{ transform:scale(.3); opacity:0; } 70%{ transform:scale(1.15); } 100%{ transform:scale(1); opacity:1; }
+}
+.amg2-intro-emoji{
+  text-align:center; font-size:54px; line-height:1; margin:16px 0;
+  animation:amg2Finger 1.4s ease-in-out infinite;
+}
 
 /* ── [매칭 연출] 새 자동 매칭 — 카드 4장이 슬롯머신처럼 착착 꽂히는 딜 애니메이션 ── */
 .auto-deal{

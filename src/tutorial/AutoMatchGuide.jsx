@@ -1,27 +1,135 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 // ===================================================================================
-// [자동매칭 v2] 관리자 필독 안내
+// [자동매칭 v2] 관리자 게임형 안내 — 직접 눌러보면서 배운다
 // -----------------------------------------------------------------------------------
-// 자동 매칭이 크게 바뀌었기 때문에, 관리자가 처음 접속했을 때 이 안내가 한 번 뜬다.
-// 글만 있으면 안 읽으므로, 실제 화면과 똑같이 생긴 예시와 직접 눌러보는 시뮬레이션을 넣었다.
+// 글로 설명하는 대신, 실제 화면과 똑같이 생긴 "연습 화면"에 가상 선수들을 세워두고
+// 관리자가 진짜처럼 버튼을 눌러가며 배운다. 게임 튜트리얼처럼:
+//   ① 👨 남자 매칭을 직접 누른다 → ② 후보 6개 화면을 한 칸씩 배운다(코치 말풍선)
+//   → ③ 베스트 카드를 직접 골라본다 → ④ 경기가 끝나 START가 켜지는 걸 직접 본다
 //
-// [무조건 읽게 만드는 방법]
-//   끝까지 보고 '확인했습니다'를 눌러야만 '봤음' 기록이 남는다.
-//   중간에 닫으면 기록이 남지 않아 다음 접속 때 다시 뜬다. (표지에 그렇게 안내한다)
-//   다시 보고 싶으면 프로필 메뉴 ▸ '🤖 자동매칭 새 기능' 에서 언제든 볼 수 있다.
+// [무조건 보게 만드는 방법]
+//   끝까지 하고 '확인했습니다'를 눌러야만 '봤음' 기록이 남는다.
+//   중간에 닫으면 기록이 남지 않아 다음 접속 때 다시 뜬다. 전체 1분이면 끝난다.
+//   다시 보기: 프로필 메뉴 ▸ 🤖 자동매칭 새 기능
 // ===================================================================================
 
 /** 시청 기록 키 — players/<id>.tutorialSeen 안에 이 이름으로 저장된다 */
 const AUTOMATCH_GUIDE_KEY = 'automatch-v2';
 
 // ───────────────────────────────────────────────────────────────────────────────────
+// 가상 선수들 (연습 화면 전용 — 실제 데이터와 무관)
+// ───────────────────────────────────────────────────────────────────────────────────
+
+const WAITING_DEMO = [
+    { name: '김민수', level: 'A', games: 2 },
+    { name: '박지훈', level: 'B', games: 3 },
+    { name: '나상호', level: 'B', games: 3 },
+    { name: '신환종', level: 'C', games: 3 },
+    { name: '이상민', level: 'C', games: 3 },
+    { name: '최유진', level: 'D', games: 2 },
+    { name: '오세훈', level: 'C', games: 4 },
+    { name: '강태오', level: 'D', games: 4 },
+];
+
+// 후보 6개 (베스트 2 · 보통 2 · 아쉬움 2) — 첫 번째 베스트에 '경기중' 선수를 넣어
+// "경기중 선수도 뽑을 수 있다"를 고르는 과정에서 자연스럽게 배우게 한다.
+const OPTIONS_DEMO = [
+    {
+        tier: 'best', emoji: '🏆', label: '베스트', waitChip: '3번 코트 대기',
+        team: [
+            { name: '정형진', level: 'B', games: 3, playing: true },
+            { name: '나상호', level: 'B', games: 3 },
+            { name: '신환종', level: 'C', games: 3 },
+            { name: '이상민', level: 'C', games: 3 },
+        ],
+        reasons: [
+            { tone: 'good', text: '4명 모두 오늘 처음 만나는 조합!' },
+            { tone: 'good', text: '4명 모두 3경기로 딱 같아요' },
+            { tone: 'wait', text: '3번 코트 끝나면 시작 (곧 끝나요) — 경기중: 정형진' },
+        ],
+    },
+    {
+        tier: 'best', emoji: '🏆', label: '베스트',
+        team: [
+            { name: '김민수', level: 'A', games: 2 },
+            { name: '최유진', level: 'D', games: 2 },
+            { name: '박지훈', level: 'B', games: 3 },
+            { name: '이상민', level: 'C', games: 3 },
+        ],
+        reasons: [
+            { tone: 'good', text: '가장 적게 친 선수 포함: 김민수·최유진 (2경기)' },
+            { tone: 'mid', text: '겹치는 짝: 박지훈·이상민 (나머지 5쌍은 처음)' },
+            { tone: 'good', text: '양 팀 급수 합이 똑같아요' },
+        ],
+    },
+    {
+        tier: 'normal', emoji: '👍', label: '보통',
+        team: [
+            { name: '박지훈', level: 'B', games: 3 },
+            { name: '오세훈', level: 'C', games: 4 },
+            { name: '신환종', level: 'C', games: 3 },
+            { name: '강태오', level: 'D', games: 4 },
+        ],
+        reasons: [
+            { tone: 'mid', text: '겹치는 짝: 신환종·오세훈 (나머지 4쌍은 처음)' },
+            { tone: 'mid', text: '경기 수 3~4경기로 비슷' },
+            { tone: 'mid', text: '급수는 그럭저럭 맞아요' },
+        ],
+    },
+    {
+        tier: 'normal', emoji: '👍', label: '보통',
+        team: [
+            { name: '김민수', level: 'A', games: 2 },
+            { name: '나상호', level: 'B', games: 3 },
+            { name: '오세훈', level: 'C', games: 4 },
+            { name: '이상민', level: 'C', games: 3 },
+        ],
+        reasons: [
+            { tone: 'mid', text: '겹치는 짝: 나상호·이상민 (나머지 4쌍은 처음)' },
+            { tone: 'mid', text: '경기 수 2~4경기로 비슷' },
+            { tone: 'good', text: '양 팀 급수 합이 똑같아요' },
+        ],
+    },
+    {
+        tier: 'bad', emoji: '⚠️', label: '아쉬움',
+        team: [
+            { name: '오세훈', level: 'C', games: 4 },
+            { name: '강태오', level: 'D', games: 4 },
+            { name: '박지훈', level: 'B', games: 3 },
+            { name: '최유진', level: 'D', games: 2 },
+        ],
+        reasons: [
+            { tone: 'bad', text: '방금 같은 팀이었던 짝: 오세훈·강태오' },
+            { tone: 'bad', text: '경기 수 2~4경기 — 차이가 커요' },
+            { tone: 'bad', text: '급수가 한쪽으로 기울어요' },
+        ],
+    },
+    {
+        tier: 'bad', emoji: '⚠️', label: '아쉬움',
+        team: [
+            { name: '김민수', level: 'A', games: 2 },
+            { name: '신환종', level: 'C', games: 3 },
+            { name: '나상호', level: 'B', games: 3 },
+            { name: '강태오', level: 'D', games: 4 },
+        ],
+        reasons: [
+            { tone: 'bad', text: '방금 같은 팀이었던 짝: 나상호·강태오' },
+            { tone: 'mid', text: '경기 수 2~4경기로 비슷' },
+            { tone: 'bad', text: '급수가 한쪽으로 기울어요' },
+        ],
+    },
+];
+
+// ───────────────────────────────────────────────────────────────────────────────────
 // 예시용 부품 — 실제 화면과 똑같은 CSS 클래스를 그대로 쓴다 (그래야 진짜처럼 보인다)
 // ───────────────────────────────────────────────────────────────────────────────────
 
+const LEVEL_COLORS = { A: '#FF4F4F', B: '#FF9100', C: '#FFD600', D: '#00E676' };
+
 /** 실제 선수 카드와 같은 모양의 예시 카드 */
 function DemoPlayerCard({ name, level, games, gender = '남', playing = false }) {
-    const levelColor = { A: '#FF4F4F', B: '#FF9100', C: '#FFD600', D: '#00E676' }[level] || '#A1A1AA';
+    const levelColor = LEVEL_COLORS[level] || '#A1A1AA';
     return (
         <div
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${playing ? 'cox-card-playing' : ''}`}
@@ -44,34 +152,11 @@ function DemoPlayerCard({ name, level, games, gender = '남', playing = false })
     );
 }
 
-/** 실제 선택지 카드와 같은 모양의 예시 */
-function DemoOptionCard({ tier, emoji, label, team, reasons, waitChip }) {
+/** 선택지 카드 안의 작은 선수 칩 */
+function DemoChip({ name, level, games, playing, hi }) {
+    const levelColor = LEVEL_COLORS[level] || '#A1A1AA';
     return (
-        <div className={`mo-card ${tier}`} style={{ cursor: 'default' }}>
-            <div className="mo-card-head">
-                <span className="mo-tier">{emoji} {label}</span>
-                {waitChip && <span className="mo-wait-chip">⏳ {waitChip}</span>}
-            </div>
-            <div className="mo-teams">
-                <div className="mo-team">
-                    {team.slice(0, 2).map((p, i) => <DemoChip key={i} {...p} />)}
-                </div>
-                <div className="mo-vs">VS</div>
-                <div className="mo-team">
-                    {team.slice(2, 4).map((p, i) => <DemoChip key={i} {...p} />)}
-                </div>
-            </div>
-            <ul className="mo-reasons">
-                {reasons.map((r, i) => <li key={i} className={`tone-${r.tone}`}>{r.text}</li>)}
-            </ul>
-        </div>
-    );
-}
-
-function DemoChip({ name, level, games, playing }) {
-    const levelColor = { A: '#FF4F4F', B: '#FF9100', C: '#FFD600', D: '#00E676' }[level] || '#A1A1AA';
-    return (
-        <div className={`mo-chip ${playing ? 'playing' : ''}`}>
+        <div className={`mo-chip ${playing ? 'playing' : ''} ${hi ? 'amg2-hi' : ''}`}>
             <div className="mo-chip-name">{name}</div>
             <div className="mo-chip-sub">
                 <span style={{ color: playing ? '#9aa0aa' : levelColor }}>{level}</span>
@@ -82,442 +167,287 @@ function DemoChip({ name, level, games, playing }) {
     );
 }
 
-/** 안내용 작은 상자 */
-function Box({ tone = 'plain', title, children }) {
+/** 실제 선택지 카드와 같은 모양의 예시 (배울 부분만 밝게 비출 수 있다) */
+function DemoOptionCard({ opt, dim, hi, hiReasons, hiChipName, clickable, onPick }) {
     return (
-        <div className={`amg-box ${tone}`}>
-            {title && <div className="amg-box-title">{title}</div>}
-            <div className="amg-box-body">{children}</div>
-        </div>
-    );
-}
-
-// ───────────────────────────────────────────────────────────────────────────────────
-// 직접 눌러보는 시뮬레이션 — "경기가 끝나면 어떻게 되나"
-// ───────────────────────────────────────────────────────────────────────────────────
-function FinishSimulation() {
-    const [finished, setFinished] = useState(false);
-
-    return (
-        <div className="amg-sim">
-            <div className="amg-sim-label">🤖 자동 매칭 (예시)</div>
-
-            <div className="flex flex-col w-full bg-gray-800/60 rounded-lg p-1">
-                {!finished && (
-                    <div className="auto-wait-note">
-                        <span>⏳</span>
-                        <span className="truncate">3번 코트가 끝나면 시작 — 경기중: 정형진</span>
+        <div className={`${dim ? 'amg2-dim' : ''} ${hi || clickable ? 'amg2-hi' : ''} ${clickable ? 'amg2-fingerbox' : ''}`}>
+            {clickable && <div className="amg2-finger">👇</div>}
+            <button
+                type="button"
+                className={`mo-card ${opt.tier}`}
+                style={{ cursor: clickable ? 'pointer' : 'default', width: '100%' }}
+                onClick={clickable ? onPick : undefined}
+            >
+                <div className="mo-card-head">
+                    <span className="mo-tier">{opt.emoji} {opt.label}</span>
+                    {opt.waitChip && <span className="mo-wait-chip">⏳ {opt.waitChip}</span>}
+                </div>
+                <div className="mo-teams">
+                    <div className="mo-team">
+                        {opt.team.slice(0, 2).map(p => <DemoChip key={p.name} {...p} hi={hiChipName === p.name} />)}
                     </div>
-                )}
-                <div className="flex items-center w-full gap-1">
-                    <div className="flex-shrink-0 w-8 text-center flex items-center justify-center">
-                        <p className="font-bold text-lg text-white arcade-font">1</p>
-                    </div>
-                    <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
-                        <DemoPlayerCard name="정형진" level="B" games={3} playing={!finished} />
-                        <DemoPlayerCard name="나채빈" level="B" games={3} />
-                        <DemoPlayerCard name="신환종" level="C" games={3} />
-                        <DemoPlayerCard name="이상민" level="C" games={3} />
-                    </div>
-                    <div className="flex-shrink-0 w-14 text-center">
-                        <button
-                            className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold text-[10px] transition-all duration-300 ${
-                                finished ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-gray-400'
-                            }`}
-                            disabled
-                        >{finished ? 'START' : '대기'}</button>
+                    <div className="mo-vs">VS</div>
+                    <div className="mo-team">
+                        {opt.team.slice(2, 4).map(p => <DemoChip key={p.name} {...p} hi={hiChipName === p.name} />)}
                     </div>
                 </div>
-            </div>
-
-            <button type="button" className="amg-sim-btn" onClick={() => setFinished(f => !f)}>
-                {finished ? '↺ 처음부터 다시 보기' : '▶ 3번 코트 경기가 끝나면?'}
+                <ul className={`mo-reasons ${hiReasons ? 'amg2-hi' : ''}`} style={hiReasons ? { padding: '6px 8px' } : undefined}>
+                    {opt.reasons.map((r, i) => <li key={i} className={`tone-${r.tone}`}>{r.text}</li>)}
+                </ul>
             </button>
-
-            <p className={`amg-sim-caption ${finished ? 'done' : ''}`}>
-                {finished
-                    ? '✅ 정형진 선수 카드에 색이 돌아오고 「경기중」 딱지가 사라졌어요. START 버튼도 노랗게 켜졌습니다 — 이제 누르면 됩니다!'
-                    : '지금 정형진 선수는 3번 코트에서 뛰는 중이라 회색입니다. START도 「대기」로 잠겨 있어요. 위 버튼을 눌러보세요.'}
-            </p>
         </div>
     );
 }
 
 // ───────────────────────────────────────────────────────────────────────────────────
-// 안내 페이지들
+// 본체 — 게임 튜트리얼 진행
+//   stage: intro(표지) → press(버튼 누르기) → options(후보 배우고 고르기)
+//        → queue(대기→START 체험) → done(완료)
 // ───────────────────────────────────────────────────────────────────────────────────
-function buildPages(userName) {
-    return [
-        // ── 0. 표지 ──
-        {
-            cover: true,
-            title: '자동매칭이 대폭 바뀌었습니다',
-            node: (
-                <>
-                    <p className="amg-lead">
-                        {userName ? <b>{userName} 관리자님, </b> : <b>관리자님, </b>}
-                        이번 업데이트에서 <b className="hl">자동 매칭이 통째로 새로워졌어요.</b>
-                        <br />운영 방식이 달라져서 <b className="hl">꼭 한 번 보셔야 합니다.</b>
-                    </p>
-                    <div className="amg-cover-list">
-                        <div><span>1</span> 버튼을 누르면 <b>후보 6개</b>가 이유와 함께 떠요</div>
-                        <div><span>2</span> <b>경기중인 선수도</b> 후보에 들어갑니다</div>
-                        <div><span>3</span> 매칭 기준이 훨씬 <b>촘촘</b>해졌어요</div>
-                    </div>
-                    <Box tone="warn">
-                        끝까지 보고 <b>[확인했습니다]</b>를 눌러야 이 안내가 사라집니다.
-                        <br />중간에 닫으면 다음 접속 때 다시 떠요. 2분이면 끝나요!
-                    </Box>
-                </>
-            ),
-        },
 
-        // ── 1. 무엇이 달라졌나 ──
-        {
-            title: '무엇이 달라졌나요?',
-            node: (
-                <>
-                    <div className="amg-ba">
-                        <div className="amg-ba-col old">
-                            <div className="amg-ba-head">예전</div>
-                            <ul>
-                                <li>버튼 누름 → <b>앱이 정한 1경기</b>가 바로 추가</li>
-                                <li>후보는 <b>대기석에 앉은 사람</b>만</li>
-                                <li>마음에 안 들면 지우고 다시 누르기</li>
-                                <li>"조합이 없다"며 <b>실패 창</b>이 뜸</li>
-                            </ul>
-                        </div>
-                        <div className="amg-ba-arrow">▼</div>
-                        <div className="amg-ba-col nw">
-                            <div className="amg-ba-head">지금</div>
-                            <ul>
-                                <li>버튼 누름 → <b>후보 6개 + 이유</b>를 보여줌</li>
-                                <li>후보는 <b>접속한 전원</b> (경기중 포함)</li>
-                                <li>관리자가 <b>골라서</b> 목록에 추가</li>
-                                <li>실패 창 대신 <b>왜 아쉬운지</b> 알려줌</li>
-                            </ul>
-                        </div>
-                    </div>
-                    <Box tone="tip" title="한 줄 요약">
-                        앱이 <b>혼자 정하던 것</b>을, 이제는 <b>이유를 보여주고 관리자가 고르는 것</b>으로 바꿨습니다.
-                    </Box>
-                </>
-            ),
-        },
+const STAGE_ORDER = ['intro', 'press', 'options', 'queue', 'done'];
 
-        // ── 2. 후보 범위 ──
-        {
-            title: '누가 후보에 들어가나요?',
-            node: (
-                <>
-                    <div className="amg-pool">
-                        <div className="amg-pool-row ok">
-                            <span className="amg-pool-mark">✅</span>
-                            <div><b>대기 명단</b>에 있는 선수<div className="sub">예전에도 후보였어요</div></div>
-                        </div>
-                        <div className="amg-pool-row ok new">
-                            <span className="amg-pool-mark">✅</span>
-                            <div><b>지금 경기중</b>인 선수 <span className="amg-new">NEW</span>
-                                <div className="sub">코트에서 뛰는 중이어도 후보가 됩니다</div>
-                            </div>
-                        </div>
-                        <div className="amg-pool-row no">
-                            <span className="amg-pool-mark">❌</span>
-                            <div><b>이미 다음 경기가 잡힌</b> 선수<div className="sub">자동 매칭·경기 예정 목록에 이름이 있는 사람</div></div>
-                        </div>
-                        <div className="amg-pool-row no">
-                            <span className="amg-pool-mark">❌</span>
-                            <div><b>휴식 중</b>이거나 <b>나간</b> 선수<div className="sub">예전과 동일</div></div>
-                        </div>
-                    </div>
-                    <Box tone="tip" title="왜 이렇게 바꿨나요?">
-                        예전에는 <b>경기를 적게 친 사람이 마침 코트에 있으면</b> 후보에서 통째로 빠졌어요.
-                        그 사이에 대기석 사람들끼리 다음 경기가 짜여서 <b>계속 밀리는</b> 문제가 있었습니다.
-                        이제는 코트에 있어도 후보라서 밀리지 않습니다.
-                    </Box>
-                </>
-            ),
-        },
+// options 단계에서 코치가 한 칸씩 짚어주는 순서
+const OPTION_STEPS = [
+    { focus: 0, text: '후보 6개가 나왔어요!\n🏆 금색으로 빛나는 카드가 베스트 — 지금 만들 수 있는 제일 좋은 조합이에요.' },
+    { focus: 3, text: '👍 초록 = 보통 · ⚠️ 노랑 = 아쉬움.\n색만 봐도 좋은 순서를 알 수 있어요.' },
+    { focus: 0, text: '카드 아래엔 이유가 적혀 있어요.\n초록 줄 = 좋은 점 · 빨간 줄 = 아쉬운 점.' },
+    { focus: 0, text: '회색 「경기중」 = 지금 코트에서 뛰는 선수.\n같이 뽑아도 돼요 — 그 경기가 끝나면 자동으로 풀려요.' },
+    { focus: 0, text: '마음에 드는 카드를 누르면 그게 다음 경기!\n베스트 카드를 눌러보세요 👇' },
+];
 
-        // ── 3. 선택지 화면 ──
-        {
-            title: '선택지 6개가 이렇게 떠요',
-            node: (
-                <>
-                    <p className="amg-desc">
-                        <b>베스트 2 · 보통 2 · 아쉬움 2</b> = 총 6개. 색으로 바로 구분됩니다.
-                        <br />카드를 <b>탭하면</b> 그 조합이 자동 매칭 목록에 들어갑니다.
-                    </p>
-                    <div className="amg-optlist">
-                        <DemoOptionCard
-                            tier="best" emoji="🏆" label="베스트"
-                            team={[
-                                { name: '정형진', level: 'B', games: 3 },
-                                { name: '신환종', level: 'B', games: 3 },
-                                { name: '나채빈', level: 'C', games: 3 },
-                                { name: '오미리', level: 'C', games: 3 },
-                            ]}
-                            reasons={[
-                                { tone: 'good', text: '4명 모두 오늘 처음 만나는 조합!' },
-                                { tone: 'good', text: '4명 모두 3경기로 딱 같아요' },
-                                { tone: 'good', text: '양 팀 급수 합이 똑같아요' },
-                            ]}
-                        />
-                        <DemoOptionCard
-                            tier="normal" emoji="👍" label="보통"
-                            team={[
-                                { name: '이상민', level: 'A', games: 4 },
-                                { name: '윤지혜', level: 'C', games: 3 },
-                                { name: '이정문', level: 'B', games: 4 },
-                                { name: '오미리', level: 'B', games: 3 },
-                            ]}
-                            reasons={[
-                                { tone: 'mid', text: '겹치는 짝: 이상민·이정문 (나머지 4쌍은 처음)' },
-                                { tone: 'mid', text: '경기 수 3~4경기로 비슷' },
-                                { tone: 'good', text: '급수 맞는 경기가 필요했던 선수: 이상민 ✨' },
-                            ]}
-                        />
-                        <DemoOptionCard
-                            tier="bad" emoji="⚠️" label="아쉬움"
-                            team={[
-                                { name: '정형진', level: 'B', games: 5 },
-                                { name: '나채빈', level: 'D', games: 5 },
-                                { name: '신환종', level: 'A', games: 4 },
-                                { name: '윤지혜', level: 'D', games: 5 },
-                            ]}
-                            reasons={[
-                                { tone: 'bad', text: '방금 같은 팀이었던 짝: 정형진·나채빈' },
-                                { tone: 'bad', text: '경기 수 4~5경기 — 차이가 커요' },
-                                { tone: 'bad', text: '급수가 한쪽으로 기울어요' },
-                            ]}
-                        />
-                    </div>
-                </>
-            ),
-        },
-
-        // ── 4. 이유 읽는 법 ──
-        {
-            title: '이유 문장 읽는 법',
-            node: (
-                <>
-                    <p className="amg-desc">각 줄의 <b>색깔</b>만 봐도 좋은지 나쁜지 바로 알 수 있어요.</p>
-                    <div className="amg-legend">
-                        <div className="amg-legend-row">
-                            <span className="dot good" />
-                            <div>
-                                <span className="tone-good">초록</span> — 좋은 점
-                                <div className="ex">“4명 모두 오늘 처음 만나는 조합!”</div>
-                            </div>
-                        </div>
-                        <div className="amg-legend-row">
-                            <span className="dot mid" />
-                            <div>
-                                <span className="tone-mid">회색</span> — 그럭저럭
-                                <div className="ex">“경기 수 3~4경기로 비슷”</div>
-                            </div>
-                        </div>
-                        <div className="amg-legend-row">
-                            <span className="dot bad" />
-                            <div>
-                                <span className="tone-bad">빨강</span> — 아쉬운 점
-                                <div className="ex">“방금 같은 팀이었던 짝: 정형진·나채빈”</div>
-                            </div>
-                        </div>
-                        <div className="amg-legend-row">
-                            <span className="dot wait" />
-                            <div>
-                                <span className="tone-wait">파랑</span> — 기다려야 함
-                                <div className="ex">“3번 코트 끝나야 시작 (약 6분) — 경기중: 정형진”</div>
-                            </div>
-                        </div>
-                    </div>
-                    <Box tone="tip" title="이유에는 항상 3~4줄이 나와요">
-                        ① 누구랑 겹치는지 ② 경기 수가 공평한지 ③ 급수가 맞는지
-                        ④ (경기중 선수가 있으면) 몇 번 코트를 얼마나 기다려야 하는지
-                    </Box>
-                </>
-            ),
-        },
-
-        // ── 5. 시뮬레이션 ──
-        {
-            title: '경기중인 선수가 뽑히면?',
-            node: (
-                <>
-                    <p className="amg-desc">
-                        경기중인 선수가 포함되면 그 카드는 <b>회색 + 「경기중」</b> 딱지가 붙고,
-                        START는 <b>「대기」</b>로 잠깁니다. <b>직접 눌러보세요 👇</b>
-                    </p>
-                    <FinishSimulation />
-                    <Box tone="tip" title="관리자가 할 일은 없어요">
-                        코트 경기가 끝나면 <b>저절로</b> 색이 돌아오고 START가 켜집니다.
-                        새로고침하거나 다시 만들 필요 없어요.
-                    </Box>
-                </>
-            ),
-        },
-
-        // ── 6. 매칭 기준 ──
-        {
-            title: '매칭 기준이 촘촘해졌어요',
-            node: (
-                <>
-                    <div className="amg-rank">
-                        <div className="amg-rank-row">
-                            <span className="n">1</span>
-                            <div><b>경기 수가 적은 사람 먼저</b>
-                                <div className="sub">경기중인 선수는 <b>지금 치는 경기까지 +1</b>로 계산해서 정확합니다</div>
-                            </div>
-                        </div>
-                        <div className="amg-rank-row">
-                            <span className="n">2</span>
-                            <div><b>오늘 안 만난 사람끼리</b>
-                                <div className="sub">방금 같은 팀이었으면 크게 감점 · 직전 경기 4명 그대로는 아예 제외</div>
-                            </div>
-                        </div>
-                        <div className="amg-rank-row">
-                            <span className="n">3</span>
-                            <div><b>급수 밸런스</b>
-                                <div className="sub">두 팀의 급수 합이 최대한 맞도록 자동 배치</div>
-                            </div>
-                        </div>
-                        <div className="amg-rank-row new">
-                            <span className="n">4</span>
-                            <div><b>급수 매너리즘 해소</b> <span className="amg-new">NEW</span>
-                                <div className="sub">계속 나보다 약한(또는 센) 사람과만 쳤다면, 다음엔 <b>비슷한 급수끼리</b> 붙여줍니다</div>
-                            </div>
-                        </div>
-                    </div>
-                    <Box tone="tip" title="예를 들면">
-                        A조 선수가 <b>C·D조와 세 판 연속</b> 쳤다면 재미가 없죠.
-                        이제 그 선수는 다음 경기에서 <b>A·B조와 만나도록</b> 우선순위가 올라갑니다.
-                        이유 문장에 <b className="tone-good">“급수 맞는 경기가 필요했던 선수: ○○ ✨”</b> 로 표시돼요.
-                    </Box>
-                </>
-            ),
-        },
-
-        // ── 7. 문제 해결 ──
-        {
-            title: '이럴 땐 이렇게',
-            node: (
-                <div className="amg-qa">
-                    <div>
-                        <div className="q">Q. 베스트인데 이유가 안 좋아요</div>
-                        <div className="a">지금 <b>대기 인원이 적어서</b> 그래요. 화면 위 노란 안내를 확인하세요.
-                            급하지 않으면 경기가 하나 끝난 뒤 다시 누르면 훨씬 좋아집니다.</div>
-                    </div>
-                    <div>
-                        <div className="q">Q. 6개가 다 마음에 안 들어요</div>
-                        <div className="a">아래 <b>🔀 다른 조합</b>을 누르면 다음 6개를 보여줍니다(3페이지).
-                            코트 상황이 방금 바뀌었다면 <b>🔄 다시 계산</b>을 누르세요.</div>
-                    </div>
-                    <div>
-                        <div className="q">Q. 잘못 골랐어요</div>
-                        <div className="a">자동 매칭 목록에서 <b>경기 번호를 길게 누르면</b> 삭제됩니다. 선수 카드끼리 탭해서 자리 교환도 됩니다.</div>
-                    </div>
-                    <div>
-                        <div className="q">Q. 예약해 둔 선수가 집에 갔어요</div>
-                        <div className="a">그 경기는 <b>자동으로 해체</b>되고 남은 선수는 대기 명단으로 돌아옵니다. 관리자가 할 일 없어요.</div>
-                    </div>
-                    <div>
-                        <div className="q">Q. 인원이 부족하대요</div>
-                        <div className="a">휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.
-                            목록에 예약이 많이 쌓였으면 먼저 START로 내보내세요.</div>
-                    </div>
-                </div>
-            ),
-        },
-
-        // ── 8. 설정 ──
-        {
-            title: '설정 — 민감도 뜻이 바뀌었어요',
-            node: (
-                <>
-                    <p className="amg-desc">
-                        <b>설정 ▸ 🤖 콕스타 자동 매칭 ▸ 매칭 민감도</b>는 이제
-                        <b className="hl"> 경기중인 선수를 몇 명까지 미리 예약할지</b>를 정합니다.
-                    </p>
-                    <div className="amg-sens">
-                        <div><b>낮음</b><span>0명</span><div className="sub">지금 대기 중인 사람으로만. 만들면 바로 시작 가능</div></div>
-                        <div><b>보통</b><span>1명</span><div className="sub">추천 — 균형이 좋아요</div></div>
-                        <div className="hot"><b>높음</b><span>2명</span><div className="sub">공평 우선. 사람이 많은 날 추천</div></div>
-                        <div><b>최고</b><span>제한 없음</span><div className="sub">가장 공평. 대신 기다리는 경기가 늘어요</div></div>
-                    </div>
-                    <Box tone="tip" title="예전의 “조합이 없어요” 창은 사라졌습니다">
-                        이제 민감도를 낮춰야 매칭이 되는 일은 없어요. 4명만 있으면 항상 후보가 나옵니다.
-                    </Box>
-                </>
-            ),
-        },
-
-        // ── 9. 마무리 ──
-        {
-            last: true,
-            title: '끝! 하루 운영은 이 4단계',
-            node: (
-                <>
-                    <div className="amg-flow">
-                        <div><span>1</span> 👨 남자 / 👩 여자 / 💑 혼복 <b>버튼</b></div>
-                        <div><span>2</span> 후보 6개 중 <b>하나 고르기</b></div>
-                        <div><span>3</span> <b>START</b> 로 코트에 보내기</div>
-                        <div><span>4</span> 경기 끝나면 <b>FINISH</b></div>
-                    </div>
-                    <Box tone="tip" title="다시 보고 싶으면">
-                        프로필 메뉴 ▸ <b>🤖 자동매칭 새 기능</b> 에서 언제든 다시 볼 수 있어요.
-                    </Box>
-                    <p className="amg-lead" style={{ marginTop: 14, textAlign: 'center' }}>
-                        오늘도 즐거운 운동 되세요! 🏸
-                    </p>
-                </>
-            ),
-        },
-    ];
-}
-
-// ───────────────────────────────────────────────────────────────────────────────────
-// 본체
-// ───────────────────────────────────────────────────────────────────────────────────
 function AutoMatchGuide({ userName, onComplete, onDismiss }) {
-    const [index, setIndex] = useState(0);
-    const pages = buildPages(userName);
-    const page = pages[index];
-    const total = pages.length;
-    const isLast = index === total - 1;
+    const [stage, setStage] = useState('intro');
+    const [optStep, setOptStep] = useState(0);
+    const [courtDone, setCourtDone] = useState(false); // queue 단계: 3번 코트가 끝났는가
+    const bodyRef = useRef(null);
+    const cardRefs = useRef([]);
+
+    // 단계가 바뀌면 화면을 맨 위로, options 단계에서는 배우는 카드가 보이게 스크롤
+    useEffect(() => {
+        if (stage !== 'options') {
+            bodyRef.current?.scrollTo?.({ top: 0 });
+            return;
+        }
+        const idx = OPTION_STEPS[optStep]?.focus ?? 0;
+        const t = setTimeout(() => {
+            cardRefs.current[idx]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }, 150);
+        return () => clearTimeout(t);
+    }, [stage, optStep]);
+
+    // ── 코치 말풍선 내용 (단계별) ──
+    let coachText = '';
+    let coachBtn = null;   // { label, onClick }
+    if (stage === 'intro') {
+        coachText = `${userName ? `${userName} 관리자님! ` : '관리자님! '}자동매칭이 새로워졌어요.\n글 대신 직접 눌러보면서 배워요. 딱 1분!`;
+        coachBtn = { label: '🎮 직접 해보기', onClick: () => setStage('press') };
+    } else if (stage === 'press') {
+        coachText = '여기는 연습 화면이에요. 가상 선수들이 준비됐어요.\n👨 남자 매칭 버튼을 눌러보세요!';
+    } else if (stage === 'options') {
+        coachText = OPTION_STEPS[optStep].text;
+        if (optStep < OPTION_STEPS.length - 1) {
+            coachBtn = { label: '다음', onClick: () => setOptStep(s => s + 1) };
+        }
+    } else if (stage === 'queue') {
+        if (!courtDone) {
+            coachText = '골랐어요! 자동 매칭 목록에 들어갔어요 🙌\n정형진 선수가 아직 경기중이라 START가 「대기」로 잠겨 있죠?';
+            coachBtn = { label: '▶ 3번 코트 경기 끝내보기', onClick: () => setCourtDone(true) };
+        } else {
+            coachText = '경기가 끝나자 색이 돌아오고 START가 켜졌어요!\nSTART를 눌러 코트로 보내보세요 👇';
+        }
+    } else if (stage === 'done') {
+        coachText = '이제 진짜 화면에서 그대로 하시면 돼요!';
+        coachBtn = { label: '확인했습니다 ✅', onClick: onComplete };
+    }
+
+    const isPicking = stage === 'options' && optStep === OPTION_STEPS.length - 1;
 
     return (
         <div className="amg-wrap">
             <div className="amg-sheet">
 
-                {/* 머리말 */}
+                {/* ── 머리말 ── */}
                 <div className="amg-head">
-                    <span className="amg-badge">{page.cover ? '🚨 관리자 필독' : '🤖 자동매칭 새 기능'}</span>
-                    <button className="amg-skip" onClick={onDismiss}>
-                        {isLast ? '닫기' : '나중에'}
-                    </button>
+                    <span className="amg-badge">🚨 관리자 필독</span>
+                    <button className="amg-skip" onClick={onDismiss}>나중에 할게요</button>
                 </div>
 
-                {/* 본문 */}
-                <div className="amg-body" key={index}>
-                    <h3 className={`amg-title ${page.cover ? 'cover' : ''}`}>{page.title}</h3>
-                    {page.node}
+                {/* ── 본문 (단계별 연습 화면) ── */}
+                <div className="amg-body" ref={bodyRef}>
+
+                    {stage === 'intro' && (
+                        <>
+                            <h3 className="amg-title cover" style={{ textAlign: 'center' }}>자동매칭이<br />새로워졌어요!</h3>
+                            <div className="amg2-intro-emoji">🎮</div>
+                            <p className="amg-lead" style={{ textAlign: 'center' }}>
+                                이제 버튼을 누르면 <b className="hl">후보 6개 중에서 골라요.</b>
+                                <br />경기중인 선수도 후보에 들어가요.
+                            </p>
+                            <div className="amg-box warn" style={{ textAlign: 'center' }}>
+                                <b>끝까지(1분) 해야 이 안내가 사라져요.</b>
+                                <br />중간에 닫으면 다음 접속 때 다시 떠요!
+                            </div>
+                        </>
+                    )}
+
+                    {stage === 'press' && (
+                        <>
+                            <div className="amg2-stage-label">🎮 연습 화면 — 실제 화면과 똑같아요</div>
+                            <div className="amg2-court-chip">
+                                <span>🏸</span>
+                                <span>3번 코트 경기중: 정형진 · 박준호 vs 김도윤 · 이서준</span>
+                            </div>
+
+                            {/* 실제 자동 매칭 섹션과 같은 버튼 3개 — 남자 버튼만 살아 있다 */}
+                            <div className="auto-make-row mb-2.5">
+                                <div className="amg2-fingerbox">
+                                    <div className="amg2-finger">👇</div>
+                                    <button
+                                        type="button"
+                                        className="auto-make-btn male amg2-hi"
+                                        style={{ width: '100%' }}
+                                        onClick={() => setStage('options')}
+                                    >👨 남자 매칭</button>
+                                </div>
+                                <button type="button" className="auto-make-btn female amg2-dim">👩 여자 매칭</button>
+                                <button type="button" className="auto-make-btn mixed amg2-dim">💑 혼복 매칭</button>
+                            </div>
+
+                            {/* 가상 대기 명단 */}
+                            <section className="bg-gray-800/50 rounded-lg p-2.5">
+                                <div className="cox-secline mb-2.5">
+                                    <div className="lbl">
+                                        <span className="tick"></span>
+                                        <span>대기 명단</span>
+                                        <span className="count">{WAITING_DEMO.length}</span>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-4 gap-1">
+                                    {WAITING_DEMO.map(p => <DemoPlayerCard key={p.name} {...p} />)}
+                                </div>
+                            </section>
+                        </>
+                    )}
+
+                    {stage === 'options' && (
+                        <>
+                            <div className="amg2-stage-label">🎮 연습 화면 — 실제 화면과 똑같아요</div>
+                            <h3 className="mo-title" style={{ marginBottom: 2 }}>남자 매칭 고르기</h3>
+                            <p className="mo-sub" style={{ marginBottom: 10 }}>후보 12명 · 대기 8명 · 경기중 4명</p>
+
+                            <div className="flex flex-col gap-2">
+                                {OPTIONS_DEMO.map((opt, idx) => {
+                                    // 지금 배우는 칸만 밝게, 나머지는 흐리게
+                                    let dim = false, hi = false, hiReasons = false, hiChipName = null;
+                                    if (optStep === 0) { hi = idx === 0; dim = idx !== 0; }
+                                    else if (optStep === 1) { hi = idx === 2 || idx === 4; dim = !(idx === 2 || idx === 4); }
+                                    else if (optStep === 2) { hiReasons = idx === 0; dim = idx !== 0; }
+                                    else if (optStep === 3) { hiChipName = idx === 0 ? '정형진' : null; dim = idx !== 0; }
+                                    else if (optStep === 4) { dim = idx !== 0; }
+                                    return (
+                                        <div key={idx} ref={el => { cardRefs.current[idx] = el; }}>
+                                            <DemoOptionCard
+                                                opt={opt}
+                                                dim={dim}
+                                                hi={hi}
+                                                hiReasons={hiReasons}
+                                                hiChipName={hiChipName}
+                                                clickable={isPicking && idx === 0}
+                                                onPick={() => { setCourtDone(false); setStage('queue'); }}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
+
+                    {stage === 'queue' && (
+                        <>
+                            <div className="amg2-stage-label">🎮 연습 화면 — 실제 화면과 똑같아요</div>
+                            <div className="cox-secline mb-2.5 px-1">
+                                <div className="lbl green">
+                                    <span className="tick"></span>
+                                    <span>🤖 자동 매칭</span>
+                                </div>
+                            </div>
+
+                            {/* 방금 고른 경기가 목록에 들어간 모습 */}
+                            <div className="flex flex-col w-full bg-gray-800/60 rounded-lg p-1">
+                                {!courtDone && (
+                                    <div className="auto-wait-note">
+                                        <span>⏳</span>
+                                        <span className="truncate">3번 코트가 끝나면 시작 — 경기중: 정형진</span>
+                                    </div>
+                                )}
+                                <div className="flex items-center w-full gap-1">
+                                    <div className="flex-shrink-0 w-8 text-center flex items-center justify-center">
+                                        <p className="font-bold text-lg text-white arcade-font">1</p>
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
+                                        <DemoPlayerCard name="정형진" level="B" games={3} playing={!courtDone} />
+                                        <DemoPlayerCard name="나상호" level="B" games={3} />
+                                        <DemoPlayerCard name="신환종" level="C" games={3} />
+                                        <DemoPlayerCard name="이상민" level="C" games={3} />
+                                    </div>
+                                    <div className="flex-shrink-0 w-14 text-center">
+                                        {courtDone ? (
+                                            <div className="amg2-fingerbox">
+                                                <div className="amg2-finger" style={{ fontSize: 22, top: -28 }}>👇</div>
+                                                <button
+                                                    type="button"
+                                                    className="arcade-button w-full py-1.5 px-1 rounded-md font-bold text-[10px] bg-yellow-500 text-black amg2-hi"
+                                                    onClick={() => setStage('done')}
+                                                >START</button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                className="arcade-button w-full py-1.5 px-1 rounded-md font-bold text-[10px] bg-gray-600 text-gray-400 cursor-not-allowed"
+                                                disabled
+                                            >대기</button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
+                    {stage === 'done' && (
+                        <>
+                            <div className="amg2-party">🎉</div>
+                            <h3 className="amg-title" style={{ textAlign: 'center' }}>완벽해요! 이게 전부예요</h3>
+                            <div className="amg-flow">
+                                <div><span>1</span> 👨👩💑 매칭 버튼 누르기</div>
+                                <div><span>2</span> 마음에 드는 카드 <b>골라서 탭</b></div>
+                                <div><span>3</span> <b>START</b> 로 코트에 보내기</div>
+                                <div><span>4</span> 경기 끝나면 <b>FINISH</b></div>
+                            </div>
+                            <div className="amg-box tip" style={{ marginTop: 12 }}>
+                                <b>🔀 다른 조합</b> = 후보 6개 새로 보기 ·
+                                <b> 경기 번호 꾹</b> = 삭제
+                                <br />다시 보기: 프로필 메뉴 ▸ <b>🤖 자동매칭 새 기능</b>
+                            </div>
+                        </>
+                    )}
                 </div>
 
-                {/* 진행 막대 + 버튼 */}
-                <div className="amg-foot">
-                    <div className="amg-track"><span style={{ width: `${((index + 1) / total) * 100}%` }} /></div>
-                    <div className="amg-actions">
-                        <span className="amg-count">{index + 1} / {total}</span>
-                        {index > 0 && (
-                            <button className="amg-btn ghost" onClick={() => setIndex(i => Math.max(0, i - 1))}>이전</button>
-                        )}
-                        <button
-                            className="amg-btn primary"
-                            onClick={() => (isLast ? onComplete() : setIndex(i => i + 1))}
-                        >
-                            {page.cover ? '2분만 투자할게요 →' : isLast ? '확인했습니다 ✅' : '다음'}
+                {/* ── 코치 말풍선 + 진행 점 ── */}
+                <div className="amg2-coach">
+                    <div className="amg2-coach-row">
+                        <span className="amg2-coach-emoji">🤖</span>
+                        <p className="amg2-coach-text">{coachText}</p>
+                    </div>
+                    {coachBtn && (
+                        <button type="button" className="amg2-coach-btn" onClick={coachBtn.onClick}>
+                            {coachBtn.label}
                         </button>
+                    )}
+                    <div className="amg2-dots">
+                        {STAGE_ORDER.map(s => (
+                            <span key={s} className={`amg2-dot ${s === stage ? 'on' : ''}`} />
+                        ))}
                     </div>
                 </div>
             </div>
