@@ -98,7 +98,76 @@ const calculateLocations = (gameState, players) => {
 };
 
 
+// ===================================================================================
+// [자동 복구] 시작할 수 없게 된 예약 경기 정리
+// -----------------------------------------------------------------------------------
+// 예약해 둔 경기에 들어 있던 선수가 중간에 나가거나(퇴장) 휴식으로 바뀌면,
+// 그 경기는 영원히 START를 누를 수 없다. 그대로 두면 목록이 막혀서
+// "그 선수들은 계속 예약 상태 → 새 매칭 후보에서도 빠짐 → 경기가 안 만들어짐"
+// 이라는 교착에 빠진다. (실제 시뮬레이션에서 재현된 문제)
+//
+// 그래서 자동 매칭 목록에서는 그런 경기를 통째로 해체하고,
+// 남은 선수들을 대기 명단으로 돌려보낸다. 관리자가 아무것도 안 해도 스스로 풀린다.
+// (관리자가 손으로 짠 '경기 예정' 목록은 의도를 존중해서 해당 칸만 비운다)
+// ===================================================================================
+
+/** 이 선수가 지금 경기에 들어갈 수 있는 상태인가 */
+const isPlayerUsable = (player) => !!player && player.status === 'active' && !player.isResting;
+
+/**
+ * @param {object} gameState 현재 게임 상태
+ * @param {object} allPlayers 전체 선수 데이터 (나간 선수 포함)
+ * @returns {{changed: boolean, newState: object, dissolvedCount: number, clearedNames: Array<string>}}
+ */
+const repairMatchQueues = (gameState, allPlayers) => {
+    const newState = JSON.parse(JSON.stringify(gameState || {}));
+    let changed = false;
+    let dissolvedCount = 0;
+    const clearedNames = [];
+
+    // (1) 자동 매칭 — 못 뛰는 선수가 한 명이라도 있으면 그 경기를 해체한다
+    const autoMatches = newState.autoMatches || {};
+    const keptMatches = [];
+    Object.keys(autoMatches)
+        .sort((a, b) => Number(a) - Number(b))
+        .forEach(key => {
+            const match = autoMatches[key];
+            if (!Array.isArray(match)) return;
+            const broken = match.filter(Boolean).filter(id => !isPlayerUsable(allPlayers?.[id]));
+            if (broken.length > 0) {
+                changed = true;
+                dissolvedCount += 1;
+                broken.forEach(id => clearedNames.push(allPlayers?.[id]?.name || '나간 선수'));
+                return; // 목록에 다시 담지 않는다 = 해체
+            }
+            keptMatches.push(match);
+        });
+    if (changed) {
+        const reindexed = {};
+        keptMatches.forEach((m, i) => { reindexed[String(i)] = m; });
+        newState.autoMatches = reindexed;
+    }
+
+    // (2) 경기 예정(수동) — 관리자가 짠 배치이므로 해당 칸만 비운다
+    const scheduled = newState.scheduledMatches || {};
+    Object.keys(scheduled).forEach(key => {
+        const match = scheduled[key];
+        if (!Array.isArray(match)) return;
+        match.forEach((id, slotIndex) => {
+            if (id && !isPlayerUsable(allPlayers?.[id])) {
+                match[slotIndex] = null;
+                changed = true;
+                clearedNames.push(allPlayers?.[id]?.name || '나간 선수');
+            }
+        });
+    });
+
+    return { changed, newState, dissolvedCount, clearedNames };
+};
+
+
 export {
     DEFAULT_ADMIN_NAMES, getAdminNames, isAdminName, setAdminNamesCache,
     PLAYERS_PER_MATCH, LEVEL_ORDER, generateId, filterTodayGames, getLevelColor, calculateLocations,
+    isPlayerUsable, repairMatchQueues,
 };

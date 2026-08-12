@@ -150,12 +150,19 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                                 📖 사용설명서
                             </button>
                         </div>
-                        {/* [자동매칭] 매칭 생성 방식 안내 (ON/OFF 폐지 → 버튼으로 1경기씩) */}
+                        {/* [자동매칭 v2] 후보 6개 중에서 고르는 방식 */}
                         <div className="bg-gray-800 px-3 py-2 rounded-lg text-sm text-gray-300 leading-relaxed">
                             메인 화면 <b className="text-green-300">🤖 자동 매칭</b>의
-                            <b className="text-blue-300"> 👨 남자 매칭 만들기</b> /
-                            <b className="text-pink-300"> 👩 여자 매칭 만들기</b> 버튼을 누를 때마다
-                            <b className="text-white"> 한 경기씩</b> 만들어집니다.
+                            <b className="text-blue-300"> 👨 남자</b> /
+                            <b className="text-pink-300"> 👩 여자</b> /
+                            <b className="text-purple-300"> 💑 혼복</b> 버튼을 누르면
+                            <b className="text-white"> 후보 6개(베스트 2·보통 2·아쉬움 2)</b>가
+                            이유와 함께 표시됩니다. 골라서 탭하면 목록에 들어가요.
+                            <br/>
+                            <span className="text-xs text-gray-400">
+                                후보는 <b className="text-gray-200">접속한 전원(경기중 포함)</b>이며,
+                                이미 다음 경기가 잡힌 선수와 휴식 중인 선수는 빠집니다.
+                            </span>
                         </div>
 
                         {(
@@ -214,10 +221,11 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                                     )}
                                 </div>
 
-                                <p className="text-xs text-gray-500 text-center">
-                                    민감도가 <b>높을수록</b> 최대한 '안 친 사람'끼리 매칭합니다(조합이 까다로워짐).<br/>
-                                    <b>낮을수록</b> 웬만한 조합도 바로 경기로 만듭니다. 잘 모르겠으면 <b>보통</b>.<br/>
-                                    <span className="text-yellow-500/80">'매칭 만들기'에서 만들 조합이 없다고 나오면 민감도를 한 단계 낮춰보세요.</span>
+                                <p className="text-xs text-gray-500 text-center leading-relaxed">
+                                    민감도는 <b>경기중인 선수를 몇 명까지 미리 예약할지</b>를 정합니다.<br/>
+                                    <b>낮음</b> 0명(만들면 바로 시작) · <b>보통</b> 1명 · <b>높음</b> 2명 · <b>최고</b> 제한 없음<br/>
+                                    많이 넣을수록 <b>공평</b>해지지만 코트가 끝나기를 기다리는 경기가 늘어요.
+                                    잘 모르겠으면 <b>보통</b>, 사람이 많은 날은 <b>높음</b>.
                                 </p>
                             </div>
                         )}

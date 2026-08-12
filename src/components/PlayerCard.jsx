@@ -67,7 +67,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                borderStyle: 'solid',
         borderColor: 'transparent',
         transition: 'all 0.2s ease-in-out',
-        opacity: isPlaying ? 0.6 : 1,
+        opacity: isPlaying ? 0.72 : 1,
     };
 
     if (context.selected || isSelectedForWin) {
@@ -91,7 +91,9 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             id={isCurrentUser ? 'my-player-card' : undefined}
             data-flip-id={player.id} /* [고스트 무브] 카드 이동을 부드럽게 연출하기 위한 식별자 */
             // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
-            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''}`}
+            // [경기중 표시] 지금 코트에서 뛰는 선수는 무채색 + '경기중' 딱지를 붙여
+            //               "이 카드는 아직 못 움직인다"는 걸 한눈에 알 수 있게 한다.
+            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''} ${isPlaying ? 'cox-card-playing' : ''}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
             onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
@@ -101,6 +103,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         >
             {/* [접속 표시] 지금 앱을 보고 있는 선수의 초록 펄스 점 */}
             {isOnline && !player.isResting && <span className="cox-online-dot" title="접속 중" />}
+            {/* [경기중 표시] 경기가 끝나면 이 딱지가 사라지고 카드 색이 돌아온다 */}
+            {isPlaying && <span className="cox-playing-tag">경기중</span>}
             <div>
                 <div className={playerNameClass}>{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>

@@ -66,10 +66,11 @@ const TUTORIAL_ADMIN_STEPS = [
     },
     {
         target: '[data-tut="auto-make"]', tab: 'matching',
-        title: '② 자동 매칭 — 버튼 하나면 끝',
+        title: '② 자동 매칭 — 골라서 만들어요',
         body: (<>
-            <b>남자 / 여자 / 혼복</b> 버튼을 누를 때마다 <b>한 경기</b>가 만들어져요.
-            <br/>기준: <em>적게 친 사람 → 안 친 사람 → 급수 맞춤</em>. 혼복은 남1+여1 팀.
+            <b>남자 / 여자 / 혼복</b> 버튼을 누르면 <b>후보 6개</b>가 이유와 함께 떠요.
+            <br/><b>베스트 2 · 보통 2 · 아쉬움 2</b> 중에서 골라 탭하면 목록에 들어갑니다.
+            <br/>자세한 설명: 내 메뉴 ▸ <b>🤖 자동매칭 새 기능</b>
         </>),
     },
     {
@@ -79,6 +80,7 @@ const TUTORIAL_ADMIN_STEPS = [
             카드 <span className="tut-key">탭↔탭</span> 자리 교환 ·
             <span className="tut-key">번호 꾹</span> 경기 삭제 ·
             <span className="tut-key">START</span> 경기 시작
+            <br/><b>회색 「경기중」</b> 카드가 있으면 그 코트가 끝나야 START가 켜져요.
         </>),
     },
     {
@@ -113,10 +115,11 @@ const TUTORIAL_ADMIN_STEPS = [
     },
     {
         surface: 'settings', target: '[data-tut="set-auto"]',
-        title: '설정 — 매칭 민감도만 기억하세요',
+        title: '설정 — 매칭 민감도',
         body: (<>
-            <b>높음</b> = 안 친 사람 우선(깐깐) · <b>낮음</b> = 바로바로. 모르면 <em>보통</em>.
-            <br/>"조합이 없다"고 뜨면 한 단계 낮추면 됩니다.
+            <b>경기중인 선수를 몇 명까지 미리 예약할지</b>를 정합니다.
+            <br/><b>낮음</b> 0명(바로 시작) · <b>보통</b> 1명 · <b>높음</b> 2명 · <b>최고</b> 제한 없음.
+            <br/>모르면 <em>보통</em>, 사람이 많은 날은 <em>높음</em>.
         </>),
     },
     {
@@ -160,6 +163,8 @@ const TUTORIAL_USER_STEPS = [
         body: (<>
             여기 <b>내 이름이 뜨면 다음 경기</b>예요!
             <br/><em>적게 친 사람 먼저 · 안 친 사람과 · 실력 맞춰</em> — 아무도 소외되지 않게 뽑혀요.
+            <br/>경기중이라도 뽑힐 수 있어요. 그때는 카드가 <b>회색 「경기중」</b>으로 보이다가,
+            경기가 끝나면 색이 돌아옵니다.
         </>),
     },
     {

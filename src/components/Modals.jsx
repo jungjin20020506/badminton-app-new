@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { playersRef } from '../lib/firebase';
+import { getLevelColor } from '../lib/helpers';
 
 function SeasonModal({ announcement, seasonId, onClose, announcementType, announcementPhotoUrl }) {
     const handleClose = (isHideToday = false) => {
@@ -425,6 +426,134 @@ function SomoimSyncResultModal({ result, onClose }) {
 
 
 // ===================================================================================
+// [자동 매칭 v2] 매칭 선택지 모달
+// -----------------------------------------------------------------------------------
+// '남자 매칭' 버튼을 누르면 바로 한 경기가 만들어지던 예전 방식 대신,
+// 베스트 2 / 보통 2 / 아쉬움 2 = 총 6개 후보를 이유와 함께 보여주고 관리자가 고른다.
+//
+// 관리자가 헷갈리지 않도록 신경 쓴 부분
+//  · 각 후보에 "왜 이 등급인지"를 이름과 숫자가 들어간 문장으로 설명
+//  · 경기중인 선수는 무채색 + '경기중' 딱지 + 몇 번 코트를 기다려야 하는지 명시
+//  · 지금 상황에서 좋은 조합이 없으면 맨 위에 솔직하게 안내
+//  · 고르는 순간 목록에 들어가므로, 실수해도 길게 눌러 삭제 가능 (기존 기능)
+// ===================================================================================
+
+/** 선택지 안에 들어가는 작은 선수 칩 */
+function OptionPlayerChip({ player }) {
+    const levelColor = getLevelColor(player.level, player.isGuest);
+    return (
+        <div className={`mo-chip ${player.onCourt ? 'playing' : ''}`}>
+            <div className="mo-chip-name">{player.name}</div>
+            <div className="mo-chip-sub">
+                <span style={{ color: player.onCourt ? '#9aa0aa' : levelColor }}>{player.level.replace('조', '')}</span>
+                <span className="mo-chip-games">{player.realGames}G</span>
+            </div>
+            {player.onCourt && <span className="mo-chip-tag">경기중</span>}
+        </div>
+    );
+}
+
+function MatchOptionsModal({ genderLabel, result, queueCount, onSelect, onRegenerate, onCancel }) {
+    const [pageIndex, setPageIndex] = useState(0);
+    const [busy, setBusy] = useState(false);
+
+    const pages = result?.pages || [];
+    const options = pages[pageIndex] || [];
+    const hasMorePages = pages.length > 1;
+
+    const handlePick = async (option) => {
+        if (busy) return;
+        setBusy(true);
+        try { await onSelect(option); } finally { setBusy(false); }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-end sm:items-center justify-center z-[70] p-0 sm:p-4">
+            <div className="mo-sheet modal-content">
+
+                {/* ── 머리말 ── */}
+                <div className="mo-head">
+                    <div className="min-w-0">
+                        <h3 className="mo-title">{genderLabel} 매칭 고르기</h3>
+                        <p className="mo-sub">
+                            후보 {result.poolSize}명 · 대기 {result.waitingCount}명 · 경기중 {result.onCourtCount}명
+                            {queueCount > 0 && <> · 목록에 {queueCount}경기 대기</>}
+                        </p>
+                    </div>
+                    <button onClick={onCancel} className="mo-close" aria-label="닫기">&times;</button>
+                </div>
+
+                {/* ── 지금 상황이 안 좋으면 솔직하게 알려준다 ── */}
+                {result.qualityHint && (
+                    <div className="mo-hint">💡 {result.qualityHint}</div>
+                )}
+
+                {/* ── 선택지 목록 ── */}
+                <div className="mo-list">
+                    {options.map((option, i) => (
+                        <button
+                            key={`${option.ids.join('-')}-${i}`}
+                            type="button"
+                            className={`mo-card ${option.tier}`}
+                            onClick={() => handlePick(option)}
+                            disabled={busy}
+                        >
+                            <div className="mo-card-head">
+                                <span className="mo-tier">{option.tierEmoji} {option.tierLabel}</span>
+                                {option.onCourtIds.length > 0 && (
+                                    <span className="mo-wait-chip">
+                                        ⏳ {option.waitCourts.map(c => `${c + 1}번`).join('·')} 코트 대기
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="mo-teams">
+                                <div className="mo-team">
+                                    <OptionPlayerChip player={option.players[0]} />
+                                    <OptionPlayerChip player={option.players[1]} />
+                                </div>
+                                <div className="mo-vs">VS</div>
+                                <div className="mo-team">
+                                    <OptionPlayerChip player={option.players[2]} />
+                                    <OptionPlayerChip player={option.players[3]} />
+                                </div>
+                            </div>
+
+                            <ul className="mo-reasons">
+                                {option.reasons.map((line, k) => (
+                                    <li key={k} className={`tone-${line.tone}`}>{line.text}</li>
+                                ))}
+                            </ul>
+                        </button>
+                    ))}
+                </div>
+
+                {/* ── 아래 버튼 ── */}
+                <div className="mo-foot">
+                    {hasMorePages && (
+                        <button
+                            type="button"
+                            className="mo-btn ghost"
+                            disabled={busy}
+                            onClick={() => setPageIndex(i => (i + 1) % pages.length)}
+                        >
+                            🔀 다른 조합 ({pageIndex + 1}/{pages.length})
+                        </button>
+                    )}
+                    <button type="button" className="mo-btn ghost" disabled={busy} onClick={onRegenerate}>
+                        🔄 다시 계산
+                    </button>
+                    <button type="button" className="mo-btn cancel" disabled={busy} onClick={onCancel}>
+                        닫기
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+// ===================================================================================
 // [내 기록] 일반 선수가 자기 카드를 탭하면 보이는 오늘의 기록 모달
 // 오늘 몇 경기 했는지 + 매 경기 누구와 같은 편/상대였는지 (관리자 기능 아님, 조회 전용)
 // ===================================================================================
@@ -482,4 +611,4 @@ function MyHistoryModal({ player, allPlayers, onClose }) {
     );
 }
 
-export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal };
+export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal };

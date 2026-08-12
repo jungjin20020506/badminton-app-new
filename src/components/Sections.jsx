@@ -111,7 +111,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
 
 // [자동매칭] 자동 매칭 섹션 컴포넌트 (UI 변경)
 // [수정] 자동 ON/OFF(일정 주기 생성) → '남자/여자 매칭 만들기' 버튼으로 1경기씩 생성
-const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender, onlineIds }) => {
+const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, courtIndexByPlayer, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender, onlineIds }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -171,7 +171,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                         onClick={() => handleGenerateMatch('남')}
                         disabled={!!generatingGender}
                     >
-                        {generatingGender === '남' ? '생성 중...' : '👨 남자 매칭'}
+                        {generatingGender === '남' ? '계산 중...' : '👨 남자 매칭'}
                     </button>
                     <button
                         type="button"
@@ -179,7 +179,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                         onClick={() => handleGenerateMatch('여')}
                         disabled={!!generatingGender}
                     >
-                        {generatingGender === '여' ? '생성 중...' : '👩 여자 매칭'}
+                        {generatingGender === '여' ? '계산 중...' : '👩 여자 매칭'}
                     </button>
                     {/* [혼복 매칭] 남2+여2 → 남1+여1 팀 자동 배치 */}
                     <button
@@ -188,7 +188,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                         onClick={() => handleGenerateMatch('혼복')}
                         disabled={!!generatingGender}
                     >
-                        {generatingGender === '혼복' ? '생성 중...' : '💑 혼복 매칭'}
+                        {generatingGender === '혼복' ? '계산 중...' : '💑 혼복 매칭'}
                     </button>
                 </div>
             )}
@@ -197,40 +197,74 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, isAdmin, handleSt
                     <p>만들어진 자동 매칭이 없습니다.</p>
                     <p className="text-xs mt-1">
                         {isAdmin
-                            ? <>위의 '매칭 만들기'를 누를 때마다<br/>한 경기씩 만들어집니다.</>
+                            ? <>위 버튼을 누르면 후보 6개를 이유와 함께 보여줍니다.<br/>마음에 드는 조합을 고르면 여기에 추가돼요.</>
                             : <>관리자가 매칭을 만들면 여기에 표시됩니다.</>}
                     </p>
                 </div>
             )}
             <div id="auto-matches" className="flex flex-col gap-2">
                 {matchList.map(([matchIndex, match]) => {
-                    const playerCount = match.filter(p => p).length;
+                    const ids = match.filter(Boolean);
+                    const playerCount = ids.length;
+                    // [자동매칭 v2] 이 경기를 지금 시작할 수 있는지 판단한다.
+                    //  · onCourt : 아직 코트에서 뛰는 중인 선수 (그 경기가 끝나야 시작 가능)
+                    //  · broken  : 나갔거나 휴식으로 바뀐 선수 (자리를 채우거나 경기를 지워야 함)
+                    const onCourtIds = ids.filter(id => inProgressPlayerIds.has(id));
+                    const brokenIds = ids.filter(id => !players[id] || players[id].isResting);
+                    const canStart = playerCount === PLAYERS_PER_MATCH && onCourtIds.length === 0 && brokenIds.length === 0;
+
+                    const waitCourts = [...new Set(onCourtIds.map(id => courtIndexByPlayer?.[id]).filter(i => i !== undefined))]
+                        .sort((a, b) => a - b);
+                    const nameOf = (id) => players[id]?.name || allPlayers?.[id]?.name || '나간 선수';
+
+                    let note = null;
+                    if (brokenIds.length > 0) {
+                        note = { broken: true, text: `${brokenIds.map(nameOf).join('·')} 빠짐 — 빈 자리를 채우거나 번호를 길게 눌러 삭제` };
+                    } else if (onCourtIds.length > 0) {
+                        const courtText = waitCourts.length ? `${waitCourts.map(c => c + 1).join('·')}번 코트` : '진행 중인 경기';
+                        note = { broken: false, text: `${courtText}가 끝나면 시작 — 경기중: ${onCourtIds.map(nameOf).join('·')}` };
+                    }
+
+                    const startLabel = brokenIds.length > 0 ? '수정' : (onCourtIds.length > 0 ? '대기' : 'START');
                     // [매칭 연출] 처음 등장하는 구성이면 카드 딜 애니메이션 클래스 부여
                     const isNewDeal = !!matchSig(match) && !dealSeenRef.current.has(matchSig(match));
                     return (
-                        // [UI 수정] 내부 요소 정렬 및 간격 유지
-                        <div key={`auto-match-${matchIndex}`} className={`flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1 ${isNewDeal ? 'auto-deal' : ''}`}>
-                            <div
-                                className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
-                                onMouseDown={() => handlePressStart(matchIndex)}
-                                onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
-                                onTouchStart={() => handlePressStart(matchIndex)}
-                                onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
-                            >
-                                <p className="font-bold text-lg text-white arcade-font">{parseInt(matchIndex, 10) + 1}</p>
-                            </div>
-                            <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
-                                {match.map((playerId, slotIndex) => {
-                                    const player = players[playerId];
-                                    const cardKey = playerId ? `${playerId}-${matchIndex}-${slotIndex}` : `auto-empty-${matchIndex}-${slotIndex}`;
-                                    const isSelected = selectedAutoMatchSlot && selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex;
-                                    return player ?
-                                        (<PlayerCard key={cardKey} player={player} context={{location: 'auto', selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={handleReturnToWaiting} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} />) :
-                                        (<EmptySlot key={cardKey} onSlotClick={() => handleAutoMatchSlotClick(matchIndex, slotIndex)} />)
-                                })}
-                            </div>
-                            <div className="flex-shrink-0 w-14 text-center">
-                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === 4 && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== 4 || !isAdmin} onClick={() => handleStartAutoMatch(matchIndex, 'auto')}>START</button>
+                        <div key={`auto-match-${matchIndex}`} className={`flex flex-col w-full bg-gray-800/60 rounded-lg p-1 ${isNewDeal ? 'auto-deal' : ''}`}>
+                            {/* [자동매칭 v2] 왜 아직 시작 못 하는지 한 줄로 알려준다 */}
+                            {note && (
+                                <div className={`auto-wait-note ${note.broken ? 'broken' : ''}`}>
+                                    <span>{note.broken ? '⚠️' : '⏳'}</span>
+                                    <span className="truncate">{note.text}</span>
+                                </div>
+                            )}
+                            {/* [UI 수정] 내부 요소 정렬 및 간격 유지 */}
+                            <div className="flex items-center w-full gap-1">
+                                <div
+                                    className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
+                                    onMouseDown={() => handlePressStart(matchIndex)}
+                                    onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
+                                    onTouchStart={() => handlePressStart(matchIndex)}
+                                    onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
+                                >
+                                    <p className="font-bold text-lg text-white arcade-font">{parseInt(matchIndex, 10) + 1}</p>
+                                </div>
+                                <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
+                                    {match.map((playerId, slotIndex) => {
+                                        const player = players[playerId];
+                                        const cardKey = playerId ? `${playerId}-${matchIndex}-${slotIndex}` : `auto-empty-${matchIndex}-${slotIndex}`;
+                                        const isSelected = selectedAutoMatchSlot && selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex;
+                                        return player ?
+                                            (<PlayerCard key={cardKey} player={player} context={{location: 'auto', selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={handleReturnToWaiting} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} />) :
+                                            (<EmptySlot key={cardKey} onSlotClick={() => handleAutoMatchSlotClick(matchIndex, slotIndex)} />)
+                                    })}
+                                </div>
+                                <div className="flex-shrink-0 w-14 text-center">
+                                    <button
+                                        className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${canStart && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
+                                        disabled={!canStart || !isAdmin}
+                                        onClick={() => handleStartAutoMatch(matchIndex, 'auto')}
+                                    >{startLabel}</button>
+                                </div>
                             </div>
                         </div>
                     );

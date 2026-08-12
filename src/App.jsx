@@ -14,15 +14,14 @@ import { isSoundEnabled, setSoundEnabled, playStart, playFinish } from './lib/so
 import { CoxMark } from './components/Logo';
 import {
     getAdminNames, generateId, filterTodayGames, calculateLocations,
-    PLAYERS_PER_MATCH, LEVEL_ORDER,
+    PLAYERS_PER_MATCH, LEVEL_ORDER, repairMatchQueues,
 } from './lib/helpers';
 import {
-    findSingleBestMatch, findSingleBestMixedMatch, getBestLevelSplit, getBestMixedLevelSplit,
-    getAutoMatchMinScore, getSensitivity,
+    buildMatchContext, buildCandidatePool, generateMatchOptions, getSensitivity,
 } from './lib/matching';
 import { WaitingListSection, ScheduledMatchesSection, AutoMatchesSection, InProgressCourtsSection } from './components/Sections';
 import { EntryPage } from './components/EntryPage';
-import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal } from './components/Modals';
+import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal } from './components/Modals';
 import { SkeletonScreen } from './components/Skeleton';
 import { UpdateBanner } from './components/UpdateBanner';
 import { SettingsModal } from './components/SettingsModal';
@@ -31,6 +30,7 @@ import {
     readLocalTutorialSeen, markTutorialSeen, TUTORIAL_ADMIN_STEPS, TUTORIAL_USER_STEPS,
     TutorialIntroModal, TutorialOverlay,
 } from './tutorial/Tutorial';
+import { AutoMatchGuide, AUTOMATCH_GUIDE_KEY } from './tutorial/AutoMatchGuide';
 
 // ===================================================================================
 // [유령 관리자] 이름을 '관리자'로 입장하면 선수 카드(Firestore 문서)를 만들지 않고
@@ -264,6 +264,15 @@ export default function App() {
         );
     }, [gameState]);
 
+    // [자동매칭 v2] 경기중인 선수가 '몇 번 코트'에 있는지 — 예약 경기에 "3번 코트 끝나면 시작"을 표시하는 데 쓴다
+    const courtIndexByPlayer = useMemo(() => {
+        const map = {};
+        (gameState?.inProgressCourts || []).forEach((court, courtIndex) => {
+            if (court?.players) court.players.forEach(id => { if (id) map[id] = courtIndex; });
+        });
+        return map;
+    }, [gameState]);
+
    // [모바일 UI 개선] 화면 크기 변경을 감지하는 로직입니다.
    useEffect(() => {
         const handleResize = () => {
@@ -451,11 +460,60 @@ useEffect(() => {
         return localStorage.getItem(`seen-${seasonConfig.seasonId}`) !== new Date().toDateString();
     }, [isLoading, seasonConfig, isSeasonModalDismissed]);
 
+    // ===============================================================================
+    // [자동매칭 v2] 관리자 필독 안내 — 관리자가 접속하면 딱 한 번 자동으로 뜬다
+    // -------------------------------------------------------------------------------
+    //  끝까지 보고 '확인했습니다'를 눌러야만 '봤음' 기록이 남는다.
+    //  중간에 닫으면 기록이 남지 않아 다음 접속 때 다시 뜬다 (= 무조건 읽게 된다).
+    //  이 안내가 떠 있는 동안에는 기존 튜트리얼이 겹쳐 뜨지 않도록 순서를 잡는다.
+    // ===============================================================================
+    const [autoMatchGuideOpen, setAutoMatchGuideOpen] = useState(false);
+    const autoMatchGuideTriedRef = useRef(false);
+
+    const hasSeenAutoMatchGuide = useMemo(() => {
+        if (!currentUser) return true;
+        const seen = { ...readLocalTutorialSeen(currentUser.id), ...(currentUser.tutorialSeen || {}) };
+        return !!seen[AUTOMATCH_GUIDE_KEY];
+    }, [currentUser]);
+
+    useEffect(() => {
+        if (isLoading || !currentUser || !isAdmin || isInAppBrowser) return;
+        if (autoMatchGuideOpen || autoMatchGuideTriedRef.current) return;
+        if (seasonModalPending || modal?.type || isSettingsOpen || isRosterOpen) return;
+        if (hasSeenAutoMatchGuide) return;
+
+        const timer = setTimeout(() => {
+            autoMatchGuideTriedRef.current = true;
+            setAutoMatchGuideOpen(true);
+        }, 600);
+        return () => clearTimeout(timer);
+    }, [isLoading, currentUser, isAdmin, isInAppBrowser, autoMatchGuideOpen, hasSeenAutoMatchGuide,
+        seasonModalPending, modal, isSettingsOpen, isRosterOpen]);
+
+    /** 끝까지 봤을 때만 기록을 남긴다 */
+    const handleAutoMatchGuideComplete = useCallback(() => {
+        setAutoMatchGuideOpen(false);
+        if (currentUser) markTutorialSeen(currentUser.id, AUTOMATCH_GUIDE_KEY, { remote: !currentUser.isGhostAdmin });
+    }, [currentUser]);
+
+    /** 중간에 닫으면 기록을 남기지 않는다 → 다음 접속 때 다시 뜬다 */
+    const handleAutoMatchGuideDismiss = useCallback(() => setAutoMatchGuideOpen(false), []);
+
+    const handleReplayAutoMatchGuide = useCallback(() => {
+        autoMatchGuideTriedRef.current = true;
+        setModal({ type: null, data: null });
+        setIsSettingsOpen(false);
+        setIsRosterOpen(false);
+        setAutoMatchGuideOpen(true);
+    }, []);
+
     // 관리자 권한을 받은 뒤 첫 1회 / 일반 선수 첫 입장 1회 자동 실행
     useEffect(() => {
         if (isLoading || !currentUser || isInAppBrowser) return;
         if (tutorial || tutorialAutoTriedRef.current) return;
         if (seasonModalPending || modal?.type || isSettingsOpen || isRosterOpen) return;
+        // 자동매칭 필독 안내가 먼저다 — 그게 끝난 뒤에 기존 튜트리얼을 띄운다
+        if (autoMatchGuideOpen || (isAdmin && !hasSeenAutoMatchGuide)) return;
 
         // 선수 문서 기록이 기준이고, 로컬 기록은 오프라인 대비 보조 수단이다.
         const seen = { ...readLocalTutorialSeen(currentUser.id), ...(currentUser.tutorialSeen || {}) };
@@ -467,7 +525,8 @@ useEffect(() => {
             setTutorial({ mode, phase: 'intro', step: 0 });
         }, 700);
         return () => clearTimeout(timer);
-    }, [isLoading, currentUser, isAdmin, isInAppBrowser, tutorial, seasonModalPending, modal, isSettingsOpen, isRosterOpen]);
+    }, [isLoading, currentUser, isAdmin, isInAppBrowser, tutorial, seasonModalPending, modal,
+        isSettingsOpen, isRosterOpen, autoMatchGuideOpen, hasSeenAutoMatchGuide]);
 
     // 환경에 없는 단계(모바일 전용 등)는 걸러낸다
     const tutorialSteps = useMemo(() => {
@@ -1101,10 +1160,45 @@ useEffect(() => {
         });
     }, [gameState, updateGameState]); // 트랜잭션 사용으로 allPlayers 의존성 제거됨
 
-    // [자동 매칭] '매칭 만들기' — 버튼을 누를 때마다 "한 경기"만 생성한다.
-    //  (기존: ON/OFF + 3초 주기 자동 생성 → 변경: 관리자가 누를 때마다 1경기)
-    //  매칭 기준(점수·민감도·급수 밸런스·휴식 제외)은 기존 자동매칭과 완전히 동일하다.
-    //  gender: '남' | '여' | '혼복'(남2+여2, 팀은 남1+여1로 배치)
+    // ===============================================================================
+    // [자동 매칭 v2] '매칭 만들기' — 후보 6개를 보여주고 관리자가 고른다
+    // -------------------------------------------------------------------------------
+    //  예전: 버튼을 누르면 앱이 정한 한 조합이 곧바로 목록에 들어갔다.
+    //        후보는 '대기석에 앉은 사람'뿐이라, 경기를 적게 친 사람이 마침 코트에 있으면
+    //        계속 밀렸다. 조합이 마음에 안 들면 지우고 다시 누르는 수밖에 없었다.
+    //
+    //  지금: 접속한 전원(대기석 + 경기중)을 후보로 놓고 베스트 2 / 보통 2 / 아쉬움 2를
+    //        이유와 함께 보여준다. 관리자가 고른 것만 목록에 들어간다.
+    //        (이미 다음 경기가 잡힌 선수는 이중 배정을 막기 위해 후보에서 제외)
+    // ===============================================================================
+
+    /** 지금 상황 기준으로 선택지를 계산한다. (모달을 처음 열 때 · '다시 계산'을 누를 때) */
+    const computeMatchOptions = useCallback((gender) => {
+        const isMixed = gender === '혼복';
+        const config = seasonConfig?.autoMatchConfig || {};
+
+        // 민감도 = "경기중인 선수를 몇 명까지 미리 예약할지"
+        const masterSens = config.sensitivity || 'normal';
+        const perGender = !!config.perGenderSensitivity;
+        const sensKey = (perGender && !isMixed)
+            ? ((gender === '남' ? config.maleSensitivity : config.femaleSensitivity) || masterSens)
+            : masterSens;
+        const sens = getSensitivity(sensKey);
+
+        const ctx = buildMatchContext(allPlayers, gameState, { now: Date.now() });
+        const pool = buildCandidatePool(ctx, gender);
+
+        // 이미 '코트 끝나기를 기다리는' 예약이 목록에 몇 개나 있는지.
+        // 예약이 쌓이면 목록 전체가 대기 상태가 되어 코트가 놀기 때문에,
+        // 엔진이 "이번엔 바로 시작 가능한 조합"을 우선하도록 알려준다.
+        const pendingReservations = Object.values(gameState?.autoMatches || {})
+            .filter(m => (m || []).some(id => id && inProgressPlayerIds.has(id))).length;
+
+        return generateMatchOptions({
+            pool, ctx, mode: gender, maxOnCourt: sens.maxOnCourt, pages: 3, pendingReservations,
+        });
+    }, [allPlayers, gameState, seasonConfig, inProgressPlayerIds]);
+
     const handleGenerateMatch = useCallback(async (gender) => {
         const isMixed = gender === '혼복';
         const genderLabel = isMixed ? '혼복' : (gender === '남' ? '남자' : '여자');
@@ -1118,108 +1212,115 @@ useEffect(() => {
         isGeneratingRef.current = true;
         setGeneratingGender(gender);
         try {
-            const config = seasonConfig?.autoMatchConfig || {};
+            const result = computeMatchOptions(gender);
 
-            // 현재 자동 매칭 목록에 있는 선수들
-            const autoMatchedPlayerIds = new Set(
-                Object.values(gameState.autoMatches || {}).flatMap(match => match)
-            );
-
-            // '휴식' 중이거나 이미 '자동 매칭' 목록에 있는 선수는 풀에서 제외
-            const pool = waitingPlayers.filter(p =>
-                (isMixed || p.gender === gender) &&
-                !autoMatchedPlayerIds.has(p.id) &&
-                !p.isResting // <-- 휴식 선수 제외
-            );
-
-            // 커트라인은 "대기석"이 아니라 현재 접속 중인 전체 인원 기준으로 계산한다.
-            //  (경기대기 + 경기예정 + 경기진행에 있는 해당 성별 선수 모두 포함, 휴식/비활성 제외, 게스트 포함)
-            //  혼복은 남녀 전체 인원 기준.
-            const genderActive = Object.values(allPlayers)
-                .filter(p => p.status === 'active' && !p.isResting && (isMixed || p.gender === gender));
-
-            // [자동매칭] 민감도 프리셋 → 커트라인 오프셋 (성별별 따로 설정 가능, 혼복은 대표 민감도 사용)
-            const masterSens = config.sensitivity || 'normal';
-            const perGender = !!config.perGenderSensitivity;
-            const sensKey = (perGender && !isMixed)
-                ? ((gender === '남' ? config.maleSensitivity : config.femaleSensitivity) || masterSens)
-                : masterSens;
-            const sens = getSensitivity(sensKey);
-            const appliedMinScore = getAutoMatchMinScore(genderActive.length) + sens.offset;
-
-            // [공평 강화] 대기시간/경기차 보정용 컨텍스트 (해당 풀 최다 경기수 기준)
-            const fairnessCtx = {
-                now: Date.now(),
-                maxGames: genderActive.reduce((m, p) => Math.max(m, p.todayRecentGames?.length ?? 0), 0),
-            };
-
-            const result = isMixed
-                ? findSingleBestMixedMatch(
-                    pool.filter(p => p.gender === '남'),
-                    pool.filter(p => p.gender === '여'),
-                    allPlayers, appliedMinScore, fairnessCtx)
-                : findSingleBestMatch(pool, allPlayers, appliedMinScore, fairnessCtx);
-
-            // (1) 매칭 가능한 대기 인원 부족
-            if (result.status === 'notEnough') {
+            // 인원이 모자라면 무엇이 몇 명 부족한지 정확히 알려준다
+            if (result.status !== 'ok') {
                 setModal({ type: 'alert', data: {
                     title: `${genderLabel} 매칭 불가`,
                     body: isMixed
-                        ? `혼복 매칭은 남자 2명, 여자 2명 이상 대기해야 합니다.\n(현재 남 ${result.maleCount}명 · 여 ${result.femaleCount}명 · 휴식/이미 매칭된 선수 제외)`
-                        : `매칭할 수 있는 ${genderLabel} 대기 선수가 4명 이상이어야 합니다.\n(현재 ${result.poolSize}명 · 휴식/이미 매칭된 선수 제외)`
+                        ? `혼복은 남자 2명, 여자 2명 이상 필요합니다.\n(현재 남 ${result.maleCount ?? 0}명 · 여 ${result.femaleCount ?? 0}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.`
+                        : `${genderLabel} 선수가 4명 이상 필요합니다. (현재 ${result.poolSize}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.\n경기중인 선수도 후보에 포함되므로, 경기가 끝나면 다시 눌러보세요.`
                 }});
                 return;
             }
 
-            // (2) 조합은 있지만 전부 최소 점수(커트라인) 미달 → 매칭 난이도 낮추기 안내
-            if (result.status === 'belowMinScore') {
-                setModal({ type: 'alert', data: {
-                    title: '매칭 난이도를 낮춰주세요',
-                    body: `지금 만들 수 있는 ${genderLabel} 조합이 모두 기준 점수에 못 미칩니다.\n(가장 좋은 조합 ${result.bestScore}점 / 기준 ${result.minScore}점)\n\n현재 민감도는 '${sens.label}(${sens.short})' 입니다.\n설정 ▸ 🤖 콕스타 자동 매칭 ▸ 매칭 민감도를 한 단계 낮추거나(예: 높음 → 보통), 경기가 끝나 대기 선수가 늘어난 뒤 다시 눌러주세요.`
-                }});
-                return;
-            }
-
-            // (3) 정상 생성 — 자동 매칭 목록 맨 뒤에 1경기 추가
-            let added = true;
-            await updateGameState((currentState) => {
-                const newState = JSON.parse(JSON.stringify(currentState));
-                if (!newState.autoMatches) newState.autoMatches = {};
-
-                // 트랜잭션 내부에서 "현재 DB 상태"의 선수 목록을 다시 확인한다.
-                // (다른 관리자가 방금 같은 선수를 매칭에 넣었을 수 있음)
-                const currentAutoMatchedIds = new Set(
-                    Object.values(newState.autoMatches).flatMap(match => match)
-                );
-                if (result.match.some(p => currentAutoMatchedIds.has(p.id))) {
-                    added = false;
-                    return { newState };
-                }
-
-                // [급수 밸런스] 두 팀(슬롯 0,1 / 2,3)의 급수가 최대한 맞도록 선수 순서 재배열
-                // 혼복은 반드시 남1+여1 vs 남1+여1이 되도록 전용 분배를 쓴다
-                const balancedOrder = isMixed
-                    ? getBestMixedLevelSplit(result.match, allPlayers)
-                    : getBestLevelSplit(result.match, allPlayers).order;
-                const nextIndex = Object.keys(newState.autoMatches).length;
-                newState.autoMatches[String(nextIndex)] = balancedOrder.map(p => p.id); // Store IDs
-                return { newState };
-            }, "자동 매칭 생성에 실패했습니다.");
-
-            if (!added) {
-                setModal({ type: 'alert', data: {
-                    title: '다시 눌러주세요',
-                    body: '방금 다른 관리자가 같은 선수를 매칭에 넣었습니다. 한 번 더 눌러주세요.'
-                }});
-            }
+            setModal({ type: 'matchOptions', data: { gender, genderLabel, result } });
         } catch (error) {
             console.error("Auto-match generate error:", error);
-            setModal({ type: 'alert', data: { title: '오류', body: '자동 매칭 생성에 실패했습니다.' }});
+            setModal({ type: 'alert', data: { title: '오류', body: '매칭 후보를 계산하지 못했습니다.' }});
         } finally {
             isGeneratingRef.current = false;
             setGeneratingGender(null);
         }
-    }, [isAdmin, seasonConfig, allPlayers, gameState, waitingPlayers, updateGameState]);
+    }, [isAdmin, allPlayers, gameState, computeMatchOptions]);
+
+    /** 모달에서 '다시 계산'을 눌렀을 때 — 지금 코트 상황으로 후보를 새로 뽑는다 */
+    const handleRegenerateOptions = useCallback((gender, genderLabel) => {
+        try {
+            const result = computeMatchOptions(gender);
+            if (result.status !== 'ok') {
+                setModal({ type: 'alert', data: {
+                    title: `${genderLabel} 매칭 불가`,
+                    body: '지금은 매칭할 수 있는 선수가 4명이 안 됩니다.',
+                }});
+                return;
+            }
+            setModal({ type: 'matchOptions', data: { gender, genderLabel, result } });
+        } catch (error) {
+            console.error("Auto-match regenerate error:", error);
+        }
+    }, [computeMatchOptions]);
+
+    /** 관리자가 선택지 하나를 골랐을 때 — 자동 매칭 목록 맨 뒤에 추가 */
+    const handleSelectMatchOption = useCallback(async (option) => {
+        let failReason = null;
+        await updateGameState((currentState) => {
+            const newState = JSON.parse(JSON.stringify(currentState));
+            if (!newState.autoMatches) newState.autoMatches = {};
+
+            // 모달을 보는 사이에 상황이 바뀌었을 수 있으므로 DB 최신 상태로 다시 확인한다.
+            //  ① 다른 관리자가 같은 선수를 먼저 넣었는가 (자동 매칭 · 경기 예정 둘 다 확인)
+            const queuedIds = new Set([
+                ...Object.values(newState.autoMatches).flat(),
+                ...Object.values(newState.scheduledMatches || {}).flat(),
+            ].filter(Boolean));
+            if (option.ids.some(id => queuedIds.has(id))) {
+                failReason = '방금 다른 관리자가 같은 선수를 다른 경기에 넣었습니다.';
+                return { newState };
+            }
+            //  ② 그 사이에 나가거나 휴식으로 바뀐 선수가 있는가
+            const goneName = option.ids
+                .map(id => allPlayers?.[id])
+                .find(p => !p || p.status !== 'active' || p.isResting)?.name;
+            if (goneName !== undefined) {
+                failReason = `${goneName || '일부'} 선수가 방금 빠졌습니다.`;
+                return { newState };
+            }
+
+            const nextIndex = Object.keys(newState.autoMatches).length;
+            newState.autoMatches[String(nextIndex)] = [...option.ids];
+            return { newState };
+        }, '자동 매칭 목록에 추가하지 못했습니다.');
+
+        setModal({ type: null, data: null });
+        if (failReason) {
+            setModal({ type: 'alert', data: {
+                title: '다시 골라주세요',
+                body: `${failReason}\n\n매칭 버튼을 한 번 더 눌러 새 후보를 확인해주세요.`,
+            }});
+        }
+    }, [updateGameState, allPlayers]);
+
+    // ===============================================================================
+    // [자동매칭 v2] 막힌 예약 경기 자동 정리
+    // -------------------------------------------------------------------------------
+    //  예약해 둔 경기에 있던 선수가 중간에 나가거나 휴식으로 바뀌면 그 경기는 영원히
+    //  START를 누를 수 없다. 그런데 그 선수들은 '이미 다음 경기가 잡힌 사람'으로 분류되어
+    //  새 매칭 후보에서도 빠지기 때문에, 그대로 두면 매칭이 통째로 멈춰버린다.
+    //  (시뮬레이션에서 실제로 재현됨 — 2시간에 32경기 나올 상황이 10경기로 떨어졌다)
+    //
+    //  그래서 관리자 화면이 이를 감지하면 그 경기를 해체하고 남은 선수를 대기 명단으로
+    //  돌려보낸다. 관리자가 아무것도 안 눌러도 스스로 풀린다.
+    //  (여러 관리자가 동시에 있어도 트랜잭션이라 한 번만 반영된다)
+    // ===============================================================================
+    const isRepairingRef = useRef(false);
+    useEffect(() => {
+        if (!isAdmin || !gameState || !allPlayers || Object.keys(allPlayers).length === 0) return;
+        if (isRepairingRef.current) return;
+
+        const { changed } = repairMatchQueues(gameState, allPlayers);
+        if (!changed) return;
+
+        isRepairingRef.current = true;
+        updateGameState((currentState) => {
+            // 트랜잭션 안에서 최신 상태로 한 번 더 계산한다
+            const { newState } = repairMatchQueues(currentState, allPlayers);
+            return { newState };
+        })
+            .catch(err => console.error('예약 경기 자동 정리 실패:', err))
+            .finally(() => { isRepairingRef.current = false; });
+    }, [isAdmin, gameState, allPlayers, updateGameState]);
 
     const handleStartAutoMatch = useCallback((matchIndex) => {
         // handleStartMatch 함수로 통합됨
@@ -1700,6 +1801,18 @@ useEffect(() => {
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'somoimSyncResult' && <SomoimSyncResultModal result={modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'myHistory' && <MyHistoryModal player={currentUser} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} />}
+            {/* [자동매칭 v2] 매칭 후보 6개(베스트/보통/아쉬움) 중에서 고르는 화면 */}
+            {modal?.type === 'matchOptions' && (
+                <MatchOptionsModal
+                    key={`${modal.data.gender}-${modal.data.result.totalCombos}-${Object.keys(autoMatches).length}`}
+                    genderLabel={modal.data.genderLabel}
+                    result={modal.data.result}
+                    queueCount={Object.keys(autoMatches).length}
+                    onSelect={handleSelectMatchOption}
+                    onRegenerate={() => handleRegenerateOptions(modal.data.gender, modal.data.genderLabel)}
+                    onCancel={() => setModal({ type: null, data: null })}
+                />
+            )}
             {isRosterOpen && <RosterManageModal roster={roster} onClose={() => setIsRosterOpen(false)} setModal={setModal} />}
 
           {isSettingsOpen && <SettingsModal
@@ -1797,6 +1910,17 @@ useEffect(() => {
                                     </button>
                                 )}
 
+                                {/* [자동매칭 v2] 관리자만 — 새 자동매칭 안내 다시 보기 */}
+                                {isAdmin && (
+                                    <button
+                                        className={`cox-menu-item ${hasSeenAutoMatchGuide ? '' : 'accent'}`}
+                                        onClick={() => { setIsProfileMenuOpen(false); handleReplayAutoMatchGuide(); }}
+                                    >
+                                        <i className="fas fa-robot"></i>
+                                        자동매칭 새 기능 {hasSeenAutoMatchGuide ? '' : '🔴'}
+                                    </button>
+                                )}
+
                                 {/* [튜트리얼] 언제든 다시 볼 수 있게 프로필 메뉴에 넣어 둔다 */}
                                 <button
                                     className="cox-menu-item"
@@ -1856,7 +1980,7 @@ useEffect(() => {
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
                                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
-                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
+                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
                                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
                                 </div>
                             )}
@@ -1869,7 +1993,7 @@ useEffect(() => {
             ) : (
                 <div className="flex flex-col gap-3">
                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
-                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
+                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
                     <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} />
                 </div>
@@ -1911,6 +2035,15 @@ useEffect(() => {
             )}
 
             {/* --- [튜트리얼] 인사 화면 → 스포트라이트 안내 (가장 위에 뜬다) --- */}
+            {/* --- [자동매칭 v2] 관리자 필독 안내 (가장 위, 튜트리얼보다도 먼저) --- */}
+            {autoMatchGuideOpen && (
+                <AutoMatchGuide
+                    userName={currentUser.isGhostAdmin ? null : currentUser.name}
+                    onComplete={handleAutoMatchGuideComplete}
+                    onDismiss={handleAutoMatchGuideDismiss}
+                />
+            )}
+
             {tutorial?.phase === 'intro' && (
                 <TutorialIntroModal
                     mode={tutorial.mode}
