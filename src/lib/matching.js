@@ -68,16 +68,25 @@ const LEVEL_BALANCE_MAP = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 
  * 여기 숫자만 바꾸면 매칭 성향이 바뀐다. 각 줄의 주석이 "이 숫자가 몇 점짜리인지" 설명한다.
  *
  * [우선순위 감각 잡기 — 대표 값 비교]
- *   · 최근 2경기 안에 만난 짝 1쌍       ≈ -94점 (RECENT_MET + MET_AGAIN)
+ *   · 최근 2경기 안에 만난 짝 1쌍       ≈ -97점 (RECENT_MET + MET_AGAIN)
  *   · 30분 기다린 사람 1명               ≈ +90점 (15분×2 + 15×4)
- *   · 급수 폭 3(A조와 D조가 한 코트)     = -70점
+ *   · 급수 폭 3(A조와 D조가 한 코트)     = -150점
  *   · 1경기 덜 친 사람 1명               = +10점 (2경기까지는 이 정도로 너그럽게)
- *   · 3경기째 밀린 사람 1명              = +60점 (구출 가중치 발동)
+ *   · 3경기째 밀린 사람 1명              = +80점 (구출 가중치 발동)
  */
 const W = {
     // ── ① 겹침 방지 (1순위) — 팀·상대 구분 없이 '오늘 만난 사람' 기준 ──
     FRESH_PAIR: 18,      // 오늘 한 번도 안 만난 짝 1쌍당 +18 (최대 6쌍 = +108)
-    MET_AGAIN: 14,       // 오늘 이미 만난 횟수 1회당 -14
+    // 재회 감점은 만난 횟수의 '제곱'으로 커진다: 2회째 -68, 3회째 -153, 4회째부터 -272 (상한).
+    // 왜 제곱인가: 쌍당 일정 감점이면 "이미 4번 겹친 짝을 또 겹치게 하는 것"이
+    // "새로운 짝 2개를 한 번씩 겹치게 하는 것"보다 싸게 계산되어, 특정 두 사람이
+    // 매 경기 같이 뽑히는 사이클이 생긴다 (A조 여자 2명이 8경기 연속 같이 뽑히는
+    // 현상을 시뮬레이션에서 확인). 사람의 감각은 반대다 — 여러 명과 두 번씩은
+    // 참아도 같은 사람과 다섯 번은 못 참는다.
+    // 왜 4회에서 상한인가: 상한 없이 계속 커지면, 급수별 인원이 적은 날(같은 급수끼리는
+    // 재회가 불가피)에 재회를 피하려고 A조와 D조를 한 코트에 섞는 폭주가 생긴다.
+    MET_AGAIN: 17,       // 재회 1쌍당 -17 × (만난 횟수, 최대 4)²
+    MET_CAP: 4,          // 재회 감점 계산에 인정하는 최대 만남 횟수
     RECENT_MET: 80,      // 최근 2경기 안에 만난 짝 1쌍당 -80 (같은 팀이었든 상대였든 동일)
 
     // ── ② 대기 시간 (2순위) — 오래 기다릴수록 1분의 가치가 커진다 ──
@@ -87,13 +96,15 @@ const W = {
     WAIT_CAP: 60,          // 대기 시간 인정 상한 (분)
 
     // ── ③ 급수 밸런스 (3순위) — 팀을 랜덤으로 짜므로 4명 전체 기준 ──
-    SPREAD_PENALTY: [0, 8, 30, 70], // 4명 중 최고↔최저 급수 차이가 0/1/2/3일 때 감점
-    LONELY_LEVEL: 15,    // 나머지 3명 평균과 급수가 1 가까이 차이 나는 '혼자 동떨어진' 선수: 차이 1당 -15
+    // 급수 폭 3(A조와 D조가 한 코트)은 '절대 재미없는 경기'라서 재회 감점 상한(-272)과
+    // 견줄 만큼 크게 잡는다. 안 그러면 겹침을 피하려고 A+D를 섞는 경기가 나온다.
+    SPREAD_PENALTY: [0, 8, 30, 150], // 4명 중 최고↔최저 급수 차이가 0/1/2/3일 때 감점
+    LONELY_LEVEL: 25,    // 나머지 3명 평균과 급수가 LONELY_GAP 이상 차이 나는 '혼자 동떨어진' 선수: 차이 1당 -25
 
     // ── ④ 경기 수 (4순위) — 2경기 차이까지는 너그럽게, 그 이상은 구출 ──
     GAME_TOLERANCE: 2,   // 이 경기 수 차이까지는 "비슷하게 쳤다"로 본다
     GAME_GAP_SOFT: 15,   // 최다 경기자와의 차이 중 2경기까지: 1경기당 +15
-    GAME_GAP_HARD: 60,   // 3경기째부터: 1경기당 +60 (많이 밀린 사람 구출)
+    GAME_GAP_HARD: 80,   // 3경기째부터: 1경기당 +80 (많이 밀린 사람 구출 — 급수가 안 맞아도 굶기지는 않는다)
     COMBO_GAP_OVER: 15,  // 조합 안 경기 수 차이가 2를 넘는 부분 1경기당 -15
 
     // ── ⑤ 급수 다양성 · 매너리즘(ABAB) 해소 (5순위) ──
@@ -123,6 +134,13 @@ const RECENT_WINDOW = 2;
 const THIRST_WINDOW = 3;
 /** 급수 차이가 이 정도 이상이면 "나랑 급수가 안 맞는 경기"로 본다 */
 const THIRST_GAP = 0.9;
+/**
+ * '혼자 동떨어짐' 판정 기준 — 나머지 3명 평균과 이 이상 차이 나야 감점한다.
+ * 1칸 차이(예: A조 1명 + B조 3명)는 충분히 좋은 경기라서 봐준다.
+ * 여기를 0.9처럼 낮추면 급수 소수자(예: A조 여자 2명)가 계속 서로만 묶이는
+ * 부작용이 생긴다 — 시뮬레이션으로 확인됨. 낮추기 전에 스트레스 테스트를 돌릴 것.
+ */
+const LONELY_GAP = 1.5;
 
 /** 조합 폭발 방지 — 한 성별에서 이 인원을 넘으면 '덜 친 순'으로 잘라서 계산한다 */
 const MAX_POOL_SINGLE = 30;
@@ -417,7 +435,8 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
         }
 
         const isRecent = info.recency < RECENT_WINDOW;
-        novelty -= meetings * W.MET_AGAIN;
+        const cappedMeetings = Math.min(meetings, W.MET_CAP);
+        novelty -= cappedMeetings * cappedMeetings * W.MET_AGAIN; // 만난 횟수의 제곱 — 위 W.MET_AGAIN 주석 참고
         if (isRecent) {
             novelty -= W.RECENT_MET;
             recentPairs.push([p1.name, p2.name]);
@@ -441,7 +460,7 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
         const others = comboStats.filter(x => x.id !== p.id);
         const avg = others.reduce((sum, o) => sum + o.levelValue, 0) / others.length;
         const gap = Math.abs(p.levelValue - avg);
-        if (gap >= 0.9) {
+        if (gap >= LONELY_GAP) {
             balance -= gap * W.LONELY_LEVEL;
             lonelyNames.push(p.name);
         }

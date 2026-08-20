@@ -302,7 +302,10 @@ function analyze(gym, mode) {
     });
 
     // 급수가 안 맞는 경기 비율 (ABAB 문제)
+    //   mild   = 1급수 정도 차이 (v3에서는 '괜찮은 경기'로 본다 — 참고용)
+    //   severe = 2급수 이상 차이 (진짜 재미없는 경기 — 이건 적어야 한다)
     let mismatched = 0;
+    let severeMismatched = 0;
     let totalGames = 0;
     players.forEach(p => {
         const my = LEVEL_VAL[p.level] || 3;
@@ -311,7 +314,9 @@ function analyze(gym, mode) {
             if (!others.length) return;
             totalGames += 1;
             const avgOther = others.reduce((s, id) => s + (LEVEL_VAL[gym.allPlayers[id]?.level] || 3), 0) / others.length;
-            if (Math.abs(my - avgOther) >= 0.9) mismatched += 1;
+            const gap = Math.abs(my - avgOther);
+            if (gap >= 0.9) mismatched += 1;
+            if (gap >= 1.9) severeMismatched += 1;
         });
     });
 
@@ -322,6 +327,7 @@ function analyze(gym, mode) {
         pairCoverage: possiblePairs ? Number((pairsUsed / possiblePairs * 100).toFixed(1)) : 0,
         backToBackPartner,
         mismatchRate: totalGames ? Number((mismatched / totalGames * 100).toFixed(1)) : 0,
+        severeMismatchRate: totalGames ? Number((severeMismatched / totalGames * 100).toFixed(1)) : 0,
         counts: counts.slice().sort((a, b) => a - b),
     };
 }
@@ -423,10 +429,15 @@ console.log('\n[3] 급수 편차 큰 날 — A조4·B조4·C조4·D조4 (ABAB �
     const levelMix = ['A조', 'A조', 'A조', 'A조', 'B조', 'B조', 'B조', 'B조', 'C조', 'C조', 'C조', 'C조', 'D조', 'D조', 'D조', 'D조'];
     const { gym, log } = runSession({ maleCount: 16, femaleCount: 0, minutes: 180, sensitivity: 'high', seed: 5, levelMix });
     const a = analyze(gym, '남');
-    console.log(`     경기 수 편차 ${a.spread} · 급수 안 맞는 경기 ${a.mismatchRate}%`);
-    // 급수를 전혀 고려하지 않고 무작위로 짜면 이 비율이 대략 45~55%가 나온다
+    console.log(`     경기 수 편차 ${a.spread} · 1급수 차 경기 ${a.mismatchRate}% · 2급수 이상 차 경기 ${a.severeMismatchRate}%`);
+    // [v3] 1급수 차이(예: A조 1명 + B조 3명)는 괜찮은 경기로 본다.
+    //      정말 피해야 하는 건 2급수 이상 차이(예: A조가 C·D조 사이에 낌).
+    //      이 구성(4개 급수 4명씩, 남자만, 3시간)은 일부러 만든 최악 조건이다 —
+    //      무작위로 짜면 severe가 약 50%, 재회 감점을 선형으로 두면 21%,
+    //      현재 가중치로 13~14%가 나온다. 여기서 더 조이면 1순위(겹침 방지)가
+    //      되튀는 것을 확인했으므로 15%를 기준으로 삼는다.
     check('오류 없이 완주', log.errors.length === 0);
-    check('급수 안 맞는 경기 40% 미만', a.mismatchRate < 40, `${a.mismatchRate}%`);
+    check('심하게 안 맞는 경기(2급수 이상 차) 15% 미만', a.severeMismatchRate < 15, `${a.severeMismatchRate}%`);
     check('경기 수 편차 2 이하', a.spread <= 2, `편차 ${a.spread}`);
 }
 
@@ -570,7 +581,13 @@ console.log('\n[5] 예외 상황 — 터지지 않는지');
 console.log('\n[6] 선택지 품질 — 베스트/보통/아쉬움이 실제로 구분되는가');
 {
     const { gym } = runSession({ maleCount: 16, femaleCount: 0, minutes: 90, sensitivity: 'high', seed: 21 });
-    const ctx = buildMatchContext(gym.allPlayers, gym.gameState, { now: START_MS + 90 * 60000 });
+    // 세션 끝 시점에는 우연히 전원이 경기중/예약중일 수 있다 (그러면 후보 조합이 1개뿐).
+    // 선택지 '품질'을 보는 테스트이므로, 코트를 모두 끝내고 예약 목록을 비워서
+    // "16명 전원이 대기석에 앉아 있는 순간"을 만들어 놓고 후보를 뽑는다.
+    const endMs = START_MS + 91 * 60000;
+    for (let c = 0; c < 4; c += 1) endMatch(gym, c, endMs);
+    gym.gameState.autoMatches = {};
+    const ctx = buildMatchContext(gym.allPlayers, gym.gameState, { now: endMs });
     const pool = buildCandidatePool(ctx, '남');
     const r = generateMatchOptions({ pool, ctx, mode: '남', maxOnCourt: 2, pages: 3 });
 
