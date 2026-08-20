@@ -898,11 +898,19 @@ function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pend
     const topOption = resultPages[0]?.[0];
     const overallQuality = topOption ? topOption.quality : 'poor';
     const waitingCount = pool.filter(p => !p.onCourt).length;
+    //  안내 문구는 '진짜 원인'을 짚어야 한다. 겹침이 하나도 없는데 급수 차이 때문에
+    //  등급이 내려간 경우까지 "겹치는 사람이 있어요"라고 하면 관리자가 화면을 못 믿게 된다.
     let qualityHint = null;
     if (overallQuality !== 'good') {
-        qualityHint = waitingCount < 4
-            ? '지금은 대기 중인 선수가 적어서 좋은 조합이 안 나와요. 경기가 하나 끝나면 훨씬 좋아집니다.'
-            : '지금 만들 수 있는 조합은 모두 겹치는 사람이 있어요. 급하지 않다면 경기가 끝난 뒤 다시 눌러보세요.';
+        const f = topOption?.facts;
+        const hasOverlap = !!f && (f.recentPairs.length > 0 || f.metPairs.length >= 2);
+        if (waitingCount < 4) {
+            qualityHint = '지금은 대기 중인 선수가 적어서 좋은 조합이 안 나와요. 경기가 하나 끝나면 훨씬 좋아집니다.';
+        } else if (hasOverlap) {
+            qualityHint = '지금 만들 수 있는 조합은 모두 겹치는 사람이 있어요. 급하지 않다면 경기가 끝난 뒤 다시 눌러보세요.';
+        } else {
+            qualityHint = '지금 남은 선수들끼리는 급수 차이가 큽니다. 비슷한 급수의 선수가 경기를 끝내면 더 좋은 조합이 나와요.';
+        }
     }
 
     return {

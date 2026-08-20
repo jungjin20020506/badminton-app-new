@@ -41,6 +41,23 @@ const GHOST_ADMIN_LS_KEY = 'badminton-ghost-admin';
 const makeGhostAdminUser = () => ({ id: 'ghost-admin', name: GHOST_ADMIN_NAME, isGhostAdmin: true });
 
 // ===================================================================================
+// [인앱 브라우저 감지] 카카오톡·라인 등 '앱 안의 브라우저'인지 판별
+// -----------------------------------------------------------------------------------
+// 각 앱이 고유하게 남기는 토큰만 본다. 예전처럼 'line', 'naver' 같은 짧은 조각을
+// 그냥 포함 검사하면, 그 글자가 우연히 들어간 안드로이드 기기 모델명을 쓰는 사람이
+// 정상 브라우저인데도 안내 화면에 갇힌다.
+//   · kakaotalk        카카오톡          (UA 예: "... KAKAOTALK 10.4.3")
+//   · line/            라인              ("... Line/14.5.0" — 'linux'에 안 걸리도록 슬래시까지 확인)
+//   · instagram        인스타그램
+//   · naver(inapp      네이버 앱          (네이버 웨일 브라우저는 이 토큰이 없어 통과된다)
+//   · everytime        에브리타임
+// 못 잡는 앱이 있어도 큰 문제는 아니다 — 안내는 '권장'이고, 화면에서 그냥 넘어갈 수 있다.
+// ===================================================================================
+const IN_APP_BROWSER_RE = /kakaotalk|\bline\/|instagram|naver\(inapp|everytime/i;
+/** '그냥 여기서 계속할게요'를 누른 기록 — 새로고침해도 안내가 다시 뜨지 않게 */
+const IN_APP_SKIP_KEY = 'coxstar-inapp-skip';
+
+// ===================================================================================
 // Main App Component
 // ===================================================================================
 export default function App() {
@@ -72,11 +89,13 @@ export default function App() {
     const [isInAppBrowser, setIsInAppBrowser] = useState(false);
 
    useEffect(() => {
-        // 인앱 브라우저 감지 (카카오톡, 라인, 인스타그램 등)
-        const userAgent = navigator.userAgent.toLowerCase();
-        const inAppKeywords = ['kakao', 'line', 'instagram', 'naver', 'everytime'];
-        const isIab = inAppKeywords.some(keyword => userAgent.includes(keyword));
-        setIsInAppBrowser(isIab);
+        // 이미 '그냥 계속할게요'를 누른 사람에게는 다시 띄우지 않는다.
+        // (이 검사가 없으면 당겨서 새로고침하거나 앱이 화면에 다시 뜰 때마다
+        //  안내가 되살아나서, 경기 내내 같은 화면을 계속 보게 된다)
+        let skipped = false;
+        try { skipped = sessionStorage.getItem(IN_APP_SKIP_KEY) === '1'; } catch { /* 무시 */ }
+        if (skipped) return;
+        setIsInAppBrowser(IN_APP_BROWSER_RE.test(navigator.userAgent));
     }, []);
     // ----------------------------------------
     const [selectedPlayerIds, setSelectedPlayerIds] = useState([]);
@@ -1723,10 +1742,28 @@ useEffect(() => {
     //  · 그 외(인스타그램 등)만 링크 복사 안내
     //  · 어떤 경우든 '그냥 계속하기'로 지나갈 수 있다 (강제로 막지 않는다)
     if (isInAppBrowser) {
-        const ua = navigator.userAgent.toLowerCase();
-        const isKakao = ua.includes('kakao');
-        const isLine = ua.includes('line');
+        const ua = navigator.userAgent;
+        const isKakao = /kakaotalk/i.test(ua);
+        // 라인은 주소에 파라미터를 붙여 여는 방식이라, 이미 한 번 시도한 뒤라면
+        // 또 시도해봐야 같은 화면으로 되돌아올 뿐이다 → 그때는 링크 복사로 넘긴다.
+        const lineTried = window.location.href.includes('openExternalBrowser=1');
+        const isLine = /\bline\//i.test(ua) && !lineTried;
         const oneTapOpen = isKakao || isLine; // 버튼 한 번으로 외부 브라우저를 열 수 있는가
+
+        /** 링크 복사 — 복사 기능을 못 쓰는 환경에서도 주소를 볼 수 있게 한다 */
+        const copyLink = (url) => {
+            // 주소창이 없는 인앱 브라우저에서 직접 복사할 수 있도록 입력창으로 띄운다
+            const manual = () => window.prompt('아래 주소를 길게 눌러 복사한 뒤, 사파리·크롬 주소창에 붙여넣어주세요', url);
+            try {
+                // navigator.clipboard는 https가 아니거나 오래된 웹뷰에서는 아예 없다.
+                // 그냥 ?.을 쓰면 식이 통째로 undefined가 되어 .catch도 안 돌고
+                // 아무 일도 안 일어난다(버튼이 고장 난 것처럼 보인다) → 먼저 확인한다.
+                if (!navigator.clipboard?.writeText) { manual(); return; }
+                navigator.clipboard.writeText(url)
+                    .then(() => alert('링크가 복사되었습니다! 사파리(Safari)나 크롬(Chrome) 주소창에 붙여넣어주세요.'))
+                    .catch(manual);
+            } catch { manual(); }
+        };
         return (
             <div className="cox-dark text-white min-h-screen flex flex-col items-center justify-center font-sans p-6 text-center" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
                 <div className="bg-gray-800 p-8 rounded-2xl shadow-[0_0_20px_rgba(205,251,71,0.15)] w-full max-w-sm border border-yellow-500/30">
@@ -1741,19 +1778,16 @@ useEffect(() => {
                         onClick={() => {
                             const targetUrl = window.location.href;
                             if (isKakao) {
-                                // 카카오톡: 안드로이드·아이폰 모두 이 스킴으로 기본 브라우저가 열린다
+                                // 카카오톡: 안드로이드·아이폰 모두 이 스킴으로 기본 브라우저가 열린다.
+                                // 실패해도 스킴 이동이 무시될 뿐이라 지금 화면은 그대로 남는다.
                                 window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(targetUrl)}`;
                             } else if (isLine) {
                                 // 라인: 이 파라미터가 붙은 주소는 외부 브라우저로 열린다
                                 const sep = targetUrl.includes('?') ? '&' : '?';
                                 window.location.href = `${targetUrl}${sep}openExternalBrowser=1`;
                             } else {
-                                // 그 외 인앱 브라우저는 외부 열기 스킴이 없어 링크 복사로 안내
-                                navigator.clipboard?.writeText(targetUrl).then(() => {
-                                    alert('링크가 복사되었습니다! 사파리(Safari)나 크롬(Chrome) 주소창에 붙여넣어주세요.');
-                                }).catch(() => {
-                                    alert(`주소창에 직접 입력해주세요:\n${targetUrl}`);
-                                });
+                                // 그 외 인앱 브라우저는 외부 열기 방법이 없어 링크 복사로 안내
+                                copyLink(targetUrl);
                             }
                         }}
                         className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg text-sm"
@@ -1766,9 +1800,13 @@ useEffect(() => {
                             우측 상단·하단의 [⋯] 버튼을 누르고<br/>'다른 브라우저로 열기'를 선택하셔도 됩니다.
                         </p>
                     )}
-                    {/* 강제로 막지 않는다 — 원하면 이대로도 쓸 수 있게 */}
+                    {/* 강제로 막지 않는다 — 원하면 이대로도 쓸 수 있게.
+                        선택을 기억해 두어야 새로고침할 때마다 이 화면이 되살아나지 않는다. */}
                     <button
-                        onClick={() => setIsInAppBrowser(false)}
+                        onClick={() => {
+                            try { sessionStorage.setItem(IN_APP_SKIP_KEY, '1'); } catch { /* 무시 */ }
+                            setIsInAppBrowser(false);
+                        }}
                         className="mt-5 text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2"
                     >
                         괜찮아요, 그냥 여기서 계속할게요
