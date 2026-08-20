@@ -261,7 +261,14 @@ function analyze(gym, mode) {
     const players = Object.values(gym.allPlayers).filter(p =>
         p.status === 'active' && (mode === '혼복' || p.gender === mode)
     );
-    const counts = players.map(p => (p.todayRecentGames || []).length);
+    // 세션 끝 시점에 코트에서 '치고 있는' 경기도 1경기로 센다.
+    // (안 세면 마지막 경기에 들어간 사람이 실제보다 1경기 적게 보여 편차가 부풀려진다)
+    const onCourtIds = new Set(
+        (gym.gameState.inProgressCourts || []).filter(Boolean).flatMap(c => c.players).filter(Boolean)
+    );
+    const counts = players.map(p =>
+        (p.todayRecentGames || []).length + (onCourtIds.has(p.id) ? 1 : 0)
+    );
     const min = Math.min(...counts);
     const max = Math.max(...counts);
     const avg = counts.reduce((a, b) => a + b, 0) / counts.length;
@@ -330,7 +337,7 @@ const check = (label, ok, detail = '') => {
 };
 
 console.log('═'.repeat(76));
-console.log(' 콕스타 자동 매칭 v2 — 시뮬레이션 검증');
+console.log(' 콕스타 자동 매칭 v3 — 시뮬레이션 검증');
 console.log('═'.repeat(76));
 
 // ── 시나리오 1: 성수기 (남자 20명, 코트 4개, 3시간) ──
@@ -344,7 +351,11 @@ console.log('\n[1] 성수기 — 남자 20명 · 코트 4개 · 3시간 · 민�
     console.log(`     같은 사람과 최다 재회 ${a.maxRepeat}회 · 짝 커버리지 ${a.pairCoverage}% · 연속 같은팀 ${a.backToBackPartner}회`);
     console.log(`     급수 안 맞는 경기 비율 ${a.mismatchRate}%`);
     check('오류 없이 완주', log.errors.length === 0, log.errors[0] || '');
-    check('경기 수 편차 2 이하', a.spread <= 2, `편차 ${a.spread}`);
+    // [v3] 경기 수는 '2경기 정도 차이는 괜찮다'가 새 철학.
+    //      편차 3까지 허용하되(관용 2 + 세션 종료 시점 오차 1),
+    //      "굶는 사람"은 절대 금지 — 아무도 평균보다 2경기 넘게 뒤지면 안 된다.
+    check('경기 수 편차 3 이하 (2경기 관용)', a.spread <= 3, `편차 ${a.spread}`);
+    check('굶는 사람 없음 (전원 평균-2 이내)', a.avg - a.min <= 2, `평균 ${a.avg} vs 최소 ${a.min}`);
     check('직전 파트너와 또 같은 팀 = 0', a.backToBackPartner === 0, `${a.backToBackPartner}회`);
     check('코트 가동률 75% 이상', log.started >= 36, `${log.started}경기 / 이론상 48경기`);
 }
@@ -431,8 +442,9 @@ console.log('\n[4] 혼복 — 남 10명 · 여 8명 · 3시간');
     const females = Object.values(gym.allPlayers).filter(p => p.gender === '여').map(p => p.todayRecentGames.length);
     console.log(`     남자 편차 ${Math.max(...males) - Math.min(...males)} · 여자 편차 ${Math.max(...females) - Math.min(...females)}`);
     check('오류 없이 완주', log.errors.length === 0, log.errors[0] || '');
-    check('남녀 각각 편차 2 이하',
-        (Math.max(...males) - Math.min(...males)) <= 2 && (Math.max(...females) - Math.min(...females)) <= 2);
+    // [v3] 2경기 관용 철학 — 남녀 각각 편차 3까지 허용 (굶는 사람만 없으면 된다)
+    check('남녀 각각 편차 3 이하 (2경기 관용)',
+        (Math.max(...males) - Math.min(...males)) <= 3 && (Math.max(...females) - Math.min(...females)) <= 3);
     check('모든 경기가 남2·여2 구성', (() => {
         return Object.values(gym.allPlayers).every(p => {
             return (p.todayRecentGames || []).every(g => {
@@ -607,6 +619,67 @@ console.log('\n[7] 속도 — 저사양 휴대폰에서도 즉시 반응해야 �
     const ms = Number(process.hrtime.bigint() - t0) / 1e6;
     console.log(`     30명 · 조합 ${r.totalCombos}개 · ${ms.toFixed(1)}ms`);
     check('300ms 이내', ms < 300, `${ms.toFixed(1)}ms`);
+}
+
+// ── 시나리오 8: v3 새 규칙 — 사용자 요구사항이 그대로 지켜지는가 ──
+console.log('\n[8] v3 새 규칙 — 대기 우선 · 그룹 겹침 · 그룹 급수');
+{
+    const T0 = START_MS + 120 * 60000; // 세션 중반의 어느 시점
+    // minAgo분 전에 끝난 경기 기록 하나 (상대는 외부 더미 — 겹침 계산에 안 걸리게)
+    const mkGame = (minAgo, partners = ['x1'], opponents = ['x2', 'x3']) => ({
+        timestamp: new Date(T0 - minAgo * 60000).toISOString(),
+        partners, opponents,
+    });
+
+    // 8-1. "6경기 쳤지만 35분 기다린 사람" vs "5경기 치고 방금 끝난 사람들"
+    //      → 게임 수는 2경기까지 차이 나도 되고, 오래 기다린 쪽이 우선이어야 한다.
+    {
+        const gym = makeGym({ maleCount: 5, femaleCount: 0, seed: 1, levelMix: ['C조'] });
+        gym.allPlayers['남1'].todayRecentGames = Array.from({ length: 6 }, (_, k) => mkGame(35 + k * 15));
+        ['남2', '남3', '남4', '남5'].forEach((id, i) => {
+            gym.allPlayers[id].todayRecentGames = Array.from({ length: 5 }, (_, k) => mkGame(4 + i + k * 15));
+        });
+        const ctx = buildMatchContext(gym.allPlayers, gym.gameState, { now: T0 });
+        const pool = buildCandidatePool(ctx, '남');
+        const r = generateMatchOptions({ pool, ctx, mode: '남', maxOnCourt: 0 });
+        const top = r.pages[0][0];
+        check('8-1. 경기 수가 1 많아도 훨씬 오래 기다린 사람이 먼저 들어간다',
+            top.ids.includes('남1'), `베스트: ${top.facts.names.join('·')}`);
+        check('8-1. 이유 문장에 오래 기다린 선수가 표시된다',
+            top.reasons.some(l => l.text.includes('오래 기다린')),
+            top.reasons.map(l => l.text).join(' / '));
+    }
+
+    // 8-2. 겹침은 '같은 팀'과 '상대'를 구분하지 않는다 (코트에서 팀은 랜덤이므로)
+    //      직전 경기에서 '상대'로만 만났던 두 사람도 다시 안 묶여야 한다.
+    {
+        const gym = makeGym({ maleCount: 6, femaleCount: 0, seed: 1, levelMix: ['C조'] });
+        gym.allPlayers['남1'].todayRecentGames = [mkGame(5, ['x1'], ['남2', 'x2'])];
+        gym.allPlayers['남2'].todayRecentGames = [mkGame(5, ['x3'], ['남1', 'x4'])];
+        ['남3', '남4', '남5', '남6'].forEach(id => {
+            gym.allPlayers[id].todayRecentGames = [mkGame(5)];
+        });
+        const ctx = buildMatchContext(gym.allPlayers, gym.gameState, { now: T0 });
+        const pool = buildCandidatePool(ctx, '남');
+        const r = generateMatchOptions({ pool, ctx, mode: '남', maxOnCourt: 0 });
+        const top = r.pages[0][0];
+        check('8-2. 직전 경기에서 상대였던 짝도 다시 안 묶인다 (그룹 기준 겹침)',
+            !(top.ids.includes('남1') && top.ids.includes('남2')),
+            `베스트: ${top.facts.names.join('·')}`);
+    }
+
+    // 8-3. 급수 밸런스도 4명 전체 기준 — A조가 D조들 사이에 혼자 끼면 안 된다.
+    {
+        const levelMix = ['A조', 'A조', 'B조', 'B조', 'D조', 'D조', 'D조', 'D조'];
+        const gym = makeGym({ maleCount: 8, femaleCount: 0, seed: 1, levelMix });
+        const ctx = buildMatchContext(gym.allPlayers, gym.gameState, { now: START_MS + 30 * 60000 });
+        const pool = buildCandidatePool(ctx, '남');
+        const r = generateMatchOptions({ pool, ctx, mode: '남', maxOnCourt: 0 });
+        const top = r.pages[0][0];
+        const levels = top.players.map(p => p.level);
+        check('8-3. A조와 D조가 한 코트에 섞이는 조합은 베스트가 아니다',
+            !(levels.includes('A조') && levels.includes('D조')), levels.join('·'));
+    }
 }
 
 console.log('\n' + '═'.repeat(76));

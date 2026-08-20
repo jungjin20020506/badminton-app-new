@@ -1716,41 +1716,63 @@ useEffect(() => {
         return <SkeletonScreen />;
     }
 
-    // 인앱 브라우저 접속 시 강제 안내 화면 (외부 브라우저 유도)
+    // 인앱 브라우저 접속 시 안내 화면 (외부 브라우저로 한 번에 이동)
+    // [개선] 예전에는 아이폰에서 '링크 복사 → 붙여넣기'를 시켜서 불편했다.
+    //  · 카카오톡: 안드로이드/아이폰 모두 kakaotalk:// 스킴으로 버튼 한 번에 외부 브라우저가 열린다
+    //  · 라인: 주소 뒤에 openExternalBrowser=1을 붙이면 외부 브라우저로 열린다
+    //  · 그 외(인스타그램 등)만 링크 복사 안내
+    //  · 어떤 경우든 '그냥 계속하기'로 지나갈 수 있다 (강제로 막지 않는다)
     if (isInAppBrowser) {
+        const ua = navigator.userAgent.toLowerCase();
+        const isKakao = ua.includes('kakao');
+        const isLine = ua.includes('line');
+        const oneTapOpen = isKakao || isLine; // 버튼 한 번으로 외부 브라우저를 열 수 있는가
         return (
             <div className="cox-dark text-white min-h-screen flex flex-col items-center justify-center font-sans p-6 text-center" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
                 <div className="bg-gray-800 p-8 rounded-2xl shadow-[0_0_20px_rgba(205,251,71,0.15)] w-full max-w-sm border border-yellow-500/30">
                     <div className="text-5xl mb-4">🚀</div>
-                    <h2 className="text-xl font-bold text-yellow-400 mb-2">앗! 전용 브라우저가 필요해요</h2>
+                    <h2 className="text-xl font-bold text-yellow-400 mb-2">외부 브라우저를 추천해요</h2>
                     <p className="text-gray-300 text-sm mb-6 leading-relaxed">
-                        카카오톡 등 현재 화면에서는<br/>콕스라이팅의 실시간 매칭이 끊길 수 있어요.<br/><br/>
+                        카카오톡 등 앱 안의 화면에서는<br/>실시간 매칭이 끊길 수 있어요.<br/><br/>
                         <span className="text-white font-bold bg-red-500/20 px-2 py-1 rounded">오류 없는 쾌적한 경기 진행</span>을 위해<br/>
-                        아래 버튼을 눌러 외부 브라우저로 접속해주세요!
+                        {oneTapOpen ? '아래 버튼 한 번이면 바로 이동해요!' : '외부 브라우저로 접속해주세요!'}
                     </p>
-                    <button 
+                    <button
                         onClick={() => {
                             const targetUrl = window.location.href;
-                            // 안드로이드 카카오톡 외부 브라우저 열기 인텐트
-                            if (navigator.userAgent.toLowerCase().includes('android') && navigator.userAgent.toLowerCase().includes('kakao')) {
+                            if (isKakao) {
+                                // 카카오톡: 안드로이드·아이폰 모두 이 스킴으로 기본 브라우저가 열린다
                                 window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(targetUrl)}`;
+                            } else if (isLine) {
+                                // 라인: 이 파라미터가 붙은 주소는 외부 브라우저로 열린다
+                                const sep = targetUrl.includes('?') ? '&' : '?';
+                                window.location.href = `${targetUrl}${sep}openExternalBrowser=1`;
                             } else {
-                                // 아이폰 또는 기타 브라우저는 클립보드 복사 유도
-                                navigator.clipboard.writeText(targetUrl).then(() => {
-                                    alert("링크가 복사되었습니다! 사파리(Safari)나 크롬(Chrome) 주소창에 붙여넣어주세요.");
+                                // 그 외 인앱 브라우저는 외부 열기 스킴이 없어 링크 복사로 안내
+                                navigator.clipboard?.writeText(targetUrl).then(() => {
+                                    alert('링크가 복사되었습니다! 사파리(Safari)나 크롬(Chrome) 주소창에 붙여넣어주세요.');
+                                }).catch(() => {
+                                    alert(`주소창에 직접 입력해주세요:\n${targetUrl}`);
                                 });
                             }
                         }}
                         className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-3 rounded-lg text-sm"
                     >
-                        {navigator.userAgent.toLowerCase().includes('android') ? '외부 브라우저로 열기' : '링크 복사해서 열기'}
+                        {oneTapOpen ? '외부 브라우저로 열기' : '링크 복사해서 열기'}
                     </button>
-                    {/* 아이폰 사용자를 위한 추가 안내 */}
-                    {!navigator.userAgent.toLowerCase().includes('android') && (
+                    {/* 외부 열기 스킴이 없는 앱(인스타그램 등)을 위한 추가 안내 */}
+                    {!oneTapOpen && (
                         <p className="text-gray-500 text-[10px] mt-4">
-                            우측 하단 [⋯] 버튼을 누르고<br/>'다른 브라우저로 열기'를 선택하셔도 됩니다.
+                            우측 상단·하단의 [⋯] 버튼을 누르고<br/>'다른 브라우저로 열기'를 선택하셔도 됩니다.
                         </p>
                     )}
+                    {/* 강제로 막지 않는다 — 원하면 이대로도 쓸 수 있게 */}
+                    <button
+                        onClick={() => setIsInAppBrowser(false)}
+                        className="mt-5 text-gray-500 hover:text-gray-300 text-xs underline underline-offset-2"
+                    >
+                        괜찮아요, 그냥 여기서 계속할게요
+                    </button>
                 </div>
             </div>
         );

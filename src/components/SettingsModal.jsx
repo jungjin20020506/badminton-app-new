@@ -575,9 +575,10 @@ function AutoMatchGuideModal({ onClose }) {
                     <div>
                         <p className="font-bold text-green-300 mb-1">② 어떤 기준으로 짜나요?</p>
                         <p className="text-gray-300 leading-relaxed">
-                            <b>1순위</b> 적게 치거나 오래 기다린 사람 먼저<br/>
-                            <b>2순위</b> 그 안에서 최대한 <b>안 친 사람</b>끼리<br/>
-                            <b>3순위</b> 양 팀 <b>급수</b>도 최대한 맞춰서
+                            <b>1순위</b> 오늘 만났던 사람과 <b>또 안 묶이게</b><br/>
+                            <b>2순위</b> <b>오래 기다린</b> 사람 먼저<br/>
+                            <b>3순위</b> 4명의 <b>급수</b>가 서로 맞게<br/>
+                            <b>4순위</b> 경기 수 (2경기 차이까지는 괜찮아요)
                         </p>
                     </div>
                     <div>

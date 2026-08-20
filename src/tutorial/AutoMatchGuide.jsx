@@ -53,14 +53,14 @@ const OPTIONS_DEMO = [
         tier: 'best', emoji: '🏆', label: '베스트',
         team: [
             { name: '김민수', level: 'A', games: 2 },
-            { name: '최유진', level: 'D', games: 2 },
+            { name: '나상호', level: 'B', games: 3 },
             { name: '박지훈', level: 'B', games: 3 },
             { name: '이상민', level: 'C', games: 3 },
         ],
         reasons: [
-            { tone: 'good', text: '가장 적게 친 선수 포함: 김민수·최유진 (2경기)' },
-            { tone: 'mid', text: '겹치는 짝: 박지훈·이상민 (나머지 5쌍은 처음)' },
-            { tone: 'good', text: '양 팀 급수 합이 똑같아요' },
+            { tone: 'good', text: '만난 적 있는 짝: 박지훈·이상민 (나머지 5쌍은 처음!)' },
+            { tone: 'good', text: '오래 기다린 선수: 김민수 (20분째)' },
+            { tone: 'good', text: '가장 적게 친 선수 포함: 김민수 (2경기)' },
         ],
     },
     {
@@ -72,26 +72,26 @@ const OPTIONS_DEMO = [
             { name: '강태오', level: 'D', games: 4 },
         ],
         reasons: [
-            { tone: 'mid', text: '겹치는 짝: 신환종·오세훈 (나머지 4쌍은 처음)' },
+            { tone: 'mid', text: '겹치는 짝: 신환종·오세훈, 박지훈·강태오 (나머지 4쌍은 처음)' },
+            { tone: 'mid', text: '급수는 그럭저럭 맞아요' },
             { tone: 'mid', text: '경기 수 3~4경기로 비슷' },
+        ],
+    },
+    {
+        tier: 'normal', emoji: '👍', label: '보통',
+        team: [
+            { name: '김민수', level: 'A', games: 2 },
+            { name: '나상호', level: 'B', games: 3 },
+            { name: '오세훈', level: 'C', games: 4 },
+            { name: '이상민', level: 'C', games: 3 },
+        ],
+        reasons: [
+            { tone: 'mid', text: '겹치는 짝: 나상호·이상민, 오세훈·이상민 (나머지 4쌍은 처음)' },
+            { tone: 'good', text: '가장 적게 친 선수 포함: 김민수 (2경기)' },
             { tone: 'mid', text: '급수는 그럭저럭 맞아요' },
         ],
     },
     {
-        tier: 'normal', emoji: '👍', label: '보통',
-        team: [
-            { name: '김민수', level: 'A', games: 2 },
-            { name: '나상호', level: 'B', games: 3 },
-            { name: '오세훈', level: 'C', games: 4 },
-            { name: '이상민', level: 'C', games: 3 },
-        ],
-        reasons: [
-            { tone: 'mid', text: '겹치는 짝: 나상호·이상민 (나머지 4쌍은 처음)' },
-            { tone: 'mid', text: '경기 수 2~4경기로 비슷' },
-            { tone: 'good', text: '양 팀 급수 합이 똑같아요' },
-        ],
-    },
-    {
         tier: 'bad', emoji: '⚠️', label: '아쉬움',
         team: [
             { name: '오세훈', level: 'C', games: 4 },
@@ -100,9 +100,9 @@ const OPTIONS_DEMO = [
             { name: '최유진', level: 'D', games: 2 },
         ],
         reasons: [
-            { tone: 'bad', text: '방금 같은 팀이었던 짝: 오세훈·강태오' },
-            { tone: 'bad', text: '경기 수 2~4경기 — 차이가 커요' },
-            { tone: 'bad', text: '급수가 한쪽으로 기울어요' },
+            { tone: 'bad', text: '방금 경기에서 만난 짝: 오세훈·강태오' },
+            { tone: 'mid', text: '급수는 그럭저럭 맞아요' },
+            { tone: 'mid', text: '경기 수 2~4경기로 비슷' },
         ],
     },
     {
@@ -114,9 +114,9 @@ const OPTIONS_DEMO = [
             { name: '강태오', level: 'D', games: 4 },
         ],
         reasons: [
-            { tone: 'bad', text: '방금 같은 팀이었던 짝: 나상호·강태오' },
+            { tone: 'bad', text: '방금 경기에서 만난 짝: 나상호·강태오' },
+            { tone: 'bad', text: '급수 차이가 커요 (최고↔최저 3급수)' },
             { tone: 'mid', text: '경기 수 2~4경기로 비슷' },
-            { tone: 'bad', text: '급수가 한쪽으로 기울어요' },
         ],
     },
 ];

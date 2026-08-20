@@ -1,24 +1,31 @@
 // ===================================================================================
-// 콕스타 자동 매칭 엔진 v2
+// 콕스타 자동 매칭 엔진 v3
 // -----------------------------------------------------------------------------------
-// [v1과 무엇이 달라졌나 — 초보자용 요약]
-//  1) 후보 범위가 넓어졌다.
-//     예전: '대기석에 앉아 있는 사람'만 후보.
-//     지금: 접속한 전원(대기석 + 경기중)이 후보. 이미 다음 경기가 잡힌 사람
-//           (자동 매칭 목록 / 경기 예정 목록)만 빠진다.
-//     → 경기를 적게 친 사람이 마침 코트에 있다는 이유로 계속 밀리던 문제가 사라진다.
+// [v3에서 무엇이 달라졌나 — 일주일 실사용 피드백 반영]
+//  1) '팀 대 팀'이 아니라 '4명 묶음'으로 계산한다.
+//     실제 운영에서는 코트에 들어간 4명이 팀을 랜덤으로 짜기 때문에,
+//     "누가 같은 팀이었고 누가 상대였나"는 의미가 없다.
+//     → 겹침 판정: 같은 팀이었든 상대였든 똑같이 '오늘 만난 사람'으로 본다.
+//     → 급수 밸런스: 양 팀 합 비교 대신, 4명 급수가 서로 얼마나 벌어졌는지를 본다.
+//       (급수 폭이 크면 랜덤 팀에서 한쪽으로 쏠린 경기가 나올 수 있으므로)
 //
-//  2) 경기중인 사람은 '지금 치고 있는 경기'를 가짜 기록으로 하나 붙여서 계산한다.
-//     → 경기 수가 자동으로 +1 되고, 지금 같은 코트에 있는 사람과 또 붙는 것도
-//       기존 감점 규칙이 알아서 막아준다. 점수 공식에 예외를 만들 필요가 없다.
+//  2) 우선순위를 갈아엎었다.
+//     예전:  경기 수 공평  >  안 친 사람  >  급수 밸런스
+//     지금:  ① 겹침 방지(만났던 사람과 또 안 묶이게)
+//            ② 오래 기다린 사람 먼저
+//            ③ 급수 밸런스
+//            ④ 경기 수 (2경기 차이까지는 너그럽게)
+//            ⑤ 급수 다양성 (A조가 낮은 급수 사이에 계속 끼지 않게)
 //
-//  3) 경기를 하나만 뽑지 않고 '여러 개'를 뽑아서 관리자가 고른다.
-//     베스트 2개 / 보통 2개 / 아쉬움 2개 + 각각 왜 그런지 이유 문장.
+//  3) 경기 수보다 대기 시간이 중요해졌다.
+//     5경기 친 사람과 6경기 친 사람이 있을 때, 6경기 친 사람이 훨씬 오래
+//     기다렸다면 6경기 친 사람이 먼저 들어간다. 대신 3경기 이상 밀리면
+//     '구출 가중치'가 붙어서 굶는 사람은 생기지 않는다.
 //
-//  4) '급수 매너리즘'을 본다. 계속 나보다 약한(혹은 센) 사람과만 치면 재미가 없으므로,
-//     그런 사람은 다음 경기에서 비슷한 급수끼리 붙여준다.
-//
-// [점수 우선순위]  경기 수 공평  >  안 친 사람  >  급수 밸런스 · 재미
+// [v2에서 이어받은 것]
+//  · 후보 = 접속한 전원(대기석 + 경기중). 다음 경기가 이미 잡힌 사람만 제외.
+//  · 경기중인 사람은 '지금 치는 경기'를 가짜 기록으로 붙여 경기 수 +1, 재회 방지.
+//  · 베스트 2 / 보통 2 / 아쉬움 2 선택지를 이유와 함께 관리자에게 보여준다.
 // ===================================================================================
 
 
@@ -59,29 +66,39 @@ const LEVEL_BALANCE_MAP = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 
 /**
  * 점수 가중치 모음.
  * 여기 숫자만 바꾸면 매칭 성향이 바뀐다. 각 줄의 주석이 "이 숫자가 몇 점짜리인지" 설명한다.
- * 기준: 남들보다 1경기 덜 친 사람 1명을 넣으면 +30점. 이 값이 가장 크기 때문에
- *       '경기 수 공평'이 언제나 1순위가 된다.
+ *
+ * [우선순위 감각 잡기 — 대표 값 비교]
+ *   · 최근 2경기 안에 만난 짝 1쌍       ≈ -94점 (RECENT_MET + MET_AGAIN)
+ *   · 30분 기다린 사람 1명               ≈ +90점 (15분×2 + 15×4)
+ *   · 급수 폭 3(A조와 D조가 한 코트)     = -70점
+ *   · 1경기 덜 친 사람 1명               = +10점 (2경기까지는 이 정도로 너그럽게)
+ *   · 3경기째 밀린 사람 1명              = +60점 (구출 가중치 발동)
  */
 const W = {
-    // ── 공평 (경기 수 · 대기 시간) ──
-    GAME_GAP: 30,        // 최다 경기자보다 1경기 덜 친 선수 1명당 +30
-    WAIT_PER_MIN: 1.2,   // 대기 1분당 +1.2 (WAIT_CAP분까지만 인정)
-    WAIT_CAP: 30,        // 대기 시간 인정 상한 (분)
-    COMBO_GAP: 7,        // 한 조합 안에서 경기 수가 1 벌어질 때마다 -7 (비슷한 사람끼리)
+    // ── ① 겹침 방지 (1순위) — 팀·상대 구분 없이 '오늘 만난 사람' 기준 ──
+    FRESH_PAIR: 18,      // 오늘 한 번도 안 만난 짝 1쌍당 +18 (최대 6쌍 = +108)
+    MET_AGAIN: 14,       // 오늘 이미 만난 횟수 1회당 -14
+    RECENT_MET: 80,      // 최근 2경기 안에 만난 짝 1쌍당 -80 (같은 팀이었든 상대였든 동일)
 
-    // ── 다양성 (안 친 사람과 치기) ──
-    FRESH_PAIR: 12,      // 오늘 한 번도 안 만난 짝 1쌍당 +12 (최대 6쌍 = +72)
-    MET_AGAIN: 9,        // 오늘 이미 만난 횟수 1회당 -9
-    RECENT_PARTNER: 45,  // 최근 2경기 안에 '같은 팀'이었던 짝 -45
-    RECENT_OPPONENT: 22, // 최근 2경기 안에 '상대'였던 짝 -22
+    // ── ② 대기 시간 (2순위) — 오래 기다릴수록 1분의 가치가 커진다 ──
+    WAIT_PER_MIN: 2,       // 대기 1분당 +2 (처음 WAIT_KNEE분까지)
+    WAIT_LONG_PER_MIN: 4,  // WAIT_KNEE분을 넘긴 뒤부터는 1분당 +4 (점점 급해짐)
+    WAIT_KNEE: 15,         // 이 분수를 넘기면 '오래 기다리는 중'으로 본다
+    WAIT_CAP: 60,          // 대기 시간 인정 상한 (분)
 
-    // ── 급수 밸런스 ──
-    TEAM_LEVEL_DIFF: 12, // 두 팀의 급수 합 차이 1당 -12
-    LEVEL_SPREAD: 5,     // 조합 안 최고↔최저 급수 차이 1당 -5
+    // ── ③ 급수 밸런스 (3순위) — 팀을 랜덤으로 짜므로 4명 전체 기준 ──
+    SPREAD_PENALTY: [0, 8, 30, 70], // 4명 중 최고↔최저 급수 차이가 0/1/2/3일 때 감점
+    LONELY_LEVEL: 15,    // 나머지 3명 평균과 급수가 1 가까이 차이 나는 '혼자 동떨어진' 선수: 차이 1당 -15
 
-    // ── 급수 매너리즘(ABAB) 해소 ──
-    THIRST_RELIEF: 26,   // 계속 급수가 안 맞던 사람에게 비슷한 급수 경기를 주면 +26
-    THIRST_REPEAT: 18,   // 그런 사람에게 또 안 맞는 경기를 주면 -18
+    // ── ④ 경기 수 (4순위) — 2경기 차이까지는 너그럽게, 그 이상은 구출 ──
+    GAME_TOLERANCE: 2,   // 이 경기 수 차이까지는 "비슷하게 쳤다"로 본다
+    GAME_GAP_SOFT: 15,   // 최다 경기자와의 차이 중 2경기까지: 1경기당 +15
+    GAME_GAP_HARD: 60,   // 3경기째부터: 1경기당 +60 (많이 밀린 사람 구출)
+    COMBO_GAP_OVER: 15,  // 조합 안 경기 수 차이가 2를 넘는 부분 1경기당 -15
+
+    // ── ⑤ 급수 다양성 · 매너리즘(ABAB) 해소 (5순위) ──
+    THIRST_RELIEF: 20,   // 계속 급수가 안 맞던 사람에게 비슷한 급수 경기를 주면 +20
+    THIRST_REPEAT: 15,   // 그런 사람에게 또 안 맞는 경기를 주면 -15
 
     // ── 바로 시작 가능한지 (예약의 대가) ──
     //  경기중인 선수를 예약에 넣으면, 같이 묶인 '대기 중인 선수'도 그 코트가 끝날 때까지
@@ -115,6 +132,19 @@ const MAX_POOL_MIXED = 18;
 const TYPICAL_GAME_MIN = 15;
 /** 이제 막 시작한 코트(이 시간 미만)의 선수는 예약 후보에서 뺀다 — 너무 오래 기다려야 한다 */
 const MIN_ELAPSED_TO_RESERVE = 5;
+
+/**
+ * 대기 시간을 점수로 바꾼다. (오래 기다릴수록 1분의 가치가 커지는 꺾인 직선)
+ *   · 처음 15분: 1분당 +2  (잠깐 쉬는 건 자연스러운 일)
+ *   · 15분 이후: 1분당 +4  (이제 슬슬 지루해진다 — "나 경기 안 한 지 오래됐는데요")
+ *   · 60분에서 상한 (최대 +210)
+ */
+function waitBonus(waitMin) {
+    const w = Math.min(Math.max(0, waitMin), W.WAIT_CAP);
+    const base = Math.min(w, W.WAIT_KNEE);
+    const long = Math.max(0, w - W.WAIT_KNEE);
+    return base * W.WAIT_PER_MIN + long * W.WAIT_LONG_PER_MIN;
+}
 
 
 // ===================================================================================
@@ -302,13 +332,16 @@ function getPair(ctx, a, b) {
 
 
 // ===================================================================================
-// 3. 팀 나누기 (2:2)
+// 3. 팀 나누기 (2:2) — ★ 화면 표시용 제안일 뿐, 점수 계산에는 쓰지 않는다
+//    실제로는 코트에 들어간 4명이 팀을 랜덤으로 짜기 때문에, 여기서 나눈 팀은
+//    "이렇게 나누면 균형이 맞아요"라는 참고용 배치일 뿐이다.
+//    (혼복은 남1+여1 팀 규칙이 있으므로 표시 순서가 실제로도 의미가 있다)
 // ===================================================================================
 
 /**
- * 4명을 두 팀으로 나눈다.
+ * 4명을 두 팀으로 나눈다. (표시 순서 결정용)
  * 1순위: 두 팀의 급수 합 차이가 작을 것
- * 2순위: 같은 팀끼리 오늘 덜 만났을 것 (같은 편을 자꾸 또 하는 걸 막는다)
+ * 2순위: 같은 팀끼리 오늘 덜 만났을 것
  *
  * @param {Array} comboStats 4명 (stats 객체)
  * @param {object} ctx
@@ -351,6 +384,7 @@ function splitTeams(comboStats, ctx, isMixed) {
 
 /**
  * 4인 조합을 채점하고, 왜 그런 점수인지 '사실'까지 함께 정리한다.
+ * ★ 팀 나누기와 무관하게 '4명 묶음' 기준으로 채점한다. (코트에서 팀은 랜덤이므로)
  *
  * @param {Array} comboStats 4명 (stats 객체)
  * @param {object} ctx buildMatchContext 결과
@@ -358,29 +392,18 @@ function splitTeams(comboStats, ctx, isMixed) {
  * @param {boolean} isMixed
  */
 function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
-    const { order, diff: levelDiff, spread: levelSpread } = splitTeams(comboStats, ctx, isMixed);
+    // 팀 나누기는 화면에 보여줄 순서를 정할 뿐, 아래 점수 계산에는 쓰지 않는다
+    const { order, spread: levelSpread } = splitTeams(comboStats, ctx, isMixed);
     const freeCourts = ctx.freeCourts ?? 0;
 
     let score = 0;
 
-    // ── (1) 공평: 덜 친 사람 · 오래 기다린 사람 ──
-    let fairness = 0;
-    comboStats.forEach(p => {
-        fairness += (poolInfo.maxGames - p.games) * W.GAME_GAP;
-        fairness += Math.min(p.waitMin, W.WAIT_CAP) * W.WAIT_PER_MIN;
-    });
-    const gamesList = comboStats.map(p => p.games);
-    const gamesMin = Math.min(...gamesList);
-    const gamesMax = Math.max(...gamesList);
-    fairness -= (gamesMax - gamesMin) * W.COMBO_GAP;
-    score += fairness;
-
-    // ── (2) 다양성: 오늘 안 만난 사람끼리 ──
+    // ── ① 겹침 방지 (1순위): 오늘 만난 사람과 또 안 묶이게 ──
+    //    4명이 만드는 6쌍을 전부 보고, 같은 팀이었든 상대였든 '만난 것'으로 센다.
     let novelty = 0;
     const freshPairs = [];
     const metPairs = [];
-    const recentPartnerPairs = [];
-    const recentOpponentPairs = [];
+    const recentPairs = [];
 
     const pairList = getAllCombinations(comboStats, 2);
     for (const [p1, p2] of pairList) {
@@ -395,23 +418,62 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
 
         const isRecent = info.recency < RECENT_WINDOW;
         novelty -= meetings * W.MET_AGAIN;
-
-        if (isRecent && info.together > 0) {
-            novelty -= W.RECENT_PARTNER;
-            recentPartnerPairs.push([p1.name, p2.name]);
-        } else if (isRecent && info.against > 0) {
-            novelty -= W.RECENT_OPPONENT;
-            recentOpponentPairs.push([p1.name, p2.name]);
+        if (isRecent) {
+            novelty -= W.RECENT_MET;
+            recentPairs.push([p1.name, p2.name]);
         }
-        metPairs.push({ names: [p1.name, p2.name], together: info.together, against: info.against, recent: isRecent });
+        metPairs.push({ names: [p1.name, p2.name], meetings, recent: isRecent });
     }
     score += novelty;
 
-    // ── (3) 급수 밸런스 ──
-    const balance = -(levelDiff * W.TEAM_LEVEL_DIFF) - (levelSpread * W.LEVEL_SPREAD);
+    // ── ② 대기 시간 (2순위): 오래 기다린 사람 먼저 ──
+    let waitScore = 0;
+    comboStats.forEach(p => { waitScore += waitBonus(p.waitMin); });
+    score += waitScore;
+
+    // ── ③ 급수 밸런스 (3순위): 4명 전체 기준 ──
+    //    팀이 랜덤이므로 "급수 폭이 좁을수록 어떤 팀이 나와도 균형"이라는 원리로 본다.
+    //    + 혼자 급수가 동떨어진 선수(예: A조 1명 + D조 3명)는 추가 감점.
+    const spreadIdx = Math.min(W.SPREAD_PENALTY.length - 1, Math.max(0, Math.round(levelSpread)));
+    let balance = -W.SPREAD_PENALTY[spreadIdx];
+    const lonelyNames = [];
+    comboStats.forEach(p => {
+        const others = comboStats.filter(x => x.id !== p.id);
+        const avg = others.reduce((sum, o) => sum + o.levelValue, 0) / others.length;
+        const gap = Math.abs(p.levelValue - avg);
+        if (gap >= 0.9) {
+            balance -= gap * W.LONELY_LEVEL;
+            lonelyNames.push(p.name);
+        }
+    });
     score += balance;
 
-    // ── (4) 급수 매너리즘 해소 (ABAB 방지) ──
+    // ── ④ 경기 수 (4순위): 2경기 차이까지는 너그럽게 ──
+    //    비교 기준은 '같은 성별에서 가장 많이 친 사람' (혼복에서 남녀 슬롯 수가 다르므로)
+    let gamesScore = 0;
+    comboStats.forEach(p => {
+        const genderMax = poolInfo.maxGamesBy?.[p.gender] ?? poolInfo.maxGames;
+        const gap = Math.max(0, genderMax - p.games);
+        gamesScore += Math.min(gap, W.GAME_TOLERANCE) * W.GAME_GAP_SOFT; // 2경기까지는 살짝만
+        gamesScore += Math.max(0, gap - W.GAME_TOLERANCE) * W.GAME_GAP_HARD; // 3경기째부터 구출
+    });
+    const gamesList = comboStats.map(p => p.games);
+    const gamesMin = Math.min(...gamesList);
+    const gamesMax = Math.max(...gamesList);
+    // 조합 안에서도 2경기 차이까지는 자연스러운 것 — 그 이상만 감점
+    // (이 비교도 같은 성별끼리만 — 혼복에서 남녀 경기 수는 원래 다르게 쌓이므로)
+    const gamesByGender = {};
+    comboStats.forEach(p => {
+        (gamesByGender[p.gender] = gamesByGender[p.gender] || []).push(p.games);
+    });
+    let comboGap = 0;
+    Object.values(gamesByGender).forEach(list => {
+        comboGap = Math.max(comboGap, Math.max(...list) - Math.min(...list));
+    });
+    gamesScore -= Math.max(0, comboGap - W.GAME_TOLERANCE) * W.COMBO_GAP_OVER;
+    score += gamesScore;
+
+    // ── ⑤ 급수 매너리즘 해소 (5순위, ABAB 방지) ──
     let thirstScore = 0;
     const thirstRelieved = [];
     comboStats.forEach(p => {
@@ -428,7 +490,7 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
     });
     score += thirstScore;
 
-    // ── (5) 지금 바로 시작할 수 있는가 ──
+    // ── ⑥ 지금 바로 시작할 수 있는가 ──
     //  경기중 선수를 예약에 넣으면 같이 뽑힌 대기 선수까지 그 코트가 끝날 때까지 묶인다.
     //  그래서 "몇 분이나 기다려야 하는지"를 실제로 계산해서 감점한다.
     //  (막 시작한 코트 = 큰 감점 / 곧 끝나는 코트 = 작은 감점)
@@ -450,7 +512,7 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
     if (poolInfo.pendingReservations > 0) startability -= onCourtPlayers.length * W.SECOND_RESERVE;
     score += startability;
 
-    // ── (6) 직전 경기와 똑같은 4명이면 사실상 금지 ──
+    // ── ⑦ 직전 경기와 똑같은 4명이면 사실상 금지 ──
     //    4명 모두가 "서로 방금(직전 경기) 만났다"면 같은 경기를 그대로 재탕하는 것이다.
     const sameFour = pairList.every(([p1, p2]) => getPair(ctx, p1.id, p2.id).recency === 0);
     if (sameFour) score -= W.SAME_FOUR;
@@ -461,6 +523,12 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
         ? comboStats.filter(p => p.games === poolInfo.minGames).map(p => p.name)
         : [];
 
+    // 오래 기다린 선수 (15분 이상, 오래 기다린 순)
+    const longWaiters = comboStats
+        .filter(p => !p.onCourt && p.waitMin >= W.WAIT_KNEE)
+        .sort((a, b) => b.waitMin - a.waitMin)
+        .map(p => ({ name: p.name, waitMin: Math.round(p.waitMin) }));
+
     const facts = {
         names: comboStats.map(p => p.name),
         gamesMin,
@@ -469,10 +537,10 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
         leastPlayedNames,
         freshPairs,
         metPairs,
-        recentPartnerPairs,
-        recentOpponentPairs,
-        levelDiff,
+        recentPairs,
         levelSpread,
+        lonelyNames,
+        longWaiters,
         thirstRelieved,
         onCourtNames: onCourtPlayers.map(p => p.name),
         waitCourts,
@@ -485,9 +553,10 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
         order,
         facts,
         parts: {
-            fairness: Math.round(fairness),
             novelty: Math.round(novelty),
+            wait: Math.round(waitScore),
             balance: Math.round(balance),
+            games: Math.round(gamesScore),
             thirst: Math.round(thirstScore),
             startability: Math.round(startability),
         },
@@ -509,14 +578,15 @@ function buildReasonLines(facts) {
         return arr.length > limit ? `${shown} 외 ${arr.length - limit}명` : shown;
     };
 
-    // ① 조합 이야기 (가장 중요한 것부터)
+    // ① 겹침 이야기 (1순위 — 가장 먼저)
+    //    팀·상대 구분 없이 "오늘 만난 적 있는 짝"으로 말한다.
     if (facts.sameFour) {
         lines.push({ tone: 'bad', text: '방금 끝난 경기와 완전히 같은 4명' });
+    } else if (facts.recentPairs.length > 0) {
+        const pairText = facts.recentPairs.map(p => p.join('·')).slice(0, 2).join(', ');
+        lines.push({ tone: 'bad', text: `방금 경기에서 만난 짝: ${pairText}` });
     } else if (facts.metPairs.length === 0) {
         lines.push({ tone: 'good', text: '4명 모두 오늘 처음 만나는 조합!' });
-    } else if (facts.recentPartnerPairs.length > 0) {
-        const pairText = facts.recentPartnerPairs.map(p => p.join('·')).slice(0, 2).join(', ');
-        lines.push({ tone: 'bad', text: `방금 같은 팀이었던 짝: ${pairText}` });
     } else if (facts.metPairs.length === 1) {
         lines.push({ tone: 'good', text: `만난 적 있는 짝: ${facts.metPairs[0].names.join('·')} (나머지 5쌍은 처음!)` });
     } else if (facts.metPairs.length === 2) {
@@ -526,31 +596,40 @@ function buildReasonLines(facts) {
         lines.push({ tone: 'bad', text: `오늘 이미 만난 짝이 ${facts.metPairs.length}쌍 — 겹침이 많아요` });
     }
 
-    // ② 경기 수 공평
+    // ② 오래 기다린 사람 (2순위 — 있을 때만 별도 줄로 강조)
+    if (facts.longWaiters.length > 0) {
+        const top = facts.longWaiters[0];
+        const extra = facts.longWaiters.length > 1 ? ` 외 ${facts.longWaiters.length - 1}명` : '';
+        lines.push({ tone: 'good', text: `오래 기다린 선수: ${top.name} (${top.waitMin}분째)${extra}` });
+    }
+
+    // ③ 급수 밸런스 (4명 전체 기준 — 팀은 코트에서 랜덤으로 짜므로)
+    if (facts.thirstRelieved.length > 0) {
+        lines.push({ tone: 'good', text: `급수 맞는 경기가 필요했던 선수: ${nameList(facts.thirstRelieved, 2)} ✨` });
+    } else if (facts.levelSpread === 0) {
+        lines.push({ tone: 'good', text: '전원 같은 급수 — 팽팽한 경기' });
+    } else if (facts.levelSpread === 1) {
+        lines.push({ tone: 'good', text: '급수가 비슷해서 어떻게 팀을 짜도 균형이 맞아요' });
+    } else if (facts.levelSpread >= 3) {
+        lines.push({ tone: 'bad', text: '급수 차이가 커요 (최고↔최저 3급수)' });
+    } else if (facts.lonelyNames.length > 0) {
+        lines.push({ tone: 'bad', text: `급수가 혼자 동떨어진 선수: ${nameList(facts.lonelyNames, 2)}` });
+    } else {
+        lines.push({ tone: 'mid', text: '급수는 그럭저럭 맞아요' });
+    }
+
+    // ④ 경기 수 (2경기 차이까지는 자연스러운 것으로 본다)
     if (facts.allSameGames) {
         lines.push({ tone: 'good', text: `4명 모두 ${facts.gamesMin}경기로 딱 같아요` });
     } else if (facts.leastPlayedNames.length > 0) {
         lines.push({ tone: 'good', text: `가장 적게 친 선수 포함: ${nameList(facts.leastPlayedNames, 2)} (${facts.gamesMin}경기)` });
-    } else if (facts.gamesMax - facts.gamesMin >= 3) {
+    } else if (facts.gamesMax - facts.gamesMin > 2) {
         lines.push({ tone: 'bad', text: `경기 수 ${facts.gamesMin}~${facts.gamesMax}경기 — 차이가 커요` });
     } else {
         lines.push({ tone: 'mid', text: `경기 수 ${facts.gamesMin}~${facts.gamesMax}경기로 비슷` });
     }
 
-    // ③ 급수 · 재미
-    if (facts.thirstRelieved.length > 0) {
-        lines.push({ tone: 'good', text: `급수 맞는 경기가 필요했던 선수: ${nameList(facts.thirstRelieved, 2)} ✨` });
-    } else if (facts.levelSpread === 0) {
-        lines.push({ tone: 'good', text: '전원 같은 급수 — 팽팽한 경기' });
-    } else if (facts.levelDiff === 0) {
-        lines.push({ tone: 'good', text: '양 팀 급수 합이 똑같아요' });
-    } else if (facts.levelDiff >= 2 || facts.levelSpread >= 3) {
-        lines.push({ tone: 'bad', text: '급수가 한쪽으로 기울어요' });
-    } else {
-        lines.push({ tone: 'mid', text: '급수는 그럭저럭 맞아요' });
-    }
-
-    // ④ 경기중인 선수가 있으면 반드시 알려준다 (몇 분쯤 기다려야 하는지까지)
+    // ⑤ 경기중인 선수가 있으면 반드시 알려준다 (몇 분쯤 기다려야 하는지까지)
     if (facts.onCourtNames.length > 0) {
         const courtText = facts.waitCourts.map(c => `${c + 1}번`).join('·');
         const waitText = facts.waitEstimateMin > 0 ? ` (약 ${facts.waitEstimateMin}분)` : ' (곧 끝나요)';
@@ -569,10 +648,11 @@ function buildReasonLines(facts) {
  */
 function qualityOf(facts) {
     if (facts.sameFour) return 'poor';
-    if (facts.recentPartnerPairs.length > 0) return 'poor';
+    if (facts.recentPairs.length >= 2) return 'poor';
     if (facts.metPairs.length >= 4) return 'poor';
+    if (facts.recentPairs.length === 1) return 'fair';
     if (facts.metPairs.length >= 2) return 'fair';
-    if (facts.recentOpponentPairs.length >= 2) return 'fair';
+    if (facts.levelSpread >= 3) return 'fair';
     return 'good';
 }
 
@@ -593,10 +673,16 @@ function overlapCount(idsA, idsB) {
     return idsA.reduce((n, id) => n + (setB.has(id) ? 1 : 0), 0);
 }
 
-/** 덜 친 사람 → 오래 기다린 사람 순 (조합 폭발 시 잘라내는 기준) */
+/**
+ * 조합 폭발 시 후보를 잘라내는 기준 — "급한 사람"부터 남긴다.
+ * 점수 공식과 같은 감각으로: 대기 보너스가 크고, 경기를 덜 친 사람이 급한 사람.
+ * (경기 수만으로 자르면 "6경기 쳤지만 40분 기다린 사람"이 잘려나가는 사고가 난다)
+ */
+function urgencyOf(p) {
+    return waitBonus(p.waitMin) - p.games * W.GAME_GAP_SOFT;
+}
 function compareFairness(a, b) {
-    if (a.games !== b.games) return a.games - b.games;
-    return b.waitMin - a.waitMin;
+    return urgencyOf(b) - urgencyOf(a);
 }
 
 /**
@@ -686,9 +772,16 @@ function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pend
     if (usable.length === 0) usable = combos;
 
     // ── 채점 ──
+    // 혼복은 남녀 슬롯 수가 달라 경기 수 자체가 다르게 쌓인다.
+    // 남자는 남자 최다 기록과, 여자는 여자 최다 기록과 비교해야 공평하다.
+    const maxGamesBy = {};
+    pool.forEach(p => {
+        maxGamesBy[p.gender] = Math.max(maxGamesBy[p.gender] ?? 0, p.games);
+    });
     const poolInfo = {
         maxGames: pool.reduce((m, p) => Math.max(m, p.games), 0),
         minGames: pool.reduce((m, p) => Math.min(m, p.games), Infinity),
+        maxGamesBy,
         pendingReservations,
     };
 
