@@ -164,6 +164,22 @@ function waitBonus(waitMin) {
     return base * W.WAIT_PER_MIN + long * W.WAIT_LONG_PER_MIN;
 }
 
+/**
+ * 저장된 시각으로부터 지금까지 몇 분이 지났는지. 값이 없거나 깨졌으면 0.
+ *
+ * 왜 필요한가: 시각 값 하나만 깨져도 new Date(x).getTime()이 NaN을 내놓고,
+ * 그 NaN이 점수 전체로 번져서 '베스트/보통/아쉬움' 순위가 조용히 무의미해진다.
+ * (화면에는 아무 오류도 안 뜨기 때문에 알아채기 어렵다)
+ * 지금은 모든 시각이 ISO 문자열로 저장되지만, 예전 기록이나 수동 편집이
+ * 섞여 들어와도 매칭이 망가지지 않도록 여기서 한 번 걸러낸다.
+ */
+function minutesSince(timestamp, now) {
+    if (!timestamp) return 0;
+    const ms = new Date(timestamp).getTime();
+    if (!Number.isFinite(ms)) return 0;
+    return Math.max(0, (now - ms) / 60000);
+}
+
 
 // ===================================================================================
 // 2. 매칭 컨텍스트 만들기
@@ -247,12 +263,10 @@ function buildMatchContext(allPlayers, gameState, opts = {}) {
         const lastRealTs = realHistory[0]?.timestamp || p.entryTime;
         const waitMin = court
             ? 0 // 코트에서 뛰는 중이면 '기다리는 중'이 아니다
-            : (lastRealTs ? Math.max(0, (now - new Date(lastRealTs).getTime()) / 60000) : 0);
+            : minutesSince(lastRealTs, now);
 
         // 경기중이라면 지금 몇 분째 뛰고 있고, 앞으로 몇 분쯤 남았는지 (예약 판단용)
-        const elapsedMin = court && court.startTime
-            ? Math.max(0, (now - new Date(court.startTime).getTime()) / 60000)
-            : 0;
+        const elapsedMin = court ? minutesSince(court.startTime, now) : 0;
         const remainingMin = court ? Math.max(0, TYPICAL_GAME_MIN - elapsedMin) : 0;
 
         stats[p.id] = {

@@ -547,6 +547,26 @@ console.log('\n[5] 예외 상황 — 터지지 않는지');
             withBoth.length === 0 || withoutBoth.length === 0 ||
             Math.max(...withBoth.map(o => o.score)) < Math.max(...withoutBoth.map(o => o.score)));
     }
+    // 5-6b. 시각 값이 깨져 있어도 점수가 NaN이 되지 않는가
+    //   시각 하나가 NaN이 되면 그 NaN이 점수 전체로 번져서 순위가 조용히 무의미해진다.
+    //   화면에는 오류가 안 뜨기 때문에 반드시 자동으로 잡아야 한다.
+    {
+        const gym = makeGym({ maleCount: 8, femaleCount: 0, seed: 1 });
+        gym.allPlayers['남1'].entryTime = '어제쯤';                  // 파싱 불가능한 문자열
+        gym.allPlayers['남2'].entryTime = null;                      // 값 없음
+        gym.allPlayers['남3'].todayRecentGames = [{ timestamp: {}, partners: [], opponents: [] }]; // 객체
+        gym.gameState.inProgressCourts[0] = { players: ['남5', '남6', '남7', '남8'], startTime: 'not-a-date' };
+        const ctx = buildMatchContext(gym.allPlayers, gym.gameState, { now: START_MS });
+        const allNumeric = Object.values(ctx.stats).every(s =>
+            Number.isFinite(s.waitMin) && Number.isFinite(s.elapsedMin) && Number.isFinite(s.remainingMin));
+        check('깨진 시각 값이 있어도 대기·경과 시간이 숫자로 유지됨', allNumeric,
+            Object.values(ctx.stats).map(s => `${s.name}:${s.waitMin}`).join(' '));
+
+        const pool = buildCandidatePool(ctx, '남');
+        const r = generateMatchOptions({ pool, ctx, mode: '남', maxOnCourt: 4 });
+        const scores = r.pages.flat().map(o => o.score);
+        check('깨진 시각 값이 있어도 모든 후보 점수가 숫자', scores.every(Number.isFinite), `점수: ${scores.join(', ')}`);
+    }
     // 5-7. 경기 도중 선수가 나가도 매칭이 계속 되는가
     {
         const { gym, log } = runSession({
