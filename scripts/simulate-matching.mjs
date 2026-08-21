@@ -705,6 +705,58 @@ console.log('\n[8] v3 새 규칙 — 대기 우선 · 그룹 겹침 · 그룹 �
             `베스트: ${top.facts.names.join('·')}`);
     }
 
+    // 8-2b. [겹침 2갈래] 한 번도 안 친 사람이 여럿일 때, 그중에서도
+    //       '바로 직전 경기에서 같이 친 사람'은 피해야 한다.
+    //       상황: 남1은 남2~남7 전원과 오늘 한 번도 안 쳤다.
+    //             다만 남2와는 방금 끝난 직전 경기에서 같이 쳤다(=만난 셈).
+    //             → 베스트 조합은 남2 대신 다른 사람을 데려와야 한다.
+    {
+        const gym = makeGym({ maleCount: 8, femaleCount: 0, seed: 1, levelMix: ['C조'] });
+        // 남1과 남2가 방금(직전 경기) 같은 코트에 있었다
+        gym.allPlayers['남1'].todayRecentGames = [mkGame(3, ['남2'], ['x1', 'x2'])];
+        gym.allPlayers['남2'].todayRecentGames = [mkGame(3, ['남1'], ['x1', 'x2'])];
+        // 나머지는 남1과 겹친 적 없는 사람들 (경기 수는 똑같이 1경기로 맞춘다)
+        ['남3', '남4', '남5', '남6', '남7', '남8'].forEach(id => {
+            gym.allPlayers[id].todayRecentGames = [mkGame(3)];
+        });
+        const ctx = buildMatchContext(gym.allPlayers, gym.gameState, { now: T0 });
+        const pool = buildCandidatePool(ctx, '남');
+        const r = generateMatchOptions({ pool, ctx, mode: '남', maxOnCourt: 0 });
+        const top = r.pages[0][0];
+        check('8-2b. 직전 경기에서 같이 친 사람은 베스트 조합에서 빠진다',
+            !(top.ids.includes('남1') && top.ids.includes('남2')),
+            `베스트: ${top.facts.names.join('·')}`);
+
+        // 같은 조건에서 '직전'이 아니라 '4경기 전'에 만났다면 다시 만나도 괜찮아야 한다.
+        // → 4경기 전 재회의 감점이, 직전 재회 감점보다 훨씬 작아야 한다.
+        const scoreOf = (ids) => r.pages.flat().find(o => ids.every(id => o.ids.includes(id)));
+        const oldGym = makeGym({ maleCount: 8, femaleCount: 0, seed: 1, levelMix: ['C조'] });
+        oldGym.allPlayers['남1'].todayRecentGames = [
+            mkGame(3), mkGame(20), mkGame(37), mkGame(54), mkGame(71, ['남2'], ['x1', 'x2']),
+        ];
+        oldGym.allPlayers['남2'].todayRecentGames = [
+            mkGame(3), mkGame(20), mkGame(37), mkGame(54), mkGame(71, ['남1'], ['x1', 'x2']),
+        ];
+        ['남3', '남4', '남5', '남6', '남7', '남8'].forEach(id => {
+            oldGym.allPlayers[id].todayRecentGames = [
+                mkGame(3), mkGame(20), mkGame(37), mkGame(54), mkGame(71),
+            ];
+        });
+        const oldCtx = buildMatchContext(oldGym.allPlayers, oldGym.gameState, { now: T0 });
+        const oldR = generateMatchOptions({
+            pool: buildCandidatePool(oldCtx, '남'), ctx: oldCtx, mode: '남', maxOnCourt: 0,
+        });
+        const recentPairScore = scoreOf(['남1', '남2'])?.score;
+        const oldPairScore = oldR.pages.flat().find(o => o.ids.includes('남1') && o.ids.includes('남2'))?.score;
+        const oldBest = oldR.pages[0][0].score;
+        check('8-2b. 오래전(4경기 전)에 만난 짝은 다시 묶여도 거의 손해가 없다',
+            oldPairScore !== undefined && (oldBest - oldPairScore) <= 40,
+            `베스트 ${oldBest}점 vs 그 짝 포함 ${oldPairScore}점 (차이 ${oldBest - (oldPairScore ?? 0)})`);
+        if (recentPairScore !== undefined) {
+            console.log(`     (참고) 직전 재회 짝 포함 조합 점수 ${recentPairScore}점 / 오래전 재회 짝 ${oldPairScore}점`);
+        }
+    }
+
     // 8-3. 급수 밸런스도 4명 전체 기준 — A조가 D조들 사이에 혼자 끼면 안 된다.
     {
         const levelMix = ['A조', 'A조', 'B조', 'B조', 'D조', 'D조', 'D조', 'D조'];

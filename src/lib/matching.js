@@ -11,7 +11,13 @@
 //
 //  2) 우선순위를 갈아엎었다.
 //     예전:  경기 수 공평  >  안 친 사람  >  급수 밸런스
-//     지금:  ① 겹침 방지(만났던 사람과 또 안 묶이게)
+//     지금:  ① 겹침 방지 — 두 갈래다
+//                 ⓐ 오늘 한 번도 안 친 사람과 붙여주기 (FRESH_PAIR)
+//                 ⓑ 바로 직전 경기에서 같이 친 사람은 피하기 (RECENT_MET_STEPS)
+//               둘 다 중요하지만 성격이 다르다. ⓐ는 '새로운 만남을 늘리는' 쪽,
+//               ⓑ는 '방금 그 사람과 또'라는 지루함을 막는 쪽이다.
+//               ⓑ는 직전 경기에만 세게 걸고 두세 경기 지나면 0으로 푼다 —
+//               몇 경기 쉬었다가 다시 만나는 건 자연스러운 일이므로.
 //            ② 오래 기다린 사람 먼저
 //            ③ 급수 밸런스
 //            ④ 경기 수 (2경기 차이까지는 너그럽게)
@@ -68,7 +74,9 @@ const LEVEL_BALANCE_MAP = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 
  * 여기 숫자만 바꾸면 매칭 성향이 바뀐다. 각 줄의 주석이 "이 숫자가 몇 점짜리인지" 설명한다.
  *
  * [우선순위 감각 잡기 — 대표 값 비교]
- *   · 최근 2경기 안에 만난 짝 1쌍       ≈ -97점 (RECENT_MET + MET_AGAIN)
+ *   · 바로 직전 경기에서 만난 짝 1쌍     ≈ -197점 (RECENT_MET_STEPS[0] + MET_AGAIN)
+ *   · 2경기 전에 만난 짝 1쌍             ≈ -57점  (RECENT_MET_STEPS[1] + MET_AGAIN)
+ *   · 4경기 전에 만난 짝 1쌍             ≈ -17점  (MET_AGAIN만 — 최근성 감점 없음)
  *   · 30분 기다린 사람 1명               ≈ +90점 (15분×2 + 15×4)
  *   · 급수 폭 3(A조와 D조가 한 코트)     = -150점
  *   · 1경기 덜 친 사람 1명               = +15점 (2경기까지는 이 정도로 너그럽게)
@@ -87,7 +95,27 @@ const W = {
     // 재회가 불가피)에 재회를 피하려고 A조와 D조를 한 코트에 섞는 폭주가 생긴다.
     MET_AGAIN: 17,       // 재회 1쌍당 -17 × (만난 횟수, 최대 4)²
     MET_CAP: 4,          // 재회 감점 계산에 인정하는 최대 만남 횟수
-    RECENT_MET: 80,      // 최근 2경기 안에 만난 짝 1쌍당 -80 (같은 팀이었든 상대였든 동일)
+    // 재회 '최근성' 감점 — 직전 경기일수록 크고, 몇 경기 지나면 괜찮아진다.
+    // [0]=바로 직전 경기에서 만난 짝 -140, [1]=2경기 전 -30, [2]=3경기 전 0, 그 이후도 0.
+    //
+    // 왜 계단인가: 예전에는 "최근 2경기 안"을 한 덩어리(-80)로 봤는데, 실사용 감각은
+    // 그렇지 않다. 방금 같이 친 사람과 곧바로 또 붙으면 확실히 재미없지만,
+    // 두세 경기 쉬고 다시 만나는 건 오히려 자연스럽다. 그래서 직전만 크게 때리고
+    // 그 뒤로는 빠르게 0으로 떨어뜨린다.
+    // ("한 번도 안 친 사람 우선"은 FRESH_PAIR와 MET_AGAIN이 따로 담당한다 —
+    //  이 값은 '이미 만난 사람들 중에서 누가 더 최근이었나'만 가른다)
+    //
+    // 왜 -180인가 (scripts/tune-recency.mjs로 10개 씨앗 × 5개 시나리오 측정):
+    //   직전 재회 비율이 성수기 31.1%→22.5%, 급수혼합 21.2%→14.9%, 혼복 23.6%→18.0%로
+    //   줄었고, 코트 가동률·경기 수 편차는 사실상 그대로였다.
+    //   ★ 단, 이 값만 올리면 엔진이 재회를 피하려고 급수가 동떨어진 사람을 끼워 넣는
+    //     쪽으로 도망간다. 그래서 LONELY_LEVEL을 25 → 55로 같이 올려 그 도피로를 막았다.
+    //     둘은 한 세트다 — 하나만 바꾸지 말 것.
+    //
+    // ※ 인원이 빠듯한 날(12명 이하에 코트를 꽉 채우는 경우)은 전원이 매 경기 코트에
+    //   들어가므로 직전 재회를 피할 방법이 물리적으로 없다. 그 상황에서 이 값을 더 올려도
+    //   재회는 안 줄고 급수만 어긋난다 — 시뮬레이션에서 확인됨.
+    RECENT_MET_STEPS: [180, 40, 0],
 
     // ── ② 대기 시간 (2순위) — 오래 기다릴수록 1분의 가치가 커진다 ──
     WAIT_PER_MIN: 2,       // 대기 1분당 +2 (처음 WAIT_KNEE분까지)
@@ -99,7 +127,11 @@ const W = {
     // 급수 폭 3(A조와 D조가 한 코트)은 '절대 재미없는 경기'라서 재회 감점 상한(-272)과
     // 견줄 만큼 크게 잡는다. 안 그러면 겹침을 피하려고 A+D를 섞는 경기가 나온다.
     SPREAD_PENALTY: [0, 8, 30, 150], // 4명 중 최고↔최저 급수 차이가 0/1/2/3일 때 감점
-    LONELY_LEVEL: 25,    // 나머지 3명 평균과 급수가 LONELY_GAP 이상 차이 나는 '혼자 동떨어진' 선수: 차이 1당 -25
+    // 나머지 3명 평균과 급수가 LONELY_GAP 이상 차이 나는 '혼자 동떨어진' 선수: 차이 1당 -55.
+    // 25에서 55로 올린 이유: RECENT_MET_STEPS를 세게 잡자, 엔진이 직전 재회를 피하려고
+    // "급수가 혼자 뜨는 사람"을 끼워 넣는 쪽으로 도망갔다. 이 둘은 한 세트로 움직인다.
+    // (재회 감점만 올리고 이걸 그대로 두면 2급수 이상 차이 나는 경기가 늘어난다)
+    LONELY_LEVEL: 55,
 
     // ── ④ 경기 수 (4순위) — 2경기 차이까지는 너그럽게, 그 이상은 구출 ──
     GAME_TOLERANCE: 2,   // 이 경기 수 차이까지는 "비슷하게 쳤다"로 본다
@@ -128,7 +160,11 @@ const W = {
     SAME_FOUR: 1000,     // 직전 경기와 완전히 똑같은 4명 -1000 (사실상 후보에서 제외)
 };
 
-/** 최근 몇 경기까지를 "방금 쳤다"로 볼지 (0 = 직전 경기) */
+/**
+ * 최근 몇 경기까지를 "방금 쳤다"로 볼지 (0 = 직전 경기).
+ * ※ 점수 감점은 W.RECENT_MET_STEPS가 경기별 계단으로 따로 계산한다.
+ *   이 값은 품질 등급(qualityOf)과 안내 문구에서 "방금 만난 짝"을 세는 기준.
+ */
 const RECENT_WINDOW = 2;
 /** 급수 매너리즘을 판단할 때 몇 경기를 되돌아볼지 */
 const THIRST_WINDOW = 3;
@@ -436,6 +472,7 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
     const freshPairs = [];
     const metPairs = [];
     const recentPairs = [];
+    const lastGamePairs = [];
 
     const pairList = getAllCombinations(comboStats, 2);
     for (const [p1, p2] of pairList) {
@@ -451,10 +488,10 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
         const isRecent = info.recency < RECENT_WINDOW;
         const cappedMeetings = Math.min(meetings, W.MET_CAP);
         novelty -= cappedMeetings * cappedMeetings * W.MET_AGAIN; // 만난 횟수의 제곱 — 위 W.MET_AGAIN 주석 참고
-        if (isRecent) {
-            novelty -= W.RECENT_MET;
-            recentPairs.push([p1.name, p2.name]);
-        }
+        // 최근성 감점: 바로 직전 경기(recency 0)가 가장 크고, 계단식으로 줄어 몇 경기 지나면 0
+        novelty -= W.RECENT_MET_STEPS[info.recency] ?? 0;
+        if (info.recency === 0) lastGamePairs.push([p1.name, p2.name]);
+        if (isRecent) recentPairs.push([p1.name, p2.name]);
         metPairs.push({ names: [p1.name, p2.name], meetings, recent: isRecent });
     }
     score += novelty;
@@ -571,6 +608,7 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
         freshPairs,
         metPairs,
         recentPairs,
+        lastGamePairs,
         levelSpread,
         lonelyNames,
         longWaiters,
@@ -615,9 +653,12 @@ function buildReasonLines(facts) {
     //    팀·상대 구분 없이 "오늘 만난 적 있는 짝"으로 말한다.
     if (facts.sameFour) {
         lines.push({ tone: 'bad', text: '방금 끝난 경기와 완전히 같은 4명' });
+    } else if (facts.lastGamePairs.length > 0) {
+        const pairText = facts.lastGamePairs.map(p => p.join('·')).slice(0, 2).join(', ');
+        lines.push({ tone: 'bad', text: `바로 직전 경기에서 만난 짝: ${pairText}` });
     } else if (facts.recentPairs.length > 0) {
         const pairText = facts.recentPairs.map(p => p.join('·')).slice(0, 2).join(', ');
-        lines.push({ tone: 'bad', text: `방금 경기에서 만난 짝: ${pairText}` });
+        lines.push({ tone: 'bad', text: `최근 경기에서 만난 짝: ${pairText}` });
     } else if (facts.metPairs.length === 0) {
         lines.push({ tone: 'good', text: '4명 모두 오늘 처음 만나는 조합!' });
     } else if (facts.metPairs.length === 1) {
