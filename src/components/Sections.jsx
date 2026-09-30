@@ -3,7 +3,7 @@ import { PLAYERS_PER_MATCH, TEAM_BLUE, TEAM_WHITE, TEAM_META, getTeamOf } from '
 import { playDeal } from '../lib/sound';
 import { PlayerCard, EmptySlot, LeftPlayerCard, CourtTimer } from './PlayerCard';
 
-const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onlineIds, teamMode = false }) => {
+const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onlineIds, teamMode = false, aceIds = null }) => {
     const renderPlayerGrid = (players) => (
         <div className="grid grid-cols-5 gap-1">
             {players.map(player => (
@@ -19,6 +19,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                     isPlaying={inProgressPlayerIds.has(player.id)}
                     isOnline={!!onlineIds && onlineIds.has(player.id)}
                     teamMode={teamMode}
+                    isAce={!!aceIds && aceIds.has(player.id)}
                 />
             ))}
         </div>
@@ -99,7 +100,9 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
 });
 
 
-const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds, onlineIds, teamMode = false }) => {
+const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds, onlineIds, teamMode = false, aceIds = null }) => {
+    // [청백전] 경기 예정 칸은 왼쪽 2칸 = 청팀, 오른쪽 2칸 = 백팀으로 미리 나뉘어 있다
+    const slotTeamOf = (slotIndex) => (teamMode ? (slotIndex < 2 ? TEAM_BLUE : TEAM_WHITE) : null);
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -122,6 +125,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                 <div className="lbl cyan">
                     <span className="tick"></span>
                     <span>경기 예정</span>
+                    {teamMode && <span className="tm-sched-legend"><i className="b"></i>청 2칸 <i className="w"></i>백 2칸</span>}
                 </div>
                 {isAdmin && hasMatches && (
                     <button onClick={handleClearScheduledMatches} className="cox-pill-danger">전체삭제</button>
@@ -143,12 +147,20 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                             >
                                 <p className="font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
                             </div>
-                            <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
+                            <div className={`grid grid-cols-4 gap-1 flex-1 min-w-0 ${teamMode ? 'tm-sched-grid' : ''}`}>
                                 {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
                                     const playerId = match[slotIndex];
                                     const player = players[playerId];
                                     const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                    const slotTeam = slotTeamOf(slotIndex);
+                                    // [청백전] 구버전 데이터 등으로 팀이 칸과 다르면 ⚠ 표시 (START는 App에서 막는다)
+                                    const wrong = !!player && !!slotTeam && getTeamOf(player) !== slotTeam;
+                                    return player ? (
+                                        <div key={playerId} className={`relative min-w-0 ${wrong ? 'tm-slot-wrong' : ''}`}>
+                                            <PlayerCard player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} isAce={!!aceIds && aceIds.has(playerId)} />
+                                            {wrong && <span className="tm-wrong-tag">⚠ {TEAM_META[slotTeam].short}칸</span>}
+                                        </div>
+                                    ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} slotTeam={slotTeam} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -327,7 +339,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
     );
 });
 
-const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds, teamMode = false }) => {
+const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds, teamMode = false, aceIds = null }) => {
     const pressTimerRef = useRef(null);
     const courtRef = useRef(null);
 
@@ -400,7 +412,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
                         const displayName = player?.name || allPlayers?.[playerId]?.name || '나간 선수';
                         return <LeftPlayerCard key={`court-left-${courtIndex}-${slotIndex}`} name={displayName} />;
                     }
-                    return <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} />;
+                    return <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} isAce={!!aceIds && aceIds.has(playerId)} />;
                 })}
             </div>
             <div className="flex-shrink-0 w-14 text-center">
@@ -412,7 +424,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
 });
 
 
-const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds, teamMode = false }) => {
+const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds, teamMode = false, aceIds = null }) => {
     return (
         <section data-tut="courts">
             <div className="cox-secline mb-2.5 px-1">
@@ -437,6 +449,7 @@ const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCou
                         handleMoveOrSwapCourt={handleMoveOrSwapCourt}
                         onlineIds={onlineIds}
                         teamMode={teamMode}
+                        aceIds={aceIds}
                     />
                 ))}
             </div>

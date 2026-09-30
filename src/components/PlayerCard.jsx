@@ -4,7 +4,7 @@ import { isAdminName, getLevelColor, getTeamOf, getWinLoss, TEAM_META } from '..
 // ===================================================================================
 // 자식 컴포넌트들
 // ===================================================================================
-const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false, isOnline = false, teamMode = false }) => {
+const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false, isOnline = false, teamMode = false, isAce = false }) => {
     const pressTimerRef = useRef(null);
     const cardRef = useRef(null);
 
@@ -133,7 +133,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             {/* [경기중 표시] 경기가 끝나면 이 딱지가 사라지고 카드 색이 돌아온다 */}
             {isPlaying && <span className="cox-playing-tag">경기중</span>}
             <div>
-                <div className={playerNameClass}>{adminIcon}{player.name}</div>
+                <div className={playerNameClass}>{teamMode && isAce && <span className="tm-ace" title="팀 에이스">⭐</span>}{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>
                     <span style={levelStyle}>{(player.level || '').replace('조','')}</span>
                     <span className="ml-1 text-gray-300 font-bold">{player.todayRecentGames ? player.todayRecentGames.length : 0}G</span>
@@ -158,12 +158,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
         </div>
     );
 });
-const EmptySlot = ({ onSlotClick }) => (
+// [청백전] slotTeam('청'|'백')이 오면 그 팀 전용 칸으로 표시한다 (경기 예정: 왼쪽 2칸 청, 오른쪽 2칸 백)
+const EmptySlot = ({ onSlotClick, slotTeam = null }) => (
     <div
-        className="player-slot h-14 bg-black/30 rounded-md flex items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-700/50 hover:border-yellow-400 transition-all"
+        className={`player-slot h-14 bg-black/30 rounded-md flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-700/50 hover:border-yellow-400 transition-all ${slotTeam ? `tm-slot ${TEAM_META[slotTeam].key}` : ''}`}
         onClick={onSlotClick}
     >
-        <span className="text-xl font-bold">+</span>
+        <span className="text-xl font-bold leading-none">+</span>
+        {slotTeam && <span className="tm-slot-label">{TEAM_META[slotTeam].label}</span>}
     </div>
 );
 

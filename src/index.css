@@ -1132,3 +1132,80 @@ main{ -webkit-overflow-scrolling:touch; }
 }
 .tm-wl.bumped .w{ text-shadow:0 0 8px rgba(124,224,166,.8); }
 .tm-wl.bumped .l{ text-shadow:0 0 8px rgba(255,156,140,.8); }
+
+/* ── [청백전] 경기 예정 청/백 칸 ── */
+.tm-slot.blue{ border-color:rgba(59,130,246,.55) !important; background:rgba(59,130,246,.10) !important; color:#93C5FD !important; }
+.tm-slot.white{ border-color:rgba(229,231,235,.5) !important; background:rgba(229,231,235,.07) !important; color:#E5E7EB !important; }
+.tm-slot-label{ font-size:9px; font-weight:900; letter-spacing:.08em; margin-top:2px; opacity:.85; }
+.tm-sched-grid{ position:relative; }
+.tm-sched-grid::after{ /* 가운데 얇은 구분선 (청 | 백) */
+  content:''; position:absolute; top:6px; bottom:6px; left:50%; width:1px; margin-left:-.5px;
+  background:linear-gradient(180deg, transparent, rgba(255,255,255,.22), transparent); pointer-events:none;
+}
+.tm-sched-legend{
+  display:inline-flex; align-items:center; gap:4px; margin-left:6px;
+  font-size:10px; font-weight:800; color:var(--dim); letter-spacing:0;
+}
+.tm-sched-legend i{ display:inline-block; width:8px; height:8px; border-radius:2px; }
+.tm-sched-legend i.b{ background:var(--tm-blue); }
+.tm-sched-legend i.w{ background:var(--tm-white); margin-left:4px; }
+.tm-slot-wrong .player-card{ outline:2px dashed #F59E0B; outline-offset:-2px; }
+.tm-wrong-tag{
+  position:absolute; left:50%; top:-7px; transform:translateX(-50%); z-index:3;
+  font-size:8px; font-weight:900; color:#0c0d11; background:#F59E0B; border-radius:5px; padding:0 5px; white-space:nowrap; pointer-events:none;
+}
+.tm-ace{ margin-right:1px; font-size:10px; filter:drop-shadow(0 0 4px rgba(255,214,0,.8)); }
+
+/* ── [청백전] 🏆 오늘의 순위 ── */
+.tm-rank{
+  background:var(--card); border:1px solid var(--line); border-radius:16px; padding:10px 10px 8px;
+}
+.tm-rank-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; min-width:0; }
+.tm-rank-head .lbl{ display:flex; align-items:center; gap:7px; min-width:0; font-size:13px; font-weight:800; }
+.tm-rank-head .lbl .tick{ width:3px; height:15px; border-radius:3px; background:#FFD45A; flex-shrink:0; }
+.tm-rank-head .lbl .count{ color:var(--dim); font-weight:700; font-size:11px; white-space:nowrap; }
+.tm-rank-seg{ display:inline-flex; background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:999px; padding:2px; flex-shrink:0; }
+.tm-rank-seg .seg{
+  border:none; background:transparent; color:var(--dim); cursor:pointer;
+  font-size:11px; font-weight:800; padding:5px 10px; border-radius:999px; transition:background .15s, color .15s;
+}
+.tm-rank-seg .seg.on{ background:var(--volt); color:#0c0d11; }
+.tm-rank-seg .seg.blue.on{ background:var(--tm-blue); color:#fff; }
+.tm-rank-seg .seg.white.on{ background:var(--tm-white); color:#0c0d11; }
+.tm-rank-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:3px; }
+.tm-rank-row{
+  display:grid; grid-template-columns:22px 8px 1fr auto 44px; align-items:center; gap:7px;
+  padding:6px 8px; border-radius:10px; background:rgba(255,255,255,.035); border:1px solid transparent; min-width:0;
+}
+.tm-rank-row.me{ border-color:rgba(255,106,82,.7); background:rgba(255,106,82,.08); }
+.tm-rank-row.top1{ background:linear-gradient(90deg, rgba(255,212,90,.16), rgba(255,255,255,.035)); }
+.tm-rank-row.top1 .rk{ color:#FFD45A; }
+.tm-rank-row.top2 .rk{ color:#D1D5DB; }
+.tm-rank-row.top3 .rk{ color:#D9A066; }
+.tm-rank-row.idle{ opacity:.55; }
+.tm-rank-row .rk{ font-family:'Anton','Noto Sans KR',sans-serif; font-size:15px; text-align:center; color:var(--dim); }
+.tm-rank-row .dot{ width:8px; height:8px; border-radius:50%; }
+.tm-rank-row .nm{ font-size:12.5px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.tm-rank-row .nm small{ font-size:10px; font-weight:800; margin-left:4px; }
+.tm-rank-row .nm .ace{ margin-right:2px; font-size:11px; }
+.tm-rank-row .wl{ font-size:11px; white-space:nowrap; }
+.tm-rank-row .wl .w{ color:#7CE0A6; } .tm-rank-row .wl .l{ color:#FF9C8C; }
+.tm-rank-row .rt{ font-family:'Anton','Noto Sans KR',sans-serif; font-size:14px; text-align:right; color:#fff; }
+.tm-rank-empty{ font-size:12px; color:var(--dim); text-align:center; padding:10px 0; }
+.tm-rank-more{
+  width:100%; margin-top:6px; padding:7px; border:none; border-radius:10px; cursor:pointer;
+  background:rgba(255,255,255,.05); color:var(--dim); font-size:11px; font-weight:800;
+}
+.tm-rank-more:active{ filter:brightness(1.2); }
+
+/* ── [청백전] 득점 기록 모달 ── */
+.tm-log-row{ border-radius:10px; padding:7px 9px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); }
+.tm-log-row.blue{ border-left:3px solid var(--tm-blue); }
+.tm-log-row.white{ border-left:3px solid var(--tm-white); }
+.tm-log-row.none{ border-left:3px solid var(--volt); }
+.tm-log-head{ display:flex; justify-content:space-between; align-items:center; gap:6px; font-size:11px; }
+.tm-log-head .who{ font-weight:900; }
+.tm-log-row.blue .who{ color:var(--tm-blue-text); } .tm-log-row.white .who{ color:#fff; } .tm-log-row.none .who{ color:var(--volt); }
+.tm-log-head .when{ color:var(--dim); font-weight:700; white-space:nowrap; }
+.tm-log-body{ margin-top:2px; font-size:12px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.tm-log-body b{ color:#fff; } .tm-log-body .vs{ font-size:10px; color:var(--mute); font-weight:900; } .tm-log-body .lose{ color:var(--dim); }

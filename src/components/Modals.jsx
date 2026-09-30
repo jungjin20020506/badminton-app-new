@@ -641,7 +641,7 @@ function MatchOptionsModal({ genderLabel, result, queueCount, onSelect, onRegene
 // [내 기록] 일반 선수가 자기 카드를 탭하면 보이는 오늘의 기록 모달
 // 오늘 몇 경기 했는지 + 매 경기 누구와 같은 편/상대였는지 (관리자 기능 아님, 조회 전용)
 // ===================================================================================
-function MyHistoryModal({ player, allPlayers, onClose, teamMode = false }) {
+function MyHistoryModal({ player, allPlayers, onClose, teamMode = false, rankInfo = null }) {
     const games = (player?.todayRecentGames || []);
     const getPlayerName = (id) => allPlayers[id]?.name || '알수없음';
     const { wins, losses } = getWinLoss(player);
@@ -663,12 +663,22 @@ function MyHistoryModal({ player, allPlayers, onClose, teamMode = false }) {
                     <p className="text-sm text-gray-400">오늘 경기 수</p>
                     <p className="text-3xl font-bold text-yellow-400 arcade-font">{games.length}<span className="text-base ml-1">경기</span></p>
                     {teamMode && (
-                        <p className="mt-1 text-sm font-black">
-                            {myTeam && <span style={{ color: TEAM_META[myTeam].text }}>{TEAM_META[myTeam].label} · </span>}
-                            <span className="text-green-300">{wins}승</span>
-                            <span className="text-gray-500 mx-1">·</span>
-                            <span className="text-red-300">{losses}패</span>
-                        </p>
+                        <>
+                            <p className="mt-1 text-sm font-black">
+                                {myTeam && <span style={{ color: TEAM_META[myTeam].text }}>{TEAM_META[myTeam].label} · </span>}
+                                <span className="text-green-300">{wins}승</span>
+                                <span className="text-gray-500 mx-1">·</span>
+                                <span className="text-red-300">{losses}패</span>
+                                {rankInfo && rankInfo.rate !== null && <span className="text-yellow-300 ml-2">승률 {rankInfo.rate}%</span>}
+                            </p>
+                            {rankInfo && (
+                                <p className="mt-1 text-xs text-gray-300">
+                                    🏆 {rankInfo.teamRank ? `${myTeam ? TEAM_META[myTeam].label : '팀'} 내 ${rankInfo.teamRank}위 / ${rankInfo.teamCount}명` : '팀 미정'}
+                                    <span className="text-gray-500 mx-1">·</span>
+                                    전체 {rankInfo.overallRank}위 / {rankInfo.overallCount}명
+                                </p>
+                            )}
+                        </>
                     )}
                 </div>
 
@@ -805,6 +815,53 @@ function TeamMatchEndModal({ courtIndex, court, allPlayers, onPickWinner, onCanc
 }
 
 // ===================================================================================
+// [청백전] 득점 기록 — 점수판을 짧게 탭했을 때 (누구나)
+// ===================================================================================
+function TeamLogModal({ log, teamScores, allPlayers, onClose }) {
+    const guardedClose = useBackdropGuard(onClose);
+    const entries = Array.isArray(log) ? log : [];
+    const nameOf = (id) => allPlayers?.[id]?.name || '나간 선수';
+    const timeOf = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[70] p-4" onClick={guardedClose}>
+            <div className="modal-content bg-gray-800 rounded-2xl p-5 w-full max-w-sm text-white shadow-lg flex flex-col" style={{ maxHeight: '82vh' }} onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-2 flex-shrink-0">
+                    <h3 className="text-lg font-bold text-yellow-400 arcade-font">📜 오늘 득점 기록</h3>
+                    <button onClick={onClose} className="text-2xl text-gray-500 hover:text-white leading-none">&times;</button>
+                </div>
+                <p className="text-center text-sm font-black mb-3 flex-shrink-0">
+                    <span style={{ color: TEAM_META[TEAM_BLUE].text }}>청 {teamScores?.blue ?? 0}</span>
+                    <span className="text-gray-500 mx-2">:</span>
+                    <span style={{ color: TEAM_META[TEAM_WHITE].text }}>백 {teamScores?.white ?? 0}</span>
+                </p>
+                <div className="flex-grow overflow-y-auto space-y-1.5 pr-1">
+                    {entries.length === 0 && (
+                        <p className="text-sm text-gray-500 text-center py-6">아직 기록된 경기가 없어요.<br/>경기가 끝나면 여기에 쌓입니다.</p>
+                    )}
+                    {entries.map((e, i) => {
+                        const meta = e.winnerTeam ? TEAM_META[e.winnerTeam] : null;
+                        return (
+                            <div key={`${e.at}-${i}`} className={`tm-log-row ${meta ? meta.key : 'none'}`}>
+                                <div className="tm-log-head">
+                                    <span className="who">{meta ? `${e.winnerTeam === TEAM_BLUE ? '🔵' : '⚪'} ${meta.label} 득점` : '🏁 승패만 기록'}</span>
+                                    <span className="when">{timeOf(e.at)} · {(e.courtIndex ?? 0) + 1}번 코트</span>
+                                </div>
+                                <div className="tm-log-body">
+                                    <b>{(e.winners || []).map(nameOf).join('·') || '-'}</b>
+                                    <span className="vs">승</span>
+                                    <span className="lose">{(e.losers || []).map(nameOf).join('·') || '-'}</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <button onClick={onClose} className="mt-3 w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg flex-shrink-0">확인</button>
+            </div>
+        </div>
+    );
+}
+
+// ===================================================================================
 // [청백전] 점수판 수정 — 점수판을 길게 눌렀을 때
 // ===================================================================================
 function TeamScoreEditModal({ teamScores, onSave, onClose }) {
@@ -866,4 +923,4 @@ function TeamScoreEditModal({ teamScores, onSave, onClose }) {
     );
 }
 
-export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal, TeamMatchEndModal, TeamScoreEditModal };
+export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal, TeamMatchEndModal, TeamScoreEditModal, TeamLogModal };

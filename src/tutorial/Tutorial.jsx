@@ -16,6 +16,7 @@ import { playersRef } from '../lib/firebase';
 //   surface      : 그 단계에서 열어 둘 화면 ('main' | 'menu' | 'settings' | 'roster')
 //   tab          : 모바일에서 전환할 탭 ('matching' | 'inProgress')
 //   only         : 'mobile' | 'desktop' — 해당 환경에서만 표시
+//   mode         : 'team' | 'normal' — [청백전] 해당 경기 방식일 때만 표시 (없으면 항상)
 //   interactive  : true면 화면 조작을 막지 않는다 (직접 해보기 단계)
 //   advanceOnTab : 사용자가 이 탭으로 이동하면 자동으로 다음 단계로
 // ===================================================================================
@@ -65,7 +66,23 @@ const TUTORIAL_ADMIN_STEPS = [
         </>),
     },
     {
-        target: '[data-tut="auto-make"]', tab: 'matching',
+        mode: 'team', target: '[data-tut="team-board"]', tab: 'matching',
+        title: '⚔️ 청백전 점수판',
+        body: (<>
+            <span className="tut-key">탭</span> 오늘 득점 기록 ·
+            <span className="tut-key">1초 꾹</span> 점수 수정
+            <br/>경기 종료 때 <b>이긴 팀</b>을 고르면 여기 점수가 오르고, 선수 카드에 <b>승·패</b>가 쌓여요.
+        </>),
+    },
+    {
+        mode: 'team', target: '[data-tut="team-rank"]', tab: 'matching',
+        title: '🏆 오늘의 순위',
+        body: (<>
+            <b>전체 / 청팀 / 백팀</b>을 눌러 바꿔 보세요. 승률순이고, 각 팀 1위는 카드에 ⭐가 붙어요.
+        </>),
+    },
+    {
+        mode: 'normal', target: '[data-tut="auto-make"]', tab: 'matching',
         title: '② 자동 매칭 — 골라서 만들어요',
         body: (<>
             <b>남자 / 여자 / 혼복</b> 버튼을 누르면 <b>후보 6개</b>가 이유와 함께 떠요.
@@ -74,7 +91,7 @@ const TUTORIAL_ADMIN_STEPS = [
         </>),
     },
     {
-        target: '[data-tut="auto"]', tab: 'matching',
+        mode: 'normal', target: '[data-tut="auto"]', tab: 'matching',
         title: '만든 경기 다듬기',
         body: (<>
             카드 <span className="tut-key">탭↔탭</span> 자리 교환 ·
@@ -84,10 +101,18 @@ const TUTORIAL_ADMIN_STEPS = [
         </>),
     },
     {
-        target: '[data-tut="scheduled"]', tab: 'matching',
+        mode: 'normal', target: '[data-tut="scheduled"]', tab: 'matching',
         title: '③ 경기 예정 — 직접 짤 때',
         body: (<>
             대기에서 <b>선수 탭</b> → 여기 <b>빈칸 탭</b>이면 배정 완료.
+        </>),
+    },
+    {
+        mode: 'team', target: '[data-tut="scheduled"]', tab: 'matching',
+        title: '경기 예정 — 청 2칸 · 백 2칸',
+        body: (<>
+            대기에서 <b>선수 탭</b> → <b>자기 팀 칸 탭</b>. 왼쪽 2칸은 청팀, 오른쪽 2칸은 백팀 자리예요.
+            <br/>다른 팀 칸에 넣으면 안내가 뜨고 들어가지 않아요.
         </>),
     },
     {
@@ -158,7 +183,22 @@ const TUTORIAL_USER_STEPS = [
         </>),
     },
     {
-        target: '[data-tut="auto"]', tab: 'matching',
+        mode: 'team', target: '[data-tut="team-board"]', tab: 'matching',
+        title: '⚔️ 청백전 점수판',
+        body: (<>
+            <b>점수판을 탭하면</b> 오늘 누가 어느 코트에서 득점했는지 기록이 보여요.
+            <br/>내 카드 아래 <b>승·패</b>도 경기가 끝날 때마다 올라갑니다.
+        </>),
+    },
+    {
+        mode: 'team', target: '[data-tut="team-rank"]', tab: 'matching',
+        title: '🏆 오늘의 순위',
+        body: (<>
+            <b>전체 / 청팀 / 백팀</b> 승률 순위. 내 줄은 주황색으로 표시돼요. 각 팀 1위는 ⭐!
+        </>),
+    },
+    {
+        mode: 'normal', target: '[data-tut="auto"]', tab: 'matching',
         title: '② 자동 매칭 ★',
         body: (<>
             여기 <b>내 이름이 뜨면 다음 경기</b>예요!

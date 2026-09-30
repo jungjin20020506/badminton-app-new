@@ -24,8 +24,10 @@ import {
 } from './lib/matching';
 import { WaitingListSection, ScheduledMatchesSection, AutoMatchesSection, InProgressCourtsSection } from './components/Sections';
 import { EntryPage } from './components/EntryPage';
-import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal, TeamMatchEndModal, TeamScoreEditModal } from './components/Modals';
+import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal, TeamMatchEndModal, TeamScoreEditModal, TeamLogModal } from './components/Modals';
 import { TeamScoreBoard } from './components/TeamScoreBoard';
+import { TeamRankingSection } from './components/TeamRanking';
+import { computeRankings, computeAceIds, rankOf } from './lib/ranking';
 import { SkeletonScreen } from './components/Skeleton';
 import { UpdateBanner } from './components/UpdateBanner';
 import { SettingsModal } from './components/SettingsModal';
@@ -311,6 +313,14 @@ export default function App() {
         liveTimersRef.current.edge = setTimeout(() => setEdgeFlash(null), 600);
     }, [gameState?.lastTeamResult, teamMode, allPlayers]);
     useEffect(() => () => { clearTimeout(liveTimersRef.current.banner); clearTimeout(liveTimersRef.current.edge); }, []);
+
+    // [청백전] 오늘의 순위(전체/청/백) · 팀 에이스 ⭐ · 내 순위
+    const rankings = useMemo(() => (teamMode ? computeRankings(activePlayers) : null), [teamMode, activePlayers]);
+    const aceIds = useMemo(() => (rankings ? computeAceIds(rankings) : null), [rankings]);
+    const myRankInfo = useMemo(
+        () => (rankings && currentUser && !currentUser.isGhostAdmin ? rankOf(rankings, currentUser.id) : null),
+        [rankings, currentUser]
+    );
 
     // [청백전] 팀별 접속 인원 (점수판 아래 'n명' 표시)
     const teamCounts = useMemo(() => {
@@ -605,8 +615,11 @@ useEffect(() => {
     const tutorialSteps = useMemo(() => {
         if (!tutorial) return [];
         const raw = tutorial.mode === 'admin' ? TUTORIAL_ADMIN_STEPS : TUTORIAL_USER_STEPS;
-        return raw.filter(s => !s.only || (s.only === 'mobile' ? isMobile : !isMobile));
-    }, [tutorial, isMobile]);
+        return raw
+            .filter(s => !s.only || (s.only === 'mobile' ? isMobile : !isMobile))
+            // [청백전] 경기 방식에 맞는 단계만 (자동 매칭 단계는 일반 모드에서만, 점수판 단계는 청백전에서만)
+            .filter(s => !s.mode || (s.mode === 'team') === teamMode);
+    }, [tutorial, isMobile, teamMode]);
 
     // 각 단계가 요구하는 화면(설정창·명단창·프로필 메뉴·모바일 탭)을 열어준다
     const prepareTutorialStep = useCallback((step) => {
@@ -946,6 +959,16 @@ useEffect(() => {
         } else {
             if (!firstSelectedId) { setSelectedPlayerIds([playerId]); }
             else if (selectedPlayerIds.length === 1 && firstSelectedLoc.location !== 'waiting') {
+                // [청백전] 경기 예정 칸은 왼쪽 2칸 청 · 오른쪽 2칸 백 — 다른 팀 칸으로 가는 교환은 막는다
+                if (teamMode && firstSelectedLoc.location === 'schedule' && loc.location === 'schedule') {
+                    const slotTeam = (i) => (i < 2 ? TEAM_BLUE : TEAM_WHITE);
+                    const a = allPlayers[firstSelectedId], b = allPlayers[playerId];
+                    if (getTeamOf(a) !== slotTeam(loc.slotIndex) || getTeamOf(b) !== slotTeam(firstSelectedLoc.slotIndex)) {
+                        setSelectedPlayerIds([]);
+                        setModal({ type: 'alert', data: { title: '자리를 바꿀 수 없어요', body: '경기 예정은 왼쪽 2칸이 청팀, 오른쪽 2칸이 백팀 자리예요.\n같은 팀 칸끼리만 바꿀 수 있습니다.' }});
+                        return;
+                    }
+                }
                 // [자동매칭] 수동/자동 매칭 간 교환 로직
                 const updateFunction = (currentState) => {
                     const newState = JSON.parse(JSON.stringify(currentState));
@@ -976,10 +999,29 @@ useEffect(() => {
                 setSelectedPlayerIds([]);
             } else { setSelectedPlayerIds([playerId]); }
         }
-    }, [isAdmin, currentUser, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove]);
+    }, [isAdmin, currentUser, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove, teamMode, allPlayers]);
 
     const handleSlotClick = useCallback(async (context) => {
         if (!isAdmin || selectedPlayerIds.length === 0) return;
+
+        // [청백전] 경기 예정: 왼쪽 2칸(0,1)=청팀, 오른쪽 2칸(2,3)=백팀. 다른 팀 칸이면 넣지 않고 알려준다.
+        const schedSlotTeam = (i) => (i < 2 ? TEAM_BLUE : TEAM_WHITE);
+        //  여러 명을 골라 넣을 때는 각자 자기 팀 칸으로 나눠 들어간다. 탭한 칸의 팀에 속한 선수가
+        //  한 명도 없으면(예: 청팀만 골라 백 칸을 탭) 넣지 않고 알려준다.
+        if (teamMode && context.location === 'schedule') {
+            const selected = selectedPlayerIds.map(id => allPlayers[id]).filter(Boolean);
+            const wrong = selected.filter(p => getTeamOf(p) !== schedSlotTeam(context.slotIndex));
+            if (wrong.length > 0 && wrong.length === selected.length) {
+                const slotLabel = TEAM_META[schedSlotTeam(context.slotIndex)].label;
+                const names = wrong.map(p => `${p.name}(${getTeamOf(p) ? TEAM_META[getTeamOf(p)].short : '팀 미정'})`).join(', ');
+                setSelectedPlayerIds([]);
+                setModal({ type: 'alert', data: {
+                    title: `${slotLabel} 칸이에요`,
+                    body: `${names} 선수는 ${slotLabel} 칸에 넣을 수 없어요.\n왼쪽 2칸은 청팀, 오른쪽 2칸은 백팀 자리입니다.`,
+                }});
+                return;
+            }
+        }
 
         const updateFunction = (currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
@@ -1008,13 +1050,26 @@ useEffect(() => {
                 }
 
 
-                const availableSlots = targetArray.filter(p => p === null).length;
-                if (playersToMove.length > availableSlots) {
-                    throw new Error(`자리가 부족합니다. (${availableSlots}자리 남음)`);
-                }
+                if (teamMode && context.location === 'schedule') {
+                    // [청백전] 각 선수를 자기 팀 반쪽의 빈 칸에만 넣는다 (누른 칸부터 우선)
+                    for (const pid of playersToMove) {
+                        const team = getTeamOf(allPlayers[pid]);
+                        const half = team === TEAM_BLUE ? [0, 1] : team === TEAM_WHITE ? [2, 3] : [];
+                        const order = half.includes(context.slotIndex) ? [context.slotIndex, ...half.filter(i => i !== context.slotIndex)] : half;
+                        const free = order.find(i => targetArray[i] === null);
+                        if (free === undefined) throw new Error(`${TEAM_META[team]?.label || '팀 미정'} 자리가 부족합니다.`);
+                        targetArray[free] = pid;
+                    }
+                    playersToMove.length = 0;
+                } else {
+                    const availableSlots = targetArray.filter(p => p === null).length;
+                    if (playersToMove.length > availableSlots) {
+                        throw new Error(`자리가 부족합니다. (${availableSlots}자리 남음)`);
+                    }
 
-                for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
-                    if (targetArray[i] === null) targetArray[i] = playersToMove.shift();
+                    for (let i = 0; i < PLAYERS_PER_MATCH && playersToMove.length > 0; i++) {
+                        if (targetArray[i] === null) targetArray[i] = playersToMove.shift();
+                    }
                 }
 
                 if(context.location === 'schedule') {
@@ -1064,7 +1119,7 @@ useEffect(() => {
         await updateGameState(updateFunction, '선수를 경기에 배정하는 데 실패했습니다.');
 
         setSelectedPlayerIds([]);
-    }, [isAdmin, selectedPlayerIds, activePlayers, updateGameState]);
+    }, [isAdmin, selectedPlayerIds, activePlayers, updateGameState, teamMode, allPlayers]);
 
     // [자동매칭] matchType (schedule/auto)을 받도록 수정
     const handleStartMatch = useCallback(async (matchIndex, matchType = 'schedule') => {
@@ -1080,6 +1135,14 @@ useEffect(() => {
         if (isAnyPlayerBusy) {
             setModal({ type: 'alert', data: { title: '시작 불가', body: '선수가 이미 경기중입니다.' } });
             return;
+        }
+        // [청백전] 왼쪽 2명 청 · 오른쪽 2명 백이 아니면 시작하지 않는다 (구버전 데이터·팀 변경 뒤 대비)
+        if (teamMode && matchType === 'schedule') {
+            const bad = match.some((id, i) => id && getTeamOf(allPlayers[id]) !== (i < 2 ? TEAM_BLUE : TEAM_WHITE));
+            if (bad) {
+                setModal({ type: 'alert', data: { title: '시작 불가', body: '청팀 2명(왼쪽) vs 백팀 2명(오른쪽)이 아니에요.\n⚠ 표시된 선수를 자기 팀 칸으로 옮겨주세요.' } });
+                return;
+            }
         }
 
         const emptyCourts = [];
@@ -1167,7 +1230,7 @@ useEffect(() => {
         } else {
             setModal({ type: 'courtSelection', data: { courts: emptyCourts, onSelect: start } });
         }
-    }, [gameState, updateGameState, inProgressPlayerIds]);
+    }, [gameState, updateGameState, inProgressPlayerIds, teamMode, allPlayers]);
 
    // ===============================================================================
    // 경기 종료 트랜잭션 (일반 · 청백전 공용)
@@ -1273,6 +1336,11 @@ useEffect(() => {
                                 const winners = result.winnerSide === 'A' ? teamA : teamB;
                                 const losers = result.winnerSide === 'A' ? teamB : teamA;
                                 newState.lastTeamResult = { at: now, winnerTeam, courtIndex, players: validPlayerIds, winners, losers };
+                                // 득점 기록(점수판 탭) — 최근 60건만 보관
+                                newState.teamResultLog = [
+                                    { at: now, winnerTeam, courtIndex, winners, losers },
+                                    ...(Array.isArray(newState.teamResultLog) ? newState.teamResultLog : []),
+                                ].slice(0, 60);
                             }
                             transaction.set(gameStateRef, newState);
                         });
@@ -1379,6 +1447,7 @@ useEffect(() => {
                         newState.inProgressCourts = Array(newState.numInProgressCourts || 4).fill(null);
                         newState.teamScores = emptyTeamScores();
                         delete newState.lastTeamResult;
+                        delete newState.teamResultLog;
                         return { newState };
                     }, '경기방 초기화에 실패했습니다.');
                     // 3) 경기 방식 저장
@@ -2108,12 +2177,13 @@ useEffect(() => {
                     : null
             )}
             {modal?.type === 'teamScoreEdit' && <TeamScoreEditModal teamScores={teamScores} onSave={handleTeamScoreSave} onClose={() => setModal({ type: null, data: null })} />}
+            {modal?.type === 'teamLog' && <TeamLogModal log={gameState?.teamResultLog} teamScores={teamScores} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'hiddenKey' && <HiddenKeyModal onSubmit={handleHiddenKeySubmit} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'somoimSyncResult' && <SomoimSyncResultModal result={modal.data} onClose={() => setModal({ type: null, data: null })} />}
-            {modal?.type === 'myHistory' && <MyHistoryModal player={currentUser} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} teamMode={teamMode} />}
+            {modal?.type === 'myHistory' && <MyHistoryModal player={currentUser} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} teamMode={teamMode} rankInfo={myRankInfo} />}
             {/* [자동매칭 v2] 매칭 후보 6개(베스트/보통/아쉬움) 중에서 고르는 화면 */}
             {modal?.type === 'matchOptions' && (
                 <MatchOptionsModal
@@ -2304,29 +2374,34 @@ useEffect(() => {
                         whiteCount={teamCounts.white}
                         isAdmin={isAdmin}
                         onLongPress={() => setModal({ type: 'teamScoreEdit', data: {} })}
+                        onTap={() => setModal(m => (m?.type ? m : { type: 'teamLog', data: {} }))}
                     />
+                )}
+                {teamMode && rankings && (
+                    <TeamRankingSection rankings={rankings} currentUserId={currentUser.isGhostAdmin ? null : currentUser.id} aceIds={aceIds} />
                 )}
                 {isMobile ? (
                     <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
-                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
-                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>
-                                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
+                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
+                                    {/* [청백전] 자동 매칭은 쓰지 않는다 — 경기 예정(청 2칸 · 백 2칸)으로만 짠다 */}
+                                    {!teamMode && <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>}
+                                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
                                 </div>
                             )}
                             {activeTab === 'inProgress' && (
                                 <div key="tab-inprogress" className="tab-fade-in">
-                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} teamMode={teamMode} />
+                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
                                 </div>
                             )}
                     </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
-                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>
-                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
-                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} teamMode={teamMode} />
+                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
+                    {!teamMode && <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>}
+                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
+                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
                 </div>
             )}
             </main>
