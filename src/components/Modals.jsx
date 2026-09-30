@@ -1,7 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { playersRef } from '../lib/firebase';
-import { getLevelColor } from '../lib/helpers';
+import { getLevelColor, getTeamOf, getWinLoss, TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../lib/helpers';
+
+// [청백전] 길게 눌러서 열리는 모달용 — 손가락을 뗄 때 브라우저가 만들어 내는 '클릭'이
+// 방금 열린 모달의 배경에 떨어져 곧바로 닫혀 버리는 것을 막는다 (열린 뒤 600ms는 배경 탭 무시)
+function useBackdropGuard(onClose) {
+    const openedAtRef = React.useRef(Date.now());
+    return () => { if (Date.now() - openedAtRef.current > 600) onClose(); };
+}
+
+// [청백전] 경기 기록 한 건의 승/패 배지 (승패가 없는 일반 모드 기록은 아무것도 안 보인다)
+function ResultBadge({ game }) {
+    if (!game || !game.result) return null;
+    if (game.result === 'win') return <span className="tm-result-badge win">승</span>;
+    if (game.result === 'loss') return <span className="tm-result-badge loss">패</span>;
+    return <span className="tm-result-badge none">무</span>;
+}
 
 function SeasonModal({ announcement, seasonId, onClose, announcementType, announcementPhotoUrl }) {
     const handleClose = (isHideToday = false) => {
@@ -179,12 +194,35 @@ function SeasonModal({ announcement, seasonId, onClose, announcementType, announ
 
 
 
-function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
+function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, teamMode = false }) {
     const currentPlayer = allPlayers[player.id] || player;
 
     const handleToggleRest = async () => {
         await updateDoc(doc(playersRef, player.id), { isResting: !currentPlayer.isResting });
         onClose();
+    };
+
+    // [청백전] 승/패 수동 조작 — 잘못 넣은 결과를 관리자가 바로잡는다 (0 아래로는 안 내려감)
+    const { wins, losses } = getWinLoss(currentPlayer);
+    const handleAdjustWinLoss = async (field, delta) => {
+        const cur = field === 'todayWins' ? wins : losses;
+        const next = Math.max(0, cur + delta);
+        if (next === cur) return;
+        try {
+            await updateDoc(doc(playersRef, player.id), { [field]: next });
+        } catch (error) {
+            console.error("Win/loss adjustment failed:", error);
+        }
+    };
+    // [청백전] 팀 바꾸기 — 입장할 때 팀을 잘못 골랐을 때
+    const currentTeam = getTeamOf(currentPlayer);
+    const handleSetTeam = async (team) => {
+        if (team === currentTeam) return;
+        try {
+            await updateDoc(doc(playersRef, player.id), { team });
+        } catch (error) {
+            console.error("Team change failed:", error);
+        }
     };
 
     const handleAdjustGameCount = async (delta) => {
@@ -237,11 +275,12 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
                                 );
                             }
 
-                            const allPlayersInGame = [player.id, ...game.partners, ...game.opponents];
+                            const allPlayersInGame = [player.id, ...(game.partners || []), ...(game.opponents || [])];
                             
                             return (
                                 <li key={i} className="flex flex-col p-2 rounded bg-gray-700/50">
-                                    <div className="flex flex-wrap gap-1">
+                                    <div className="flex flex-wrap gap-1 items-center">
+                                        <ResultBadge game={game} />
                                         {allPlayersInGame.map((id, idx) => {
                                             const name = getPlayerName(id);
                                             const isTargetPlayer = id === player.id;
@@ -279,6 +318,51 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal }) {
                                     <button onClick={() => handleAdjustGameCount(1)} className="w-8 h-8 bg-gray-600 hover:bg-gray-500 rounded text-xl font-bold flex items-center justify-center">+</button>
                                 </div>
                             </div>
+
+                            {/* [청백전] 승/패 수동 조작 + 팀 변경 */}
+                            {teamMode && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-bold text-gray-300 text-sm">⚔️ 승패 수동 조작</span>
+                                        <span className="text-[10px] text-gray-500">팀 점수판은 바뀌지 않아요</span>
+                                    </div>
+                                    <div className="tm-wl-adjust">
+                                        <div className="cell w">
+                                            <span className="k">승</span>
+                                            <div className="ctr">
+                                                <button type="button" onClick={() => handleAdjustWinLoss('todayWins', -1)} aria-label="승 -1">−</button>
+                                                <b>{wins}</b>
+                                                <button type="button" onClick={() => handleAdjustWinLoss('todayWins', 1)} aria-label="승 +1">+</button>
+                                            </div>
+                                        </div>
+                                        <div className="cell l">
+                                            <span className="k">패</span>
+                                            <div className="ctr">
+                                                <button type="button" onClick={() => handleAdjustWinLoss('todayLosses', -1)} aria-label="패 -1">−</button>
+                                                <b>{losses}</b>
+                                                <button type="button" onClick={() => handleAdjustWinLoss('todayLosses', 1)} aria-label="패 +1">+</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between bg-gray-700/50 p-2 rounded-lg">
+                                        <span className="font-bold text-gray-300 text-sm">소속 팀</span>
+                                        <div className="flex gap-1.5">
+                                            {[TEAM_BLUE, TEAM_WHITE].map(team => (
+                                                <button
+                                                    key={team}
+                                                    type="button"
+                                                    onClick={() => handleSetTeam(team)}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-black arcade-button border ${currentTeam === team
+                                                        ? (team === TEAM_BLUE ? 'bg-blue-500 border-blue-400 text-white' : 'bg-gray-100 border-white text-gray-900')
+                                                        : 'bg-gray-700 border-gray-600 text-gray-300'}`}
+                                                >
+                                                    {TEAM_META[team].label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             
                             <hr className="border-gray-600"/>
                             <h4 className="font-bold text-yellow-400 text-center">오늘의 매칭 히스토리</h4>
@@ -330,7 +414,7 @@ function HiddenKeyModal({ onSubmit, onCancel }) {
     );
 }
 
-function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80] p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
+function ConfirmationModal({ title, body, onConfirm, onCancel }) { return ( <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[80] p-4"><div className="modal-content bg-gray-800 rounded-lg p-6 w-full max-w-sm text-center shadow-lg"><h3 className="text-xl font-bold text-white mb-4">{title}</h3><p className="text-gray-300 mb-6 whitespace-pre-line">{body}</p><div className="flex gap-4"><button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg transition-colors">취소</button><button onClick={onConfirm} className="w-full arcade-button bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded-lg transition-colors">확인</button></div></div></div>); }
 
 function CourtSelectionModal({ courts, onSelect, onCancel }) {
     const [isProcessing, setIsProcessing] = useState(false);
@@ -442,7 +526,7 @@ function SomoimSyncResultModal({ result, onClose }) {
 function OptionPlayerChip({ player }) {
     const levelColor = getLevelColor(player.level, player.isGuest);
     return (
-        <div className={`mo-chip ${player.onCourt ? 'playing' : ''}`}>
+        <div className={`mo-chip ${player.onCourt ? 'playing' : ''} ${player.team === TEAM_BLUE ? 'tm-blue' : player.team === TEAM_WHITE ? 'tm-white' : ''}`}>
             <div className="mo-chip-name">{player.name}</div>
             <div className="mo-chip-sub">
                 <span style={{ color: player.onCourt ? '#9aa0aa' : levelColor }}>{player.level.replace('조', '')}</span>
@@ -557,9 +641,11 @@ function MatchOptionsModal({ genderLabel, result, queueCount, onSelect, onRegene
 // [내 기록] 일반 선수가 자기 카드를 탭하면 보이는 오늘의 기록 모달
 // 오늘 몇 경기 했는지 + 매 경기 누구와 같은 편/상대였는지 (관리자 기능 아님, 조회 전용)
 // ===================================================================================
-function MyHistoryModal({ player, allPlayers, onClose }) {
+function MyHistoryModal({ player, allPlayers, onClose, teamMode = false }) {
     const games = (player?.todayRecentGames || []);
     const getPlayerName = (id) => allPlayers[id]?.name || '알수없음';
+    const { wins, losses } = getWinLoss(player);
+    const myTeam = getTeamOf(player);
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[60] p-4" onClick={onClose}>
@@ -576,6 +662,14 @@ function MyHistoryModal({ player, allPlayers, onClose }) {
                 <div className="bg-gray-700/60 rounded-xl p-3 text-center mb-3 flex-shrink-0">
                     <p className="text-sm text-gray-400">오늘 경기 수</p>
                     <p className="text-3xl font-bold text-yellow-400 arcade-font">{games.length}<span className="text-base ml-1">경기</span></p>
+                    {teamMode && (
+                        <p className="mt-1 text-sm font-black">
+                            {myTeam && <span style={{ color: TEAM_META[myTeam].text }}>{TEAM_META[myTeam].label} · </span>}
+                            <span className="text-green-300">{wins}승</span>
+                            <span className="text-gray-500 mx-1">·</span>
+                            <span className="text-red-300">{losses}패</span>
+                        </p>
+                    )}
                 </div>
 
                 <div className="flex-grow overflow-y-auto space-y-1.5 pr-1">
@@ -593,6 +687,7 @@ function MyHistoryModal({ player, allPlayers, onClose }) {
                         return (
                             <div key={i} className="bg-gray-700/50 rounded-lg p-2.5 text-sm">
                                 <p>
+                                    <ResultBadge game={game} />
                                     <span className="text-gray-500 text-xs mr-1.5">함께</span>
                                     <span className="text-green-300 font-semibold">{game.partners.map(getPlayerName).join(', ') || '-'}</span>
                                 </p>
@@ -611,4 +706,164 @@ function MyHistoryModal({ player, allPlayers, onClose }) {
     );
 }
 
-export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal };
+// ===================================================================================
+// [청백전] 경기 종료 — 이긴 팀 고르기
+// -----------------------------------------------------------------------------------
+//  코트의 왼쪽 2명(A)과 오른쪽 2명(B)이 각각 어느 팀인지 보여주고, 이긴 팀을 고른다.
+//  · 청2 vs 백2 인 정상 경기: '청팀 승리' / '백팀 승리' 큰 버튼 → 그 팀 점수 +1
+//  · 팀이 섞인 경기(관리자가 손으로 짠 경우): 'A쪽 승리' / 'B쪽 승리' 로 선수 승패만 기록,
+//    팀 점수는 오르지 않는다고 미리 알려준다.
+//  · 아래 작은 글씨 '경기 취소' → 기록 없이 코트만 비운다 (잘못 넣은 경기용)
+// ===================================================================================
+function TeamMatchEndModal({ courtIndex, court, allPlayers, onPickWinner, onCancelMatch, onClose }) {
+    const [busy, setBusy] = useState(false);
+    const ids = court?.players || [];
+    const sideA = [ids[0], ids[1]].filter(Boolean);
+    const sideB = [ids[2], ids[3]].filter(Boolean);
+    const teamOfSide = (side) => {
+        const teams = [...new Set(side.map(id => getTeamOf(allPlayers[id])))];
+        return teams.length === 1 && teams[0] ? teams[0] : null; // 한 팀으로 통일돼 있을 때만
+    };
+    const teamA = teamOfSide(sideA);
+    const teamB = teamOfSide(sideB);
+    const isProper = teamA && teamB && teamA !== teamB; // 청 vs 백 정상 경기
+    const nameOf = (id) => allPlayers[id]?.name || '나간 선수';
+    const levelOf = (id) => (allPlayers[id]?.level || '').replace('조', '');
+
+    const pick = async (side) => {
+        if (busy) return;
+        setBusy(true);
+        try { await onPickWinner(side); } finally { setBusy(false); }
+    };
+
+    const SideBox = ({ label, side, team }) => (
+        <div className={`tm-end-side ${team ? TEAM_META[team].key : 'mixed'}`}>
+            <div className="t">{team ? TEAM_META[team].label : `${label}쪽 (팀 섞임)`}</div>
+            {side.length === 0 && <div className="p" style={{ color: '#8C93A1' }}>빈 자리</div>}
+            {side.map(id => (
+                <div key={id} className="p">
+                    {!team && <span style={{ color: getTeamOf(allPlayers[id]) ? TEAM_META[getTeamOf(allPlayers[id])].text : '#8C93A1' }}>{getTeamOf(allPlayers[id]) || '?'} </span>}
+                    {nameOf(id)}<small>{levelOf(id)}</small>
+                </div>
+            ))}
+        </div>
+    );
+
+    const winBtn = (side, team, label) => (
+        <button
+            type="button"
+            disabled={busy}
+            onClick={() => pick(side)}
+            className={`tm-win-btn ${team ? TEAM_META[team].key : 'side'}`}
+        >
+            <span className="big">{team ? `${TEAM_META[team].label} 승리` : `${label}쪽 승리`}</span>
+            <span className="sm">{team ? `${TEAM_META[team].short}팀 점수 +1` : '선수 승패만 기록'}</span>
+        </button>
+    );
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[80] p-4" onClick={busy ? undefined : onClose}>
+            <div className="modal-content bg-gray-800 rounded-2xl p-5 w-full max-w-sm text-white shadow-lg" onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-bold text-yellow-400 arcade-font">🏁 {courtIndex + 1}번 코트 경기 종료</h3>
+                    <button onClick={onClose} disabled={busy} className="text-2xl text-gray-500 hover:text-white leading-none">&times;</button>
+                </div>
+                <p className="text-xs text-gray-400 text-center mb-3">이긴 팀을 골라주세요. 선수 승패와 팀 점수가 함께 기록됩니다.</p>
+
+                <div className="tm-end-sides mb-4">
+                    <SideBox label="A" side={sideA} team={teamA} />
+                    <div className="tm-end-vs">VS</div>
+                    <SideBox label="B" side={sideB} team={teamB} />
+                </div>
+
+                {!isProper && (
+                    <div className="bg-yellow-900/30 border border-yellow-500/40 rounded-lg p-2 text-[11px] text-yellow-200 text-center mb-3 leading-relaxed">
+                        청 vs 백 경기가 아니라서 <b>팀 점수는 오르지 않아요.</b><br/>이긴 쪽 선수에게 승, 진 쪽에 패만 기록됩니다.
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                    {isProper ? (
+                        <>
+                            {teamA === TEAM_BLUE ? winBtn('A', TEAM_BLUE, 'A') : winBtn('B', TEAM_BLUE, 'B')}
+                            {teamA === TEAM_WHITE ? winBtn('A', TEAM_WHITE, 'A') : winBtn('B', TEAM_WHITE, 'B')}
+                        </>
+                    ) : (
+                        <>
+                            {winBtn('A', null, 'A')}
+                            {winBtn('B', null, 'B')}
+                        </>
+                    )}
+                </div>
+
+                <button type="button" className="tm-cancel-link" disabled={busy} onClick={onCancelMatch}>
+                    경기 취소 (기록 없이 코트만 비우기)
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ===================================================================================
+// [청백전] 점수판 수정 — 점수판을 길게 눌렀을 때
+// ===================================================================================
+function TeamScoreEditModal({ teamScores, onSave, onClose }) {
+    const guardedClose = useBackdropGuard(onClose);
+    const [blue, setBlue] = useState(Math.max(0, Number(teamScores?.blue) || 0));
+    const [white, setWhite] = useState(Math.max(0, Number(teamScores?.white) || 0));
+    const [busy, setBusy] = useState(false);
+    // 다른 관리자가 그 사이 점수를 올렸으면 화면의 초기값도 따라간다 (아직 손대기 전일 때만)
+    const [touched, setTouched] = useState(false);
+    useEffect(() => {
+        if (touched) return;
+        setBlue(Math.max(0, Number(teamScores?.blue) || 0));
+        setWhite(Math.max(0, Number(teamScores?.white) || 0));
+    }, [teamScores, touched]);
+
+    const clamp = (v) => Math.max(0, Math.min(999, Number.isFinite(Number(v)) ? Math.floor(Number(v)) : 0));
+    // 입력창이 매 렌더마다 다시 만들어져 포커스를 잃지 않도록, 컴포넌트가 아니라 함수로 그린다
+    const renderCell = (team, value, setValue) => (
+        <div className={`tm-edit-cell ${TEAM_META[team].key}`}>
+            <div className="t">{TEAM_META[team].label}</div>
+            <div className="ctr">
+                <button type="button" onClick={() => { setTouched(true); setValue(v => clamp(v - 1)); }} aria-label={`${TEAM_META[team].label} -1`}>−</button>
+                <input
+                    type="number" inputMode="numeric" min="0" max="999" value={value}
+                    aria-label={`${TEAM_META[team].label} 점수`}
+                    onChange={(e) => { setTouched(true); setValue(clamp(e.target.value)); }}
+                    onFocus={(e) => e.target.select()}
+                />
+                <button type="button" onClick={() => { setTouched(true); setValue(v => clamp(v + 1)); }} aria-label={`${TEAM_META[team].label} +1`}>+</button>
+            </div>
+        </div>
+    );
+
+    const save = async () => {
+        if (busy) return;
+        setBusy(true);
+        try { await onSave({ blue: clamp(blue), white: clamp(white) }); } finally { setBusy(false); }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[80] p-4" onClick={busy ? undefined : guardedClose}>
+            <div className="modal-content bg-gray-800 rounded-2xl p-5 w-full max-w-sm text-white shadow-lg" onClick={(e) => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-3">
+                    <h3 className="text-lg font-bold text-yellow-400 arcade-font">⚔️ 점수판 수정</h3>
+                    <button onClick={onClose} disabled={busy} className="text-2xl text-gray-500 hover:text-white leading-none">&times;</button>
+                </div>
+                <p className="text-xs text-gray-400 text-center mb-3">잘못 올라간 점수를 바로잡습니다. 선수 개인 승패는 바뀌지 않아요.</p>
+                <div className="tm-edit-row">
+                    {renderCell(TEAM_BLUE, blue, setBlue)}
+                    {renderCell(TEAM_WHITE, white, setWhite)}
+                </div>
+                <div className="flex gap-2 mt-4">
+                    <button type="button" onClick={() => { setTouched(true); setBlue(0); setWhite(0); }} disabled={busy} className="flex-shrink-0 arcade-button bg-gray-700 hover:bg-gray-600 text-gray-200 font-bold py-2 px-3 rounded-lg text-xs">0 : 0</button>
+                    <button type="button" onClick={onClose} disabled={busy} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 rounded-lg">취소</button>
+                    <button type="button" onClick={save} disabled={busy} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">{busy ? '저장 중...' : '저장'}</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal, TeamMatchEndModal, TeamScoreEditModal };

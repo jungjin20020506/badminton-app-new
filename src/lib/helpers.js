@@ -36,7 +36,39 @@ const setAdminNamesCache = (list) => { adminNamesCache = list; };
 // 상수 및 Helper 함수
 // ===================================================================================
 const PLAYERS_PER_MATCH = 4;
-const LEVEL_ORDER = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
+// [청백전] S조는 청백전 입장 화면에서만 고를 수 있는 최상위 급수 (A조보다 위)
+const LEVEL_ORDER = { 'S조': 0, 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 5 };
+
+// ===================================================================================
+// [청백전] 경기 방식 · 팀 상수
+// -----------------------------------------------------------------------------------
+// config/season.matchMode 가 'team'이면 청백전 모드다.
+//   · 입장할 때 이름·급수(S~D)·성별·팀(청/백)을 직접 고른다 (명단/게스트 개념 없음)
+//   · 선수 문서에 team('청'|'백'), todayWins, todayLosses 가 쌓인다
+//   · gameState/live.teamScores = { blue, white } 가 팀 점수판이다
+// ===================================================================================
+const MATCH_MODE_NORMAL = 'normal';
+const MATCH_MODE_TEAM = 'team';
+const TEAM_BLUE = '청';
+const TEAM_WHITE = '백';
+const TEAMS = [TEAM_BLUE, TEAM_WHITE];
+const TEAM_META = {
+    [TEAM_BLUE]:  { key: 'blue',  label: '청팀', short: '청', color: '#3B82F6', soft: 'rgba(59,130,246,.22)',  text: '#93C5FD' },
+    [TEAM_WHITE]: { key: 'white', label: '백팀', short: '백', color: '#E5E7EB', soft: 'rgba(229,231,235,.20)', text: '#F3F4F6' },
+};
+/** 청백전 모드인지 (seasonConfig 기준) */
+const isTeamMode = (seasonConfig) => seasonConfig?.matchMode === MATCH_MODE_TEAM;
+/** 선수의 팀 ('청' | '백' | null) */
+const getTeamOf = (player) => (player && TEAMS.includes(player.team) ? player.team : null);
+/** 점수판 기본값 */
+const emptyTeamScores = () => ({ blue: 0, white: 0 });
+/** 팀 이름 → 점수판 키 */
+const teamScoreKey = (team) => (team === TEAM_BLUE ? 'blue' : team === TEAM_WHITE ? 'white' : null);
+/** 오늘 승/패 (없으면 0) */
+const getWinLoss = (player) => ({
+    wins: Math.max(0, Number(player?.todayWins) || 0),
+    losses: Math.max(0, Number(player?.todayLosses) || 0),
+});
 
 const generateId = (name) => name.replace(/\s+/g, '_');
 
@@ -49,6 +81,7 @@ const filterTodayGames = (games) => {
 const getLevelColor = (level, isGuest) => {
     if (isGuest) return '#00BFFF';
     switch (level) {
+        case 'S조': return '#E879F9'; // [청백전] S조 — 마젠타
         case 'A조': return '#FF4F4F';
         case 'B조': return '#FF9100';
         case 'C조': return '#FFD600';
@@ -170,4 +203,7 @@ export {
     DEFAULT_ADMIN_NAMES, getAdminNames, isAdminName, setAdminNamesCache,
     PLAYERS_PER_MATCH, LEVEL_ORDER, generateId, filterTodayGames, getLevelColor, calculateLocations,
     isPlayerUsable, repairMatchQueues,
+    // [청백전]
+    MATCH_MODE_NORMAL, MATCH_MODE_TEAM, TEAM_BLUE, TEAM_WHITE, TEAMS, TEAM_META,
+    isTeamMode, getTeamOf, emptyTeamScores, teamScoreKey, getWinLoss,
 };

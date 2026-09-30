@@ -1,9 +1,9 @@
 import React, { useEffect, useCallback, useRef } from 'react';
-import { PLAYERS_PER_MATCH } from '../lib/helpers';
+import { PLAYERS_PER_MATCH, TEAM_BLUE, TEAM_WHITE, TEAM_META, getTeamOf } from '../lib/helpers';
 import { playDeal } from '../lib/sound';
 import { PlayerCard, EmptySlot, LeftPlayerCard, CourtTimer } from './PlayerCard';
 
-const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onlineIds }) => {
+const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayers, selectedPlayerIds, isAdmin, handleCardClick, handleDeleteFromWaiting, setModal, currentUser, inProgressPlayerIds, onlineIds, teamMode = false }) => {
     const renderPlayerGrid = (players) => (
         <div className="grid grid-cols-5 gap-1">
             {players.map(player => (
@@ -18,12 +18,65 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                     isCurrentUser={currentUser && player.id === currentUser.id}
                     isPlaying={inProgressPlayerIds.has(player.id)}
                     isOnline={!!onlineIds && onlineIds.has(player.id)}
+                    teamMode={teamMode}
                 />
             ))}
         </div>
     );
 
     const totalWaiting = maleWaitingPlayers.length + femaleWaitingPlayers.length;
+
+    // [청백전] 대기 명단을 성별 대신 '청팀 / 백팀'으로 나눈다.
+    // 각 팀 안에서는 남자 → 여자 순(기존 정렬 유지)이라 관리자가 청2 vs 백2 를 손으로 짜기 쉽다.
+    // 팀이 없는(구버전 데이터) 선수는 맨 아래 '팀 미정' 줄에 모아 눈에 띄게 한다.
+    if (teamMode) {
+        const all = [...maleWaitingPlayers, ...femaleWaitingPlayers];
+        const byTeam = { [TEAM_BLUE]: [], [TEAM_WHITE]: [], none: [] };
+        all.forEach(p => { const t = getTeamOf(p); byTeam[t || 'none'].push(p); });
+        const teamGroup = (team) => {
+            const list = byTeam[team];
+            const meta = TEAM_META[team];
+            return (
+                <div key={team} className="tm-wait-group" data-team={meta.key}>
+                    <div className="cox-secline mb-1.5">
+                        <div className="lbl" style={{ fontSize: 12 }}>
+                            <span className="tick" style={{ background: meta.color, boxShadow: `0 0 8px ${meta.color}` }}></span>
+                            <span style={{ color: meta.text }}>{meta.label}</span>
+                            <span className="count">{list.length}</span>
+                        </div>
+                    </div>
+                    {list.length > 0
+                        ? renderPlayerGrid(list)
+                        : <p className="text-[10px] text-gray-500 text-center py-2">대기 중인 {meta.label} 선수가 없어요</p>}
+                </div>
+            );
+        };
+        return (
+            <section className="bg-gray-800/50 rounded-lg p-2.5" data-tut="waiting">
+                <div className="cox-secline mb-2.5">
+                    <div className="lbl">
+                        <span className="tick"></span>
+                        <span>대기 명단</span>
+                        <span className="count">{totalWaiting}</span>
+                    </div>
+                </div>
+                <div className="flex flex-col gap-2.5">
+                    {teamGroup(TEAM_BLUE)}
+                    <hr className="border-dashed border-gray-600 my-0.5" />
+                    {teamGroup(TEAM_WHITE)}
+                    {byTeam.none.length > 0 && (
+                        <>
+                            <hr className="border-dashed border-gray-600 my-0.5" />
+                            <div>
+                                <p className="text-[10px] font-bold text-orange-300 mb-1.5">⚠️ 팀 미정 — 카드를 길게 눌러 팀을 정해주세요</p>
+                                {renderPlayerGrid(byTeam.none)}
+                            </div>
+                        </>
+                    )}
+                </div>
+            </section>
+        );
+    }
 
     return (
         <section className="bg-gray-800/50 rounded-lg p-2.5" data-tut="waiting">
@@ -46,7 +99,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
 });
 
 
-const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds, onlineIds }) => {
+const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatches, players, selectedPlayerIds, isAdmin, handleCardClick, handleReturnToWaiting, setModal, handleSlotClick, handleStartMatch, currentUser, handleClearScheduledMatches, handleDeleteScheduledMatch, inProgressPlayerIds, onlineIds, teamMode = false }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -95,7 +148,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                     const playerId = match[slotIndex];
                                     const player = players[playerId];
                                     const context = {location: 'schedule', matchIndex, slotIndex, selected: selectedPlayerIds.includes(playerId)};
-                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
+                                    return player ? ( <PlayerCard key={playerId} player={player} context={context} isAdmin={isAdmin} onCardClick={() => handleCardClick(playerId)} onAction={handleReturnToWaiting} onLongPress={(p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }})} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} /> ) : ( <EmptySlot key={`schedule-empty-${matchIndex}-${slotIndex}`} onSlotClick={() => handleSlotClick({ location: 'schedule', matchIndex, slotIndex })} /> )
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
@@ -111,7 +164,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
 
 // [자동매칭] 자동 매칭 섹션 컴포넌트 (UI 변경)
 // [수정] 자동 ON/OFF(일정 주기 생성) → '남자/여자 매칭 만들기' 버튼으로 1경기씩 생성
-const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, courtIndexByPlayer, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender, onlineIds }) => {
+const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, courtIndexByPlayer, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender, onlineIds, teamMode = false, setModal }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -197,7 +250,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
                     <p>만들어진 자동 매칭이 없습니다.</p>
                     <p className="text-xs mt-1">
                         {isAdmin
-                            ? <>위 버튼을 누르면 후보 6개를 이유와 함께 보여줍니다.<br/>마음에 드는 조합을 고르면 여기에 추가돼요.</>
+                            ? <>위 버튼을 누르면 후보 6개를 이유와 함께 보여줍니다.<br/>마음에 드는 조합을 고르면 여기에 추가돼요.{teamMode && <><br/><span className="text-blue-300">청백전: 항상 청팀 2명 vs 백팀 2명으로 짜입니다.</span></>}</>
                             : <>관리자가 매칭을 만들면 여기에 표시됩니다.</>}
                     </p>
                 </div>
@@ -254,7 +307,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
                                         const cardKey = playerId ? `${playerId}-${matchIndex}-${slotIndex}` : `auto-empty-${matchIndex}-${slotIndex}`;
                                         const isSelected = selectedAutoMatchSlot && selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex;
                                         return player ?
-                                            (<PlayerCard key={cardKey} player={player} context={{location: 'auto', selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={handleReturnToWaiting} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} />) :
+                                            (<PlayerCard key={cardKey} player={player} context={{location: 'auto', selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={handleReturnToWaiting} onLongPress={setModal ? (p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }}) : undefined} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} />) :
                                             (<EmptySlot key={cardKey} onSlotClick={() => handleAutoMatchSlotClick(matchIndex, slotIndex)} />)
                                     })}
                                 </div>
@@ -274,7 +327,7 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
     );
 });
 
-const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds }) => {
+const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds, teamMode = false }) => {
     const pressTimerRef = useRef(null);
     const courtRef = useRef(null);
 
@@ -347,7 +400,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
                         const displayName = player?.name || allPlayers?.[playerId]?.name || '나간 선수';
                         return <LeftPlayerCard key={`court-left-${courtIndex}-${slotIndex}`} name={displayName} />;
                     }
-                    return <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} isOnline={!!onlineIds && onlineIds.has(playerId)} />;
+                    return <PlayerCard key={playerId} player={player} context={{ location: 'court', matchIndex: courtIndex }} isAdmin={isAdmin} isCurrentUser={currentUser && player.id === currentUser.id} isMovable={false} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} />;
                 })}
             </div>
             <div className="flex-shrink-0 w-14 text-center">
@@ -359,7 +412,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
 });
 
 
-const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds }) => {
+const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCourts, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds, teamMode = false }) => {
     return (
         <section data-tut="courts">
             <div className="cox-secline mb-2.5 px-1">
@@ -383,6 +436,7 @@ const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCou
                         setCourtMove={setCourtMove}
                         handleMoveOrSwapCourt={handleMoveOrSwapCourt}
                         onlineIds={onlineIds}
+                        teamMode={teamMode}
                     />
                 ))}
             </div>

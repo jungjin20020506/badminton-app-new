@@ -67,7 +67,7 @@ function getAllCombinations(arr, k) {
 }
 
 /** 급수를 숫자로 바꾼다. 숫자가 작을수록 잘 치는 사람이다. (A조=1 … D조=4) */
-const LEVEL_BALANCE_MAP = { 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 3 };
+const LEVEL_BALANCE_MAP = { 'S조': 0, 'A조': 1, 'B조': 2, 'C조': 3, 'D조': 4, 'N조': 3 }; // [청백전] S조 추가
 
 /**
  * 점수 가중치 모음.
@@ -274,7 +274,7 @@ function buildMatchContext(allPlayers, gameState, opts = {}) {
         (m || []).forEach(id => { if (id) { queuedIds.add(id); queuedWhere[id] = { type: 'schedule', index: Number(key) }; } });
     });
 
-    const levelValueOf = (id) => LEVEL_BALANCE_MAP[allPlayers?.[id]?.level] || 3;
+    const levelValueOf = (id) => LEVEL_BALANCE_MAP[allPlayers?.[id]?.level] ?? 3; // [청백전] S조=0 이므로 ?? 사용
 
     // ── (3) 선수별 통계 ──
     const stats = {};
@@ -310,7 +310,8 @@ function buildMatchContext(allPlayers, gameState, opts = {}) {
             name: p.name,
             gender: p.gender,
             level: p.level,
-            levelValue: LEVEL_BALANCE_MAP[p.level] || 3,
+            team: p.team || null,           // [청백전] '청' | '백' | null
+            levelValue: LEVEL_BALANCE_MAP[p.level] ?? 3,
             isGuest: !!p.isGuest,
             isResting: !!p.isResting,
             games: history.length,          // 진행 중인 경기까지 포함한 오늘 경기 수
@@ -416,14 +417,17 @@ function getPair(ctx, a, b) {
  * @param {boolean} isMixed 혼복이면 반드시 남1+여1 vs 남1+여1
  * @returns {{order: Array, diff: number, spread: number}}
  */
-function splitTeams(comboStats, ctx, isMixed) {
+function splitTeams(comboStats, ctx, isMixed, isTeamMatch = false) {
     const v = comboStats.map(p => p.levelValue);
     const spread = Math.max(...v) - Math.min(...v);
 
     // 혼복은 [남,남,여,여] 순으로 들어오므로 짝짓는 방법이 두 가지뿐이다
-    const splitPlans = isMixed
-        ? [[[0, 2], [1, 3]], [[0, 3], [1, 2]]]
-        : [[[0, 1], [2, 3]], [[0, 2], [1, 3]], [[0, 3], [1, 2]]];
+    // [청백전] [청,청,백,백] 순으로 들어오며, 팀은 절대 섞이지 않는다 → 나누는 방법이 하나뿐
+    const splitPlans = isTeamMatch
+        ? [[[0, 1], [2, 3]]]
+        : isMixed
+            ? [[[0, 2], [1, 3]], [[0, 3], [1, 2]]]
+            : [[[0, 1], [2, 3]], [[0, 2], [1, 3]], [[0, 3], [1, 2]]];
 
     let best = null;
     for (const [t1, t2] of splitPlans) {
@@ -459,9 +463,9 @@ function splitTeams(comboStats, ctx, isMixed) {
  * @param {object} poolInfo { maxGames, minGames }
  * @param {boolean} isMixed
  */
-function analyzeCombo(comboStats, ctx, poolInfo, isMixed) {
+function analyzeCombo(comboStats, ctx, poolInfo, isMixed, isTeamMatch = false) {
     // 팀 나누기는 화면에 보여줄 순서를 정할 뿐, 아래 점수 계산에는 쓰지 않는다
-    const { order, spread: levelSpread } = splitTeams(comboStats, ctx, isMixed);
+    const { order, spread: levelSpread } = splitTeams(comboStats, ctx, isMixed, isTeamMatch);
     const freeCourts = ctx.freeCourts ?? 0;
 
     let score = 0;
@@ -790,11 +794,27 @@ function buildCandidatePool(ctx, mode) {
  * @param {number} [params.pages]  만들 페이지 수 (한 페이지 = 6개)
  * @returns {object}
  */
-function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pendingReservations = 0 }) {
+function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pendingReservations = 0, teamMatch = false }) {
     const isMixed = mode === '혼복';
+    const isTeamMatch = !!teamMatch;
 
     // ── 인원 체크 ──
-    if (isMixed) {
+    if (isTeamMatch) {
+        // [청백전] 경기는 반드시 청2 vs 백2. 혼복이면 각 팀에 남1+여1 이어야 한다.
+        const blue = pool.filter(p => p.team === '청');
+        const white = pool.filter(p => p.team === '백');
+        const countBy = (arr, g) => arr.filter(p => p.gender === g).length;
+        const lack = isMixed
+            ? (countBy(blue, '남') < 1 || countBy(blue, '여') < 1 || countBy(white, '남') < 1 || countBy(white, '여') < 1)
+            : (blue.length < 2 || white.length < 2);
+        if (lack) {
+            return {
+                status: 'notEnough', isMixed, isTeamMatch, poolSize: pool.length, pages: [],
+                blueCount: blue.length, whiteCount: white.length,
+                maleCount: countBy(pool, '남'), femaleCount: countBy(pool, '여'),
+            };
+        }
+    } else if (isMixed) {
         const m = pool.filter(p => p.gender === '남').length;
         const f = pool.filter(p => p.gender === '여').length;
         if (m < 2 || f < 2) {
@@ -806,7 +826,24 @@ function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pend
 
     // ── 조합 만들기 (너무 많으면 '덜 친 순'으로 잘라서 계산) ──
     let combos;
-    if (isMixed) {
+    if (isTeamMatch) {
+        // [청백전] 청팀 2명 × 백팀 2명 → [청,청,백,백] 순서로 고정.
+        // 혼복이면 각 팀 안에서 남1+여1 짝만 허용한다.
+        const trim = (arr) => (arr.length > MAX_POOL_MIXED ? [...arr].sort(compareFairness).slice(0, MAX_POOL_MIXED) : arr);
+        const teamPairs = (arr) => {
+            const pairs = getAllCombinations(trim(arr), 2);
+            return isMixed ? pairs.filter(([a, b]) => a.gender !== b.gender) : pairs;
+        };
+        const bluePairs = teamPairs(pool.filter(p => p.team === '청'));
+        const whitePairs = teamPairs(pool.filter(p => p.team === '백'));
+        combos = [];
+        for (const bp of bluePairs) {
+            for (const wp of whitePairs) combos.push([...bp, ...wp]);
+        }
+        if (combos.length === 0) {
+            return { status: 'notEnough', isMixed, isTeamMatch, poolSize: pool.length, pages: [] };
+        }
+    } else if (isMixed) {
         let males = pool.filter(p => p.gender === '남');
         let females = pool.filter(p => p.gender === '여');
         if (males.length > MAX_POOL_MIXED) males = [...males].sort(compareFairness).slice(0, MAX_POOL_MIXED);
@@ -860,7 +897,7 @@ function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pend
     };
 
     let scored = usable.map(comboStats => {
-        const r = analyzeCombo(comboStats, ctx, poolInfo, isMixed);
+        const r = analyzeCombo(comboStats, ctx, poolInfo, isMixed, isTeamMatch);
         return {
             ids: r.order.map(p => p.id),
             players: r.order,
@@ -957,6 +994,7 @@ function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pend
     return {
         status: resultPages.length > 0 ? 'ok' : 'notEnough',
         isMixed,
+        isTeamMatch,
         poolSize: pool.length,
         waitingCount,
         onCourtCount: pool.length - waitingCount,

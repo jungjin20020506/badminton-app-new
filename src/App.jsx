@@ -15,13 +15,17 @@ import { CoxMark } from './components/Logo';
 import {
     getAdminNames, generateId, filterTodayGames, calculateLocations,
     PLAYERS_PER_MATCH, LEVEL_ORDER, repairMatchQueues,
+    // [청백전]
+    isTeamMode, MATCH_MODE_NORMAL, MATCH_MODE_TEAM, TEAM_BLUE, TEAM_WHITE, TEAM_META,
+    getTeamOf, emptyTeamScores, teamScoreKey,
 } from './lib/helpers';
 import {
     buildMatchContext, buildCandidatePool, generateMatchOptions, getSensitivity,
 } from './lib/matching';
 import { WaitingListSection, ScheduledMatchesSection, AutoMatchesSection, InProgressCourtsSection } from './components/Sections';
 import { EntryPage } from './components/EntryPage';
-import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal } from './components/Modals';
+import { SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal, SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, MatchOptionsModal, TeamMatchEndModal, TeamScoreEditModal } from './components/Modals';
+import { TeamScoreBoard } from './components/TeamScoreBoard';
 import { SkeletonScreen } from './components/Skeleton';
 import { UpdateBanner } from './components/UpdateBanner';
 import { SettingsModal } from './components/SettingsModal';
@@ -236,6 +240,9 @@ export default function App() {
     // [유령 관리자] 유령 모드는 관리자 목록과 무관하게 항상 관리자 권한
     const isAdmin = !!currentUser && (currentUser.isGhostAdmin || adminNames.includes(currentUser.name));
     const autoMatches = gameState?.autoMatches || {};
+    // [청백전] 경기 방식 · 팀 점수판
+    const teamMode = isTeamMode(seasonConfig);
+    const teamScores = useMemo(() => ({ ...emptyTeamScores(), ...(gameState?.teamScores || {}) }), [gameState?.teamScores]);
     // [자동매칭] '매칭 만들기' 중복 실행 방지 (버튼 연타 방지)
     const isGeneratingRef = useRef(false);
     const [generatingGender, setGeneratingGender] = useState(null);
@@ -263,11 +270,22 @@ export default function App() {
             if (a.isResting !== b.isResting) {
                 return a.isResting ? 1 : -1;
             }
-            const levelA = LEVEL_ORDER[a.level] || 99;
-            const levelB = LEVEL_ORDER[b.level] || 99;
+            const levelA = LEVEL_ORDER[a.level] ?? 99; // [청백전] S조=0 이라 ?? 사용
+            const levelB = LEVEL_ORDER[b.level] ?? 99;
             if (levelA !== levelB) return levelA - levelB;
             return new Date(a.entryTime) - new Date(b.entryTime);
         }), [activePlayers, playerLocations]);
+
+    // [청백전] 팀별 접속 인원 (점수판 아래 'n명' 표시)
+    const teamCounts = useMemo(() => {
+        const c = { blue: 0, white: 0 };
+        if (!teamMode) return c;
+        Object.values(activePlayers).forEach(p => {
+            const k = teamScoreKey(getTeamOf(p));
+            if (k) c[k] += 1;
+        });
+        return c;
+    }, [teamMode, activePlayers]);
 
     const maleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '남'), [waitingPlayers]);
     const femaleWaitingPlayers = useMemo(() => waitingPlayers.filter(p => p.gender === '여'), [waitingPlayers]);
@@ -708,7 +726,7 @@ useEffect(() => {
     const handleEnter = useCallback(async (formData) => {
         const name = (formData.name || '').trim();
         let { level, gender } = formData;
-        const isGuest = !!formData.isGuest;
+        let isGuest = !!formData.isGuest;
         if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' }}); return; }
 
         // [유령 관리자] '관리자' 이름 입장 — 선수 카드를 만들지 않고 로컬에만 기록한다
@@ -719,9 +737,23 @@ useEffect(() => {
             return;
         }
 
+        // [청백전] 입장 화면과 서버의 경기 방식이 다르면(그 사이 관리자가 바꿈) 다시 입장하게 한다
+        const nowTeamMode = isTeamMode(firebaseService.getSeasonConfig());
+        if (nowTeamMode !== !!formData.isTeamEntry) {
+            setModal({ type: 'alert', data: { title: '경기 방식이 바뀌었어요', body: nowTeamMode ? '청백전 모드로 바뀌었습니다. 팀을 골라 다시 입장해주세요.' : '일반 모드로 돌아왔습니다. 다시 입장해주세요.' }});
+            return;
+        }
+        // [청백전] 팀 필수 · 명단/게스트 개념 없음 (급수는 입장 화면에서 고른 값 그대로)
+        let team = null;
+        if (nowTeamMode) {
+            team = formData.team === TEAM_BLUE || formData.team === TEAM_WHITE ? formData.team : null;
+            if (!team) { setModal({ type: 'alert', data: { title: '오류', body: '청팀 / 백팀 중 하나를 골라주세요.' }}); return; }
+            isGuest = false;
+        }
+
         // [선수 명단] 일반(회원) 선수는 급수를 선택하지 않는다 — 명단에서 자동으로 가져온다.
         // 명단에 없으면 입장 불가 (EntryPage에서 1차로 걸러지지만, 이중 안전장치)
-        if (!isGuest) {
+        if (!isGuest && !nowTeamMode) {
             const rosterEntry = Object.values(firebaseService.getRoster() || {}).find(r => r.name === name);
             if (!rosterEntry || !rosterEntry.level || !rosterEntry.gender) {
                 setModal({ type: 'alert', data: { title: '입장 불가', body: '등록된 선수 정보가 없습니다. 관리자에게 문의해주세요.' }});
@@ -739,21 +771,28 @@ useEffect(() => {
 
           if (docSnap.exists()) {
                 const existingData = docSnap.data();
+                // 날짜가 바뀌어 오늘 기록이 비워지면 승/패도 함께 0으로 (새벽 초기화를 놓친 문서 대비)
+                const todayGames = filterTodayGames(existingData.todayRecentGames);
+                const keepWl = todayGames.length > 0 || (existingData.todayRecentGames || []).length === 0;
                 playerData = {
                     ...existingData,
                     level,
                     gender,
                     isGuest,
+                    team, // [청백전] 팀 (일반 모드는 null)
                     status: 'active',
-                                                           todayRecentGames: filterTodayGames(existingData.todayRecentGames),
+                    todayRecentGames: todayGames,
+                    todayWins: keepWl ? (existingData.todayWins || 0) : 0,
+                    todayLosses: keepWl ? (existingData.todayLosses || 0) : 0,
                     isResting: existingData.isResting || false, // 입장 시 isResting 초기화 안함
                 };
             } else {
                 playerData = {
-                    id, name, level, gender, isGuest,
+                    id, name, level, gender, isGuest, team,
                     entryTime: new Date().toISOString(), isResting: false,
                     status: 'active',
                     todayRecentGames: [],
+                    todayWins: 0, todayLosses: 0,
                 };
             }
 
@@ -1094,20 +1133,16 @@ useEffect(() => {
         }
     }, [gameState, updateGameState, inProgressPlayerIds]);
 
-   const handleEndMatch = useCallback(async (courtIndex) => {
-        const court = gameState.inProgressCourts[courtIndex];
-        // [나간 선수] 코트만 존재하면 종료 가능. 나간 선수(빈 슬롯)가 있어도 막지 않는다.
-        if (!court || !court.players) return;
-
-        setModal({
-            type: 'confirm',
-            data: {
-                title: '경기 종료',
-                body: '경기를 종료하고 코트를 비우시겠습니까? (선수들의 매칭 히스토리가 기록됩니다.)',
-                onConfirm: async () => {
-                    setModal({ type: null, data: null }); // 로딩 및 중복 클릭 방지를 위해 모달 먼저 닫기
-                    
-                    try {
+   // ===============================================================================
+   // 경기 종료 트랜잭션 (일반 · 청백전 공용)
+   // -------------------------------------------------------------------------------
+   //  result: null            → 일반 모드. 히스토리만 기록
+   //  result: { winnerSide }  → [청백전] 'A'(왼쪽 2명) | 'B'(오른쪽 2명) 가 이겼다.
+   //                             이긴 쪽 선수 todayWins+1, 진 쪽 todayLosses+1,
+   //                             이긴 쪽이 한 팀으로 통일돼 있으면 그 팀 점수 +1
+   //  여러 관리자가 동시에 눌러도 코트가 이미 비어 있으면 아무것도 하지 않는다 (중복 기록 방지)
+   // ===============================================================================
+   const finishCourtTx = useCallback(async (courtIndex, result) => {
                         await runTransaction(db, async (transaction) => {
                             // 1. 최신 경기장 상태 가져오기
                             const gameStateDoc = await transaction.get(gameStateRef);
@@ -1134,6 +1169,17 @@ useEffect(() => {
                             const playerRefs = validPlayerIds.map(pId => doc(playersRef, pId));
                             const playerDocs = await Promise.all(playerRefs.map(ref => transaction.get(ref)));
 
+                            // [청백전] 이긴 쪽이 한 팀으로 통일돼 있을 때만 팀 점수가 오른다
+                            let winnerTeam = null;
+                            if (result?.winnerSide) {
+                                const winnerIds = result.winnerSide === 'A' ? teamA : teamB;
+                                const teams = [...new Set(winnerIds.map(id => {
+                                    const d = playerDocs.find(pd => pd.id === id);
+                                    return d && d.exists() ? getTeamOf(d.data()) : null;
+                                }))];
+                                winnerTeam = teams.length === 1 && teams[0] ? teams[0] : null;
+                            }
+
                             // 4. 선수별 히스토리 업데이트
                             playerDocs.forEach((pDoc) => {
                                 if (!pDoc.exists()) return;
@@ -1142,13 +1188,16 @@ useEffect(() => {
 
                                 let partners = [];
                                 let opponents = [];
+                                let side = null;
 
                                 if (teamA.includes(pId)) {
                                     partners = teamA.filter(id => id !== pId);
                                     opponents = teamB;
+                                    side = 'A';
                                 } else if (teamB.includes(pId)) {
                                     partners = teamB.filter(id => id !== pId);
                                     opponents = teamA;
+                                    side = 'B';
                                 }
 
                                 const gameRecord = {
@@ -1156,20 +1205,59 @@ useEffect(() => {
                                     partners: partners,
                                     opponents: opponents
                                 };
+                                const update = {};
+                                // [청백전] 승/패 기록
+                                if (result?.winnerSide && side) {
+                                    const won = side === result.winnerSide;
+                                    gameRecord.result = won ? 'win' : 'loss';
+                                    gameRecord.winnerTeam = winnerTeam;
+                                    if (won) update.todayWins = (Number(pData.todayWins) || 0) + 1;
+                                    else update.todayLosses = (Number(pData.todayLosses) || 0) + 1;
+                                }
 
                                 // 최근 20경기 유지 (공평 계산용 경기수 누적 + 다양성 판단)
                                 const recentGames = (pData.todayRecentGames || []).slice(0, 19);
                                 transaction.update(pDoc.ref, {
+                                    ...update,
                                     todayRecentGames: [gameRecord, ...recentGames]
                                 });
                             });
 
-                            // 5. 코트 비우기
+                            // 5. 코트 비우기 (+ [청백전] 팀 점수)
                             const newState = JSON.parse(JSON.stringify(currentState));
                             newState.inProgressCourts[courtIndex] = null;
+                            if (winnerTeam) {
+                                const key = teamScoreKey(winnerTeam);
+                                const scores = { ...emptyTeamScores(), ...(newState.teamScores || {}) };
+                                scores[key] = (Number(scores[key]) || 0) + 1;
+                                newState.teamScores = scores;
+                                newState.lastTeamResult = { at: now, winnerTeam, courtIndex, players: validPlayerIds };
+                            }
                             transaction.set(gameStateRef, newState);
                         });
                         playFinish(); // [사운드] 경기 종료 마무리 화음 (효과음 켠 사람만)
+   }, []);
+
+   const handleEndMatch = useCallback(async (courtIndex) => {
+        const court = gameState.inProgressCourts[courtIndex];
+        // [나간 선수] 코트만 존재하면 종료 가능. 나간 선수(빈 슬롯)가 있어도 막지 않는다.
+        if (!court || !court.players) return;
+
+        // [청백전] 이긴 팀 고르기 모달 (승/패·팀 점수 기록)
+        if (teamMode) {
+            setModal({ type: 'teamMatchEnd', data: { courtIndex } });
+            return;
+        }
+
+        setModal({
+            type: 'confirm',
+            data: {
+                title: '경기 종료',
+                body: '경기를 종료하고 코트를 비우시겠습니까? (선수들의 매칭 히스토리가 기록됩니다.)',
+                onConfirm: async () => {
+                    setModal({ type: null, data: null }); // 로딩 및 중복 클릭 방지를 위해 모달 먼저 닫기
+                    try {
+                        await finishCourtTx(courtIndex, null);
                     } catch(e) {
                         console.error(e);
                         setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
@@ -1177,7 +1265,95 @@ useEffect(() => {
                 }
             }
         });
-    }, [gameState, updateGameState]); // 트랜잭션 사용으로 allPlayers 의존성 제거됨
+    }, [gameState, teamMode, finishCourtTx]); // 트랜잭션 사용으로 allPlayers 의존성 제거됨
+
+    // [청백전] 이긴 팀(쪽)을 골랐을 때
+    const handleTeamPickWinner = useCallback(async (courtIndex, winnerSide) => {
+        setModal({ type: null, data: null });
+        try {
+            await finishCourtTx(courtIndex, { winnerSide });
+        } catch (e) {
+            console.error(e);
+            setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
+        }
+    }, [finishCourtTx]);
+
+    // [청백전] 경기 취소 — 기록 없이 코트만 비운다 (잘못 시작한 경기용)
+    const handleTeamCancelMatch = useCallback((courtIndex) => {
+        setModal({ type: 'confirm', data: {
+            title: '경기 취소',
+            body: `${courtIndex + 1}번 코트 경기를 취소할까요?\n승패·경기 수·히스토리를 남기지 않고 코트만 비웁니다.`,
+            onConfirm: async () => {
+                setModal({ type: null, data: null });
+                await updateGameState((currentState) => {
+                    const newState = JSON.parse(JSON.stringify(currentState));
+                    newState.inProgressCourts[courtIndex] = null;
+                    return { newState };
+                }, '경기 취소에 실패했습니다.');
+            }
+        }});
+    }, [updateGameState]);
+
+    // [청백전] 점수판 수정 (점수판 길게 누르기)
+    const handleTeamScoreSave = useCallback(async (scores) => {
+        await updateGameState((currentState) => ({
+            newState: { ...currentState, teamScores: { blue: scores.blue, white: scores.white } },
+        }), '점수 저장에 실패했습니다.');
+        writeAuditLog('청백전-점수수정', { by: currentUser?.name || null, scores });
+        setModal({ type: null, data: null });
+    }, [updateGameState, currentUser]);
+
+    // ===============================================================================
+    // [청백전] 경기 방식 전환 (일반 ↔ 청백전) — 관리자 설정에서 즉시 적용
+    // -------------------------------------------------------------------------------
+    //  1) 접속 중인 선수 전원 내보내기(status inactive) — 팀/급수를 새로 골라 다시 들어오게
+    //  2) 경기방(진행/예정/자동) 비우기 + 점수판 0:0
+    //  3) config.matchMode 저장 → 모든 기기의 입장 화면이 즉시 바뀐다
+    //  오늘 경기 기록(히스토리·승패)은 지우지 않는다. (선수 히스토리 삭제는 따로)
+    // ===============================================================================
+    const handleSwitchMatchMode = useCallback((mode) => {
+        const toTeam = mode === MATCH_MODE_TEAM;
+        const activeList = Object.values(allPlayers).filter(p => p.status === 'active');
+        setModal({ type: 'confirm', data: {
+            title: toTeam ? '⚔️ 청백전으로 전환' : '🏸 일반 모드로 전환',
+            body: `[경고] 접속 중인 선수 ${activeList.length}명이 모두 내보내지고, 진행/예정/자동매칭 경기와 팀 점수판이 비워집니다.\n선수들은 ${toTeam ? '팀을 골라 ' : ''}다시 입장해야 합니다. (오늘 경기 기록은 유지)\n\n계속할까요?`,
+            onConfirm: async () => {
+                setModal({ type: null, data: null });
+                setIsSettingsOpen(false);
+                try {
+                    // 1) 선수 전원 내보내기 (400개 단위 배치)
+                    let batch = writeBatch(db);
+                    let n = 0;
+                    for (const p of activeList) {
+                        batch.update(doc(playersRef, p.id), { status: 'inactive', isResting: false });
+                        n += 1;
+                        if (n % 400 === 0) { await batch.commit(); batch = writeBatch(db); }
+                    }
+                    if (n % 400 !== 0) await batch.commit();
+                    // 2) 경기방 + 점수판 비우기
+                    await updateGameState((currentState) => {
+                        const newState = JSON.parse(JSON.stringify(currentState));
+                        newState.scheduledMatches = {};
+                        newState.autoMatches = {};
+                        newState.inProgressCourts = Array(newState.numInProgressCourts || 4).fill(null);
+                        newState.teamScores = emptyTeamScores();
+                        delete newState.lastTeamResult;
+                        return { newState };
+                    }, '경기방 초기화에 실패했습니다.');
+                    // 3) 경기 방식 저장
+                    await setDoc(configRef, { matchMode: mode, matchModeChangedAt: new Date().toISOString() }, { merge: true });
+                    writeAuditLog('경기방식전환', { by: currentUser?.name || null, mode, kicked: n });
+                    // 유령 관리자는 내보내지지 않으므로 화면이 그대로다 → 알려준다
+                    if (currentUser?.isGhostAdmin) {
+                        setModal({ type: 'alert', data: { title: '전환 완료', body: `${toTeam ? '청백전' : '일반'} 모드로 바뀌었습니다. 선수 ${n}명을 내보냈어요.` }});
+                    }
+                } catch (e) {
+                    console.error('경기 방식 전환 실패:', e);
+                    setModal({ type: 'alert', data: { title: '오류', body: '경기 방식 전환 중 문제가 발생했습니다.' }});
+                }
+            }
+        }});
+    }, [allPlayers, currentUser, updateGameState]);
 
     // ===============================================================================
     // [자동 매칭 v2] '매칭 만들기' — 후보 6개를 보여주고 관리자가 고른다
@@ -1215,8 +1391,9 @@ useEffect(() => {
 
         return generateMatchOptions({
             pool, ctx, mode: gender, maxOnCourt: sens.maxOnCourt, pages: 3, pendingReservations,
+            teamMatch: teamMode, // [청백전] 청2 vs 백2 로만 조합
         });
-    }, [allPlayers, gameState, seasonConfig, inProgressPlayerIds]);
+    }, [allPlayers, gameState, seasonConfig, inProgressPlayerIds, teamMode]);
 
     const handleGenerateMatch = useCallback(async (gender) => {
         const isMixed = gender === '혼복';
@@ -1237,9 +1414,13 @@ useEffect(() => {
             if (result.status !== 'ok') {
                 setModal({ type: 'alert', data: {
                     title: `${genderLabel} 매칭 불가`,
-                    body: isMixed
-                        ? `혼복은 남자 2명, 여자 2명 이상 필요합니다.\n(현재 남 ${result.maleCount ?? 0}명 · 여 ${result.femaleCount ?? 0}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.`
-                        : `${genderLabel} 선수가 4명 이상 필요합니다. (현재 ${result.poolSize}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.\n경기중인 선수도 후보에 포함되므로, 경기가 끝나면 다시 눌러보세요.`
+                    body: result.isTeamMatch
+                        ? (isMixed
+                            ? `청백전 혼복은 청팀·백팀 각각 남 1명 + 여 1명 이상 필요합니다.\n(현재 청 ${result.blueCount ?? 0}명 · 백 ${result.whiteCount ?? 0}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.`
+                            : `청백전은 ${genderLabel} 선수가 청팀 2명, 백팀 2명 이상 필요합니다.\n(현재 청 ${result.blueCount ?? 0}명 · 백 ${result.whiteCount ?? 0}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.\n경기중인 선수도 후보에 포함되므로, 경기가 끝나면 다시 눌러보세요.`)
+                        : isMixed
+                            ? `혼복은 남자 2명, 여자 2명 이상 필요합니다.\n(현재 남 ${result.maleCount ?? 0}명 · 여 ${result.femaleCount ?? 0}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.`
+                            : `${genderLabel} 선수가 4명 이상 필요합니다. (현재 ${result.poolSize}명)\n\n※ 휴식 중이거나 이미 다음 경기가 잡힌 선수는 빠집니다.\n경기중인 선수도 후보에 포함되므로, 경기가 끝나면 다시 눌러보세요.`
                 }});
                 return;
             }
@@ -1261,7 +1442,7 @@ useEffect(() => {
             if (result.status !== 'ok') {
                 setModal({ type: 'alert', data: {
                     title: `${genderLabel} 매칭 불가`,
-                    body: '지금은 매칭할 수 있는 선수가 4명이 안 됩니다.',
+                    body: result.isTeamMatch ? '지금은 청팀 2명 · 백팀 2명을 채울 수 없습니다.' : '지금은 매칭할 수 있는 선수가 4명이 안 됩니다.',
                 }});
                 return;
             }
@@ -1493,6 +1674,8 @@ useEffect(() => {
 
     const handleAdminAddPlayer = useCallback(async (formData) => {
         const { name, level, gender, isGuest } = formData;
+        // [청백전] 팀 (일반 모드면 null)
+        const team = formData.team === TEAM_BLUE || formData.team === TEAM_WHITE ? formData.team : null;
         if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' }}); return; }
         const id = generateId(name);
         try {
@@ -1507,16 +1690,18 @@ useEffect(() => {
                     level,
                     gender,
                     isGuest,
+                    team,
                     status: 'active',
-                                        todayRecentGames: filterTodayGames(existingData.todayRecentGames),
+                    todayRecentGames: filterTodayGames(existingData.todayRecentGames),
                     isResting: existingData.isResting || false,
                 };
             } else {
                 playerData = {
-                    id, name, level, gender, isGuest,
+                    id, name, level, gender, isGuest, team,
                     entryTime: new Date().toISOString(), isResting: false,
                     status: 'active',
                     todayRecentGames: [],
+                    todayWins: 0, todayLosses: 0,
                 };
             }
 
@@ -1564,20 +1749,24 @@ useEffect(() => {
             const batch = writeBatch(db);
             const now = new Date().toISOString();
 
+            // [청백전] 로봇은 청/백을 번갈아 배정 (게스트 표시 없음 · 급수 섞기)
+            const robotLevels = ['S조', 'A조', 'B조', 'C조', 'D조'];
             for (let i = 0; i < maleCount; i++) {
                 const id = `Test_M_${Date.now()}_${i}`;
                 const playerDocRef = doc(playersRef, id);
                 batch.set(playerDocRef, {
-                    id, name: `로봇남${i+1}`, level: 'C조', gender: '남', isGuest: true,
-                    entryTime: now, isResting: false, status: 'active', todayRecentGames: []
+                    id, name: `로봇남${i+1}`, level: teamMode ? robotLevels[i % robotLevels.length] : 'C조', gender: '남', isGuest: !teamMode,
+                    team: teamMode ? (i % 2 === 0 ? TEAM_BLUE : TEAM_WHITE) : null,
+                    entryTime: now, isResting: false, status: 'active', todayRecentGames: [], todayWins: 0, todayLosses: 0,
                 });
             }
             for (let i = 0; i < femaleCount; i++) {
                 const id = `Test_F_${Date.now()}_${i}`;
                 const playerDocRef = doc(playersRef, id);
                 batch.set(playerDocRef, {
-                    id, name: `로봇여${i+1}`, level: 'D조', gender: '여', isGuest: true,
-                    entryTime: now, isResting: false, status: 'active', todayRecentGames: []
+                    id, name: `로봇여${i+1}`, level: teamMode ? robotLevels[(i + 2) % robotLevels.length] : 'D조', gender: '여', isGuest: !teamMode,
+                    team: teamMode ? (i % 2 === 0 ? TEAM_BLUE : TEAM_WHITE) : null,
+                    entryTime: now, isResting: false, status: 'active', todayRecentGames: [], todayWins: 0, todayLosses: 0,
                 });
             }
             await batch.commit();
@@ -1586,7 +1775,7 @@ useEffect(() => {
             console.error("Robot generation failed: ", error);
             setModal({ type: 'alert', data: { title: '오류', body: '로봇 생성 중 문제가 발생했습니다.' }});
         }
-    }, []);
+    }, [teamMode]);
 
     const handleMoveOrSwapCourt = useCallback(async (sourceIndex, targetIndex) => {
         if (sourceIndex === targetIndex) return;
@@ -1817,7 +2006,7 @@ useEffect(() => {
     }
 
    if (!currentUser) {
-        return <><EntryPage onEnter={handleEnter} roster={roster} /><UpdateBanner /></>;
+        return <><EntryPage onEnter={handleEnter} roster={roster} teamMode={teamMode} /><UpdateBanner /></>;
     }
 
     // [소모임 동기화] 오늘 자동 동기화가 실패했는지 (실패 배너 표시 조건)
@@ -1854,13 +2043,27 @@ useEffect(() => {
                 setIsSeasonModalDismissed(true); // 현재 세션에서 공지를 닫았음을 기록
                 setModal({ type: null, data: null });
             }} />}
-            {modal?.type === 'adminEditPlayer' && <AdminEditPlayerModal player={modal.data.player} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} setModal={setModal} />}
+            {modal?.type === 'adminEditPlayer' && <AdminEditPlayerModal player={modal.data.player} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} setModal={setModal} teamMode={teamMode} />}
+            {/* [청백전] 경기 종료 → 이긴 팀 고르기 / 점수판 수정 */}
+            {modal?.type === 'teamMatchEnd' && (
+                gameState?.inProgressCourts?.[modal.data.courtIndex]?.players
+                    ? <TeamMatchEndModal
+                        courtIndex={modal.data.courtIndex}
+                        court={gameState.inProgressCourts[modal.data.courtIndex]}
+                        allPlayers={allPlayers}
+                        onPickWinner={(side) => handleTeamPickWinner(modal.data.courtIndex, side)}
+                        onCancelMatch={() => handleTeamCancelMatch(modal.data.courtIndex)}
+                        onClose={() => setModal({ type: null, data: null })}
+                      />
+                    : null
+            )}
+            {modal?.type === 'teamScoreEdit' && <TeamScoreEditModal teamScores={teamScores} onSave={handleTeamScoreSave} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'confirm' && <ConfirmationModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'hiddenKey' && <HiddenKeyModal onSubmit={handleHiddenKeySubmit} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'courtSelection' && <CourtSelectionModal {...modal.data} onCancel={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'alert' && <AlertModal {...modal.data} onClose={() => setModal({ type: null, data: null })} />}
             {modal?.type === 'somoimSyncResult' && <SomoimSyncResultModal result={modal.data} onClose={() => setModal({ type: null, data: null })} />}
-            {modal?.type === 'myHistory' && <MyHistoryModal player={currentUser} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} />}
+            {modal?.type === 'myHistory' && <MyHistoryModal player={currentUser} allPlayers={allPlayers} onClose={() => setModal({ type: null, data: null })} teamMode={teamMode} />}
             {/* [자동매칭 v2] 매칭 후보 6개(베스트/보통/아쉬움) 중에서 고르는 화면 */}
             {modal?.type === 'matchOptions' && (
                 <MatchOptionsModal
@@ -1894,6 +2097,9 @@ useEffect(() => {
             onSomoimSync={handleSomoimSync}
             onOpenRoster={() => setIsRosterOpen(true)}
             somoimSync={somoimSync}
+            matchMode={teamMode ? MATCH_MODE_TEAM : MATCH_MODE_NORMAL} /* [청백전] */
+            onSwitchMatchMode={handleSwitchMatchMode}
+            teamScores={teamScores}
         />}
 
             <header className="cox-appbar">
@@ -1914,13 +2120,18 @@ useEffect(() => {
                         <span className="cox-livedot"></span>
                         <span>
                             {isAdmin ? '👑 관리자' : `${currentUser.name} 님`}
+                            {teamMode && !currentUser.isGhostAdmin && getTeamOf(currentUser) && (
+                                <b style={{ color: TEAM_META[getTeamOf(currentUser)].text }}> · {TEAM_META[getTeamOf(currentUser)].label}</b>
+                            )}
                             {onlineCount > 0 && <b className="cox-online-count"> · {onlineCount}명 접속 중</b>}
                         </span>
                     </div>
                     <h1 className="cox-title">
-                        {activeTab === 'inProgress'
-                            ? (<>경기 <em>진행</em></>)
-                            : (<>오늘의 <em>경기</em></>)}
+                        {teamMode
+                            ? (<>청백<em>전</em></>)
+                            : activeTab === 'inProgress'
+                                ? (<>경기 <em>진행</em></>)
+                                : (<>오늘의 <em>경기</em></>)}
                     </h1>
                 </div>
 
@@ -1944,7 +2155,7 @@ useEffect(() => {
                                     </div>
                                     <div className="min-w-0">
                                         <div className="nm truncate">{currentUser.name}</div>
-                                        <div className="rl">{currentUser.isGhostAdmin ? '유령 모드 · 선수 카드 없음' : isAdmin ? '관리자 계정' : `${currentUser.level} · ${currentUser.isGuest ? '게스트' : '회원'}`}</div>
+                                        <div className="rl">{currentUser.isGhostAdmin ? '유령 모드 · 선수 카드 없음' : isAdmin ? `관리자 계정${teamMode && getTeamOf(currentUser) ? ` · ${TEAM_META[getTeamOf(currentUser)].label}` : ''}` : teamMode ? `${currentUser.level} · ${getTeamOf(currentUser) ? TEAM_META[getTeamOf(currentUser)].label : '팀 미정'}` : `${currentUser.level} · ${currentUser.isGuest ? '게스트' : '회원'}`}</div>
                                     </div>
                                 </div>
 
@@ -2035,27 +2246,37 @@ useEffect(() => {
             )}
 
             <main ref={mainScrollRef} className="flex-grow flex flex-col gap-3 p-1.5 overflow-y-auto" style={{ paddingBottom: isMobile ? 'calc(104px + env(safe-area-inset-bottom, 0px))' : '16px' }}>
+                {/* [청백전] 팀 점수판 — 항상 맨 위 (관리자는 길게 눌러 수정) */}
+                {teamMode && (
+                    <TeamScoreBoard
+                        teamScores={teamScores}
+                        blueCount={teamCounts.blue}
+                        whiteCount={teamCounts.white}
+                        isAdmin={isAdmin}
+                        onLongPress={() => setModal({ type: 'teamScoreEdit', data: {} })}
+                    />
+                )}
                 {isMobile ? (
                     <div className="flex flex-col gap-3">
                             {activeTab === 'matching' && (
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
-                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
-                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
-                                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
+                                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
+                                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>
+                                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
                                 </div>
                             )}
                             {activeTab === 'inProgress' && (
                                 <div key="tab-inprogress" className="tab-fade-in">
-                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} />
+                                <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} teamMode={teamMode} />
                                 </div>
                             )}
                     </div>
             ) : (
                 <div className="flex flex-col gap-3">
-                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
-                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds}/>
-                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} />
-                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} />
+                    <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
+                    <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>
+                    <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} />
+                    <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} teamMode={teamMode} />
                 </div>
             )}
             </main>
@@ -2127,4 +2348,4 @@ useEffect(() => {
         </div>
     );
 }
-
+

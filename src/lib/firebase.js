@@ -178,6 +178,7 @@ onSnapshot(gameStateRef, (doc) => {
         autoMatches: {}, // 자동 매칭 데이터 추가
         numScheduledMatches: 4,
         numInProgressCourts: 4,
+        teamScores: { blue: 0, white: 0 }, // [청백전] 팀 점수판
     };
   }
   if(resolveGameState) { resolveGameState(); resolveGameState = null; }
@@ -354,6 +355,7 @@ const runDailyResetIfDue = async () => {
                 inProgressCourts: Array(numCourts).fill(null),
                 scheduledMatches: {},
                 autoMatches: {},
+                teamScores: { blue: 0, white: 0 }, // [청백전] 점수판도 하루 단위로 초기화 (경기 방식 설정은 유지)
             }, { merge: true });
             return true;
         });
@@ -368,7 +370,7 @@ const runDailyResetIfDue = async () => {
             batch.update(playerDoc.ref, {
                 status: 'inactive',     // 현황판에서 완전히 내보내기
                 isResting: false,       // 휴식 상태 해제
-                todayWins: 0,
+                todayWins: 0,           // [청백전] 오늘 승/패도 함께 초기화
                 todayLosses: 0,
                 todayWinStreakCount: 0,
                 todayRecentGames: [],   // 누구와 몇 게임 했는지 기록 전부 삭제

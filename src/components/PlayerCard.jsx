@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { isAdminName, getLevelColor } from '../lib/helpers';
+import { isAdminName, getLevelColor, getTeamOf, getWinLoss, TEAM_META } from '../lib/helpers';
 
 // ===================================================================================
 // 자식 컴포넌트들
 // ===================================================================================
-const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false, isOnline = false }) => {
+const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false, isOnline = false, teamMode = false }) => {
     const pressTimerRef = useRef(null);
     const cardRef = useRef(null);
 
@@ -85,6 +85,11 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     // [수정] actionLabel이 'auto' 위치도 인식하도록 수정
     const actionLabel = (isWaiting || context.location === 'auto') ? '선수 내보내기' : '대기자로 이동';
 
+    // [청백전] 팀 틴트(윗줄 색 바) + 승패 한 줄. 경기중 딱지가 붙으면 승패 줄은 숨긴다(겹침 방지)
+    const team = teamMode ? getTeamOf(player) : null;
+    const teamClass = team ? `tm-${TEAM_META[team].key}` : '';
+    const { wins, losses } = getWinLoss(player);
+
     return (
         <div
             ref={cardRef}
@@ -93,7 +98,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
             // [경기중 표시] 지금 코트에서 뛰는 선수는 무채색 + '경기중' 딱지를 붙여
             //               "이 카드는 아직 못 움직인다"는 걸 한눈에 알 수 있게 한다.
-            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''} ${isPlaying ? 'cox-card-playing' : ''}`}
+            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''} ${isPlaying ? 'cox-card-playing' : ''} ${teamClass}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
             onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
@@ -108,9 +113,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             <div>
                 <div className={playerNameClass}>{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>
-                    <span style={levelStyle}>{player.level.replace('조','')}</span>
+                    <span style={levelStyle}>{(player.level || '').replace('조','')}</span>
                     <span className="ml-1 text-gray-300 font-bold">{player.todayRecentGames ? player.todayRecentGames.length : 0}G</span>
                 </div>
+                {teamMode && !isPlaying && (
+                    wins + losses === 0
+                        ? <div className="tm-wl zero">0승 0패</div>
+                        : <div className="tm-wl"><span className="w">{wins}승</span><span className="sep">·</span><span className="l">{losses}패</span></div>
+                )}
             </div>
             {isAdmin && onAction && (
                 <button

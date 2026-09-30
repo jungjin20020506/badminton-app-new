@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { configRef } from '../lib/firebase';
-import { getAdminNames } from '../lib/helpers';
+import { getAdminNames, MATCH_MODE_NORMAL, MATCH_MODE_TEAM, TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../lib/helpers';
 import { AUTO_MATCH_SENSITIVITIES, getSensitivity } from '../lib/matching';
 import { computeDailySummary, drawSummaryCard } from '../lib/summaryCard';
 
-function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, allPlayers, currentUser, roster, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync }) {
+function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, allPlayers, currentUser, roster, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync, matchMode = MATCH_MODE_NORMAL, onSwitchMatchMode, teamScores }) {
+    // [청백전] 지금 청백전 모드인지
+    const isTeam = matchMode === MATCH_MODE_TEAM;
     const [scheduled, setScheduled] = useState(scheduledCount);
     const [courts, setCourts] = useState(courtCount);
     const [announcement, setAnnouncement] = useState(seasonConfig.announcement);
@@ -17,7 +19,7 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
 
     // 수동 선수 추가 폼 상태
     const [showAddPlayerForm, setShowAddPlayerForm] = useState(false);
-    const [newPlayerForm, setNewPlayerForm] = useState({ name: '', level: 'A조', gender: '남', isGuest: false });
+    const [newPlayerForm, setNewPlayerForm] = useState({ name: '', level: 'A조', gender: '남', isGuest: false, team: TEAM_BLUE });
 
     // [자동매칭] 사용설명서 모달 표시 상태
     const [showAutoGuide, setShowAutoGuide] = useState(false);
@@ -135,6 +137,49 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
             <div className="bg-gray-800 rounded-lg p-6 w-full max-w-lg text-white shadow-lg flex flex-col" style={{maxHeight: '90vh'}}>
                 <h3 className="text-xl font-bold text-white mb-6 arcade-font text-center flex-shrink-0">설정</h3>
                 <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+
+                    {/* --- [청백전] 경기 방식 --- */}
+                    <div className={`p-3 rounded-lg tm-mode-box ${isTeam ? 'team' : ''}`} data-tut="set-mode">
+                        <div className="flex justify-between items-center mb-2">
+                            <label className="font-semibold text-lg arcade-font" style={{ color: isTeam ? '#93C5FD' : '#F3F5F8' }}>
+                                ⚔️ 경기 방식
+                            </label>
+                            <span className={`text-[11px] font-black rounded-full px-2.5 py-1 ${isTeam ? 'bg-blue-500/20 text-blue-200 border border-blue-400/40' : 'bg-gray-600 text-gray-200'}`}>
+                                {isTeam ? '청백전 진행 중' : '일반 모드'}
+                            </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => !isTeam ? null : onSwitchMatchMode?.(MATCH_MODE_NORMAL)}
+                                className={`tm-mode-btn ${!isTeam ? 'on' : ''}`}
+                                aria-pressed={!isTeam}
+                            >
+                                <span className="tm-mode-btn-title">🏸 일반</span>
+                                <span className="tm-mode-btn-desc">회원 명단 · 게스트 · 자유 매칭</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => isTeam ? null : onSwitchMatchMode?.(MATCH_MODE_TEAM)}
+                                className={`tm-mode-btn team ${isTeam ? 'on' : ''}`}
+                                aria-pressed={isTeam}
+                            >
+                                <span className="tm-mode-btn-title">⚔️ 청백전</span>
+                                <span className="tm-mode-btn-desc">청 vs 백 · 팀 점수판 · 승패 기록</span>
+                            </button>
+                        </div>
+                        {isTeam && teamScores && (
+                            <div className="mt-2 flex items-center justify-center gap-3 text-sm font-black">
+                                <span style={{ color: TEAM_META[TEAM_BLUE].text }}>청 {teamScores.blue ?? 0}</span>
+                                <span className="text-gray-500">:</span>
+                                <span style={{ color: TEAM_META[TEAM_WHITE].text }}>백 {teamScores.white ?? 0}</span>
+                            </div>
+                        )}
+                        <p className="text-[10px] text-gray-400 mt-2 leading-relaxed text-center">
+                            방식을 바꾸면 <b className="text-red-300">접속 중인 선수 전원이 내보내지고</b> 경기방·점수판이 비워집니다.<br/>
+                            선수들은 다시 입장해야 합니다. (오늘 경기 기록은 유지 · 저장 버튼과 무관하게 즉시 적용)
+                        </p>
+                    </div>
 
                     {/* --- 자동 매칭 설정 --- */}
                     <div className="bg-gray-700 p-3 rounded-lg" data-tut="set-auto">
@@ -446,8 +491,8 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                                     onChange={(e) => setNewPlayerForm(prev => ({...prev, name: e.target.value}))} 
                                     className="w-full bg-gray-600 text-white p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-yellow-400 text-sm" 
                                 />
-                                <div className="grid grid-cols-4 gap-1">
-                                    {['A조', 'B조', 'C조', 'D조'].map(level => (
+                                <div className={`grid gap-1 ${isTeam ? 'grid-cols-5' : 'grid-cols-4'}`}>
+                                    {(isTeam ? ['S조', 'A조', 'B조', 'C조', 'D조'] : ['A조', 'B조', 'C조', 'D조']).map(level => (
                                         <button
                                             key={level}
                                             type="button"
@@ -465,15 +510,35 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                                     <label className="flex items-center cursor-pointer">
                                         <input type="radio" name="newPlayerGender" value="여" checked={newPlayerForm.gender === '여'} onChange={() => setNewPlayerForm(prev => ({...prev, gender: '여'}))} className="mr-1 h-3 w-3 text-pink-500 bg-gray-700 border-gray-600 focus:ring-pink-500" /> 여자
                                     </label>
-                                    <div className="w-px h-4 bg-gray-500"></div>
-                                    <label className="flex items-center cursor-pointer">
-                                        <input type="checkbox" checked={newPlayerForm.isGuest} onChange={(e) => setNewPlayerForm(prev => ({...prev, isGuest: e.target.checked}))} className="mr-1 h-3 w-3 rounded text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" /> 게스트
-                                    </label>
+                                    {/* [청백전] 게스트 대신 팀을 고른다 */}
+                                    {!isTeam && (
+                                        <>
+                                            <div className="w-px h-4 bg-gray-500"></div>
+                                            <label className="flex items-center cursor-pointer">
+                                                <input type="checkbox" checked={newPlayerForm.isGuest} onChange={(e) => setNewPlayerForm(prev => ({...prev, isGuest: e.target.checked}))} className="mr-1 h-3 w-3 rounded text-blue-500 bg-gray-700 border-gray-600 focus:ring-blue-500" /> 게스트
+                                            </label>
+                                        </>
+                                    )}
                                 </div>
+                                {isTeam && (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[TEAM_BLUE, TEAM_WHITE].map(team => (
+                                            <button
+                                                key={team}
+                                                type="button"
+                                                onClick={() => setNewPlayerForm(prev => ({ ...prev, team }))}
+                                                className={`tm-team-pick small ${TEAM_META[team].key} ${newPlayerForm.team === team ? 'on' : ''}`}
+                                            >
+                                                <span className="tm-team-pick-mark">{team}</span>
+                                                <span className="tm-team-pick-name">{TEAM_META[team].label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
                                 <button
                                     onClick={() => {
-                                        onAdminAddPlayer(newPlayerForm);
-                                        setNewPlayerForm({ name: '', level: 'A조', gender: '남', isGuest: false });
+                                        onAdminAddPlayer(isTeam ? { ...newPlayerForm, isGuest: false } : { ...newPlayerForm, team: null });
+                                        setNewPlayerForm({ name: '', level: 'A조', gender: '남', isGuest: false, team: TEAM_BLUE });
                                         setShowAddPlayerForm(false);
                                     }}
                                     className="w-full arcade-button bg-green-600 hover:bg-green-700 text-white font-bold py-1.5 rounded text-sm"
