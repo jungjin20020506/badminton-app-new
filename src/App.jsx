@@ -276,6 +276,42 @@ export default function App() {
             return new Date(a.entryTime) - new Date(b.entryTime);
         }), [activePlayers, playerLocations]);
 
+    // ===============================================================================
+    // [청백전] 득점 실황 배너 + 화면 가장자리 플래시
+    // -------------------------------------------------------------------------------
+    //  경기 종료 트랜잭션이 gameState.lastTeamResult 를 갱신하면, 모든 접속자 화면에서
+    //  "🔵 청팀 득점! 이동준·주재운 (2번 코트)" 배너가 3초간 스쳐 가고 화면 테두리가
+    //  팀 색으로 0.45초 번쩍인다. 접속 직후 이미 있던 결과(과거 것)는 재생하지 않는다.
+    // ===============================================================================
+    const [liveBanner, setLiveBanner] = useState(null);
+    const [edgeFlash, setEdgeFlash] = useState(null);
+    const lastResultSeenRef = useRef(undefined);
+    const liveTimersRef = useRef({ banner: null, edge: null });
+    useEffect(() => {
+        const r = gameState?.lastTeamResult;
+        const at = r?.at || '';
+        if (lastResultSeenRef.current === undefined) { lastResultSeenRef.current = at; return; } // 첫 로드: 재생 안 함
+        if (at === lastResultSeenRef.current) return;
+        lastResultSeenRef.current = at;
+        if (!teamMode || !r || !at) return;
+        if (Date.now() - new Date(at).getTime() > 30 * 1000) return; // 오래된 결과(오프라인 복귀 등)는 건너뛴다
+        const nameOf = (id) => allPlayers?.[id]?.name || '';
+        const winners = (r.winners || []).map(nameOf).filter(Boolean).join('·');
+        const key = r.winnerTeam ? TEAM_META[r.winnerTeam].key : 'none';
+        setLiveBanner({
+            id: at, key,
+            title: r.winnerTeam ? `${r.winnerTeam === TEAM_BLUE ? '🔵' : '⚪'} ${TEAM_META[r.winnerTeam].label} 득점!` : '🏁 경기 종료',
+            body: `${winners || '승리'} · ${(r.courtIndex ?? 0) + 1}번 코트`,
+        });
+        setEdgeFlash({ id: at, key });
+        // 타이머는 ref로 관리한다 — 선수 문서 갱신으로 이 효과가 다시 돌아도 배너가 걸려 있지 않게
+        clearTimeout(liveTimersRef.current.banner);
+        clearTimeout(liveTimersRef.current.edge);
+        liveTimersRef.current.banner = setTimeout(() => setLiveBanner(null), 3200);
+        liveTimersRef.current.edge = setTimeout(() => setEdgeFlash(null), 600);
+    }, [gameState?.lastTeamResult, teamMode, allPlayers]);
+    useEffect(() => () => { clearTimeout(liveTimersRef.current.banner); clearTimeout(liveTimersRef.current.edge); }, []);
+
     // [청백전] 팀별 접속 인원 (점수판 아래 'n명' 표시)
     const teamCounts = useMemo(() => {
         const c = { blue: 0, white: 0 };
@@ -1231,7 +1267,12 @@ useEffect(() => {
                                 const scores = { ...emptyTeamScores(), ...(newState.teamScores || {}) };
                                 scores[key] = (Number(scores[key]) || 0) + 1;
                                 newState.teamScores = scores;
-                                newState.lastTeamResult = { at: now, winnerTeam, courtIndex, players: validPlayerIds };
+                            }
+                            // [청백전] 득점 실황 — 모든 접속자 화면에 배너·플래시를 띄우는 근거 (winnerTeam 없으면 팀 점수 없는 승리)
+                            if (result?.winnerSide) {
+                                const winners = result.winnerSide === 'A' ? teamA : teamB;
+                                const losers = result.winnerSide === 'A' ? teamB : teamA;
+                                newState.lastTeamResult = { at: now, winnerTeam, courtIndex, players: validPlayerIds, winners, losers };
                             }
                             transaction.set(gameStateRef, newState);
                         });
@@ -2019,6 +2060,15 @@ useEffect(() => {
 
             {/* --- [업데이트 안내] 새 버전 배포 감지 배너 --- */}
             <UpdateBanner />
+
+            {/* --- [청백전] 득점 실황 배너 (3초) + 화면 가장자리 팀 색 플래시 --- */}
+            {edgeFlash && <div key={`edge-${edgeFlash.id}`} className={`tm-edge ${edgeFlash.key}`} aria-hidden="true" />}
+            {liveBanner && (
+                <div key={`live-${liveBanner.id}`} className={`tm-live ${liveBanner.key}`} role="status" onClick={() => setLiveBanner(null)}>
+                    <span className="t">{liveBanner.title}</span>
+                    <span className="b">{liveBanner.body}</span>
+                </div>
+            )}
 
             {/* --- [소모임 동기화] 자동 동기화 실패 배너 --- */}
             {showSyncErrorBanner && (

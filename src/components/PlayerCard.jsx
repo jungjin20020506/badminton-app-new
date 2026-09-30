@@ -89,6 +89,28 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     const team = teamMode ? getTeamOf(player) : null;
     const teamClass = team ? `tm-${TEAM_META[team].key}` : '';
     const { wins, losses } = getWinLoss(player);
+    // [청백전] 승/패 숫자가 바뀌는 순간만 위로 스르륵 (첫 렌더·다른 필드 갱신 때는 가만히)
+    // 경기가 끝나면 카드가 코트에서 대기 명단으로 '새로 마운트'되므로, 마운트 시점에
+    // 방금(4초 이내) 기록된 승/패가 있으면 그것도 카운트업으로 보여준다.
+    const prevWlRef = useRef({ wins, losses });
+    const [bump, setBump] = useState(() => {
+        const g = player.todayRecentGames?.[0];
+        if (!teamMode || !g?.result || !g.timestamp) return { w: false, l: false };
+        const fresh = Date.now() - new Date(g.timestamp).getTime() < 4000;
+        return { w: fresh && g.result === 'win', l: fresh && g.result === 'loss' };
+    });
+    useEffect(() => {
+        const prev = prevWlRef.current;
+        const next = { w: wins !== prev.wins, l: losses !== prev.losses };
+        prevWlRef.current = { wins, losses };
+        if (!next.w && !next.l) return;
+        setBump(next);
+    }, [wins, losses]);
+    useEffect(() => {
+        if (!bump.w && !bump.l) return;
+        const t = setTimeout(() => setBump({ w: false, l: false }), 650);
+        return () => clearTimeout(t);
+    }, [bump]);
 
     return (
         <div
@@ -119,7 +141,11 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
                 {teamMode && !isPlaying && (
                     wins + losses === 0
                         ? <div className="tm-wl zero">0승 0패</div>
-                        : <div className="tm-wl"><span className="w">{wins}승</span><span className="sep">·</span><span className="l">{losses}패</span></div>
+                        : <div className={`tm-wl ${bump.w || bump.l ? 'bumped' : ''}`}>
+                            <span className={`w tm-num ${bump.w ? 'up' : ''}`}>{wins}승</span>
+                            <span className="sep">·</span>
+                            <span className={`l tm-num ${bump.l ? 'up' : ''}`}>{losses}패</span>
+                          </div>
                 )}
             </div>
             {isAdmin && onAction && (

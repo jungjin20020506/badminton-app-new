@@ -1087,3 +1087,48 @@ main{ -webkit-overflow-scrolling:touch; }
 .tm-result-badge.win{ background:rgba(124,224,166,.18); color:#7CE0A6; border:1px solid rgba(124,224,166,.4); }
 .tm-result-badge.loss{ background:rgba(255,156,140,.15); color:#FF9C8C; border:1px solid rgba(255,156,140,.4); }
 .tm-result-badge.none{ background:rgba(255,255,255,.07); color:var(--dim); border:1px solid rgba(255,255,255,.1); }
+
+/* ── [청백전] 득점 실황 배너 (21) ── */
+.tm-live{
+  position:fixed; left:50%; z-index:56; transform:translateX(-50%);
+  top:calc(env(safe-area-inset-top, 0px) + 72px);
+  display:flex; flex-direction:column; align-items:center; gap:1px;
+  min-width:220px; max-width:calc(100vw - 32px);
+  padding:9px 16px; border-radius:999px; cursor:pointer;
+  background:rgba(13,15,20,.92); border:1px solid var(--line-strong);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  box-shadow:0 18px 40px -14px rgba(0,0,0,.9);
+  animation:tmLiveIn .38s var(--ease-pop, cubic-bezier(.2,.8,.2,1)) both, tmLiveOut .3s ease-in 2.85s both;
+  pointer-events:auto;
+}
+.tm-live .t{ font-size:13px; font-weight:900; letter-spacing:.02em; white-space:nowrap; }
+.tm-live .b{ font-size:11px; font-weight:700; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.tm-live.blue{ border-color:rgba(59,130,246,.65); box-shadow:0 18px 40px -14px rgba(0,0,0,.9), 0 0 0 3px rgba(59,130,246,.18), 0 0 24px rgba(59,130,246,.35); }
+.tm-live.blue .t{ color:#BFDBFE; }
+.tm-live.white{ border-color:rgba(229,231,235,.7); box-shadow:0 18px 40px -14px rgba(0,0,0,.9), 0 0 0 3px rgba(229,231,235,.14), 0 0 24px rgba(229,231,235,.28); }
+.tm-live.white .t{ color:#fff; }
+.tm-live.none .t{ color:var(--volt); }
+@keyframes tmLiveIn{ from{ opacity:0; transform:translateX(-50%) translateY(-14px) scale(.94); } to{ opacity:1; transform:translateX(-50%) translateY(0) scale(1); } }
+@keyframes tmLiveOut{ to{ opacity:0; transform:translateX(-50%) translateY(-10px) scale(.96); } }
+
+/* ── [청백전] 화면 가장자리 팀 색 플래시 (36) ── */
+.tm-edge{
+  position:fixed; inset:0; z-index:57; pointer-events:none; border-radius:0;
+  animation:tmEdge .55s ease-out both;
+}
+.tm-edge.blue{ box-shadow:inset 0 0 0 4px #3B82F6, inset 0 0 70px 10px rgba(59,130,246,.55); }
+.tm-edge.white{ box-shadow:inset 0 0 0 4px #F3F4F6, inset 0 0 70px 10px rgba(229,231,235,.5); }
+.tm-edge.none{ box-shadow:inset 0 0 0 4px var(--volt), inset 0 0 70px 10px rgba(205,251,71,.35); }
+@keyframes tmEdge{ 0%{ opacity:0; } 18%{ opacity:1; } 100%{ opacity:0; } }
+@media (prefers-reduced-motion: reduce){ .tm-edge{ animation-duration:.25s; } .tm-live{ animation:none; } }
+
+/* ── [청백전] 승/패 숫자 카운트업 (41) ── */
+.tm-num{ display:inline-block; }
+.tm-num.up{ animation:tmNumUp .55s var(--ease-pop, cubic-bezier(.2,.8,.2,1)) both; }
+@keyframes tmNumUp{
+  0%{ transform:translateY(7px) scale(.85); opacity:0; }
+  55%{ transform:translateY(-2px) scale(1.18); opacity:1; }
+  100%{ transform:none; }
+}
+.tm-wl.bumped .w{ text-shadow:0 0 8px rgba(124,224,166,.8); }
+.tm-wl.bumped .l{ text-shadow:0 0 8px rgba(255,156,140,.8); }
