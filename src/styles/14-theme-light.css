@@ -91,7 +91,8 @@
 }
 
 /* ── 면: 유리(blur) 톤을 밝게 ── */
-:root[data-theme="light"] .cox-appbar{ background:rgba(255,255,255,.78); border-bottom-color:var(--line-strong); }
+:root[data-theme="light"] .cox-appbar{ border-bottom-color:var(--line-strong); }
+:root[data-theme="light"] .cox-appbar::before{ background:rgba(255,255,255,.78); }
 :root[data-theme="light"] .cox-bottomnav{ background:rgba(255,255,255,.86); box-shadow:0 18px 40px -18px rgba(16,24,40,.35); }
 :root[data-theme="light"] .cox-menu{ box-shadow:0 24px 60px -18px rgba(16,24,40,.35); }
 :root[data-theme="light"] .ptr-circle{ background:rgba(255,255,255,.95); }
@@ -111,6 +112,16 @@
 
 /* ── 텍스트 위계 (Tailwind 회색 리맵) ── */
 :root[data-theme="light"] .cox-dark .text-gray-300{ color:#3B4454 !important; }
+/* 다크에서는 거의 흰색이던 밝은 회색 글자 — 흰 바탕에서는 보이지 않으므로 진하게 */
+:root[data-theme="light"] .cox-dark .text-gray-200,
+:root[data-theme="light"] .cox-dark .text-gray-100,
+:root[data-theme="light"] .cox-dark .text-gray-50{ color:#3B4454 !important; }
+:root[data-theme="light"] .cox-dark .bg-gray-600 .text-gray-200,
+:root[data-theme="light"] .cox-dark .bg-gray-600.text-gray-200,
+:root[data-theme="light"] .cox-dark .bg-gray-600.text-white,
+:root[data-theme="light"] .cox-dark .bg-gray-700 .text-white{ color:var(--text) !important; }
+/* 선택되지 않은 세그먼트 버튼(급수·민감도 등) */
+:root[data-theme="light"] .cox-dark .bg-gray-600{ border:1px solid var(--line-strong); }
 :root[data-theme="light"] .cox-dark .text-gray-600{ color:#9AA3B2 !important; }
 :root[data-theme="light"] .cox-dark .text-cyan-400{ color:var(--dim) !important; }
 :root[data-theme="light"] .cox-modal-text, :root[data-theme="light"] .tut-body, :root[data-theme="light"] .tut-intro p{ color:#3B4454; }

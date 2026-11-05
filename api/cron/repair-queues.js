@@ -38,6 +38,16 @@ export default async function handler(req, res) {
             return { changed: true, dissolvedCount, clearedNames };
         });
 
+        // [휴식 타이머] 시간이 지난 휴식자를 복귀시킨다 (본인 폰이 꺼져 있어도 현황판이 맞게)
+        const now = Date.now();
+        const expired = Object.entries(allPlayers).filter(([, p]) => p.status === 'active' && p.isResting && p.restUntil && new Date(p.restUntil).getTime() <= now);
+        if (expired.length > 0) {
+            const batch = db.batch();
+            expired.forEach(([id]) => batch.update(db.doc(`players/${id}`), { isResting: false, restUntil: FieldValue.delete() }));
+            await batch.commit();
+            result.restResumed = expired.map(([, p]) => p.name);
+        }
+
         if (result.changed) {
             await db.collection('logs').add({
                 action: '예약경기정리',

@@ -1,0 +1,44 @@
+/* ══════════════════════════════════════════════════════════════════
+   [시즌 공지] 포스터 — SeasonModal 의 '포스터' 모드 (예전엔 JSX 안의 <style> 이었다)
+══════════════════════════════════════════════════════════════════ */
+.poster-wrapper{
+  --brand-yellow:#CDFB47; --bg-solid:#0A0A0A;
+  display:flex; justify-content:center; background:transparent; padding:0;
+  font-family:'Noto Sans KR','Inter','Pretendard',sans-serif;
+}
+.poster-wrapper .poster{
+  width:100%; background:var(--bg-solid); position:relative; overflow:hidden; border-radius:12px;
+  display:flex; flex-direction:column; padding-bottom:20px; box-shadow:inset 0 0 100px rgba(255,224,0,.05);
+}
+.poster-wrapper .top-line{ height:4px; background:var(--brand-yellow); width:100%; }
+.poster-wrapper .top-bar{ padding:12px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,.05); }
+.poster-wrapper .top-bar-label{ font-size:9px; letter-spacing:2px; color:#555; font-weight:600; }
+.poster-wrapper .hero{ padding:24px 20px 10px; text-align:left; }
+.poster-wrapper .club-name{ font-family:'Anton','Black Han Sans','Noto Sans KR',sans-serif; font-size:48px; line-height:1; color:var(--brand-yellow); letter-spacing:-1px; margin-bottom:4px; }
+.poster-wrapper .club-sub{ font-size:14px; font-weight:300; letter-spacing:4px; color:rgba(255,255,255,.4); text-transform:uppercase; }
+.poster-wrapper .section{ padding:0 20px; margin-top:20px; text-align:left; }
+@keyframes posterPulseBorder{
+  0%{ border-color:rgba(255,224,0,.1); box-shadow:0 0 0 rgba(255,224,0,0); }
+  50%{ border-color:rgba(255,224,0,.5); box-shadow:0 0 10px rgba(255,224,0,.1); }
+  100%{ border-color:rgba(255,224,0,.1); box-shadow:0 0 0 rgba(255,224,0,0); }
+}
+@keyframes posterStatusBlink{ 0%,100%{ opacity:1; } 50%{ opacity:.3; } }
+.poster-wrapper .section-label{ font-size:9px; letter-spacing:2px; color:var(--brand-yellow); margin-bottom:10px; font-weight:700; display:flex; align-items:center; gap:6px; }
+.poster-wrapper .status-dot{ width:5px; height:5px; background:#ff4d4d; border-radius:50%; box-shadow:0 0 5px #ff4d4d; animation:posterStatusBlink 1s infinite; }
+.poster-wrapper .time-banner{
+  background:#151515; border-radius:8px; padding:14px 18px; display:flex; align-items:center; justify-content:space-between;
+  border:1px solid rgba(255,224,0,.2); animation:posterPulseBorder 3s infinite ease-in-out;
+}
+.poster-wrapper .time-banner-value{ font-size:14px; color:#fff; line-height:1.6; word-break:keep-all; white-space:pre-wrap; }
+.poster-wrapper .shuttle-list{ display:flex; flex-direction:column; gap:8px; }
+.poster-wrapper .shuttle-item{ display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.poster-wrapper .shuttle-text{ font-size:12px; font-weight:400; color:#aaa; }
+.poster-wrapper .ban-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:5px; }
+.poster-wrapper .ban-item{ background:rgba(255,0,0,.03); border-radius:4px; padding:8px 4px; text-align:center; }
+.poster-wrapper .ban-text{ font-size:10px; font-weight:500; color:#666; }
+.poster-wrapper .ban-item.red-ban{ background:rgba(255,0,0,.05); }
+.poster-wrapper .ban-item.red-ban .ban-text{ color:#844; }
+@keyframes posterRevealUp{ 0%{ opacity:0; transform:translateY(20px); } 100%{ opacity:1; transform:translateY(0); } }
+.poster-wrapper .animate-item{ animation:posterRevealUp .8s cubic-bezier(.2,.8,.2,1) both; }
+.poster-wrapper .delay-1{ animation-delay:.1s; } .poster-wrapper .delay-2{ animation-delay:.2s; }
+.poster-wrapper .delay-3{ animation-delay:.3s; } .poster-wrapper .delay-4{ animation-delay:.4s; }

@@ -57,8 +57,8 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                 <div className="cox-secline mb-2.5">
                     <div className="lbl">
                         <span className="tick"></span>
-                        <span>대기 명단</span>
-                        <span className="count">{totalWaiting}</span>
+                        <span role="heading" aria-level="2">대기 명단</span>
+                        <span className="count" aria-label={`${totalWaiting}명`}>{totalWaiting}</span>
                     </div>
                 </div>
                 <div className="flex flex-col gap-2.5">
@@ -124,11 +124,11 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
             <div className="cox-secline mb-2.5 px-1">
                 <div className="lbl cyan">
                     <span className="tick"></span>
-                    <span>경기 예정</span>
+                    <span role="heading" aria-level="2">경기 예정</span>
                     {teamMode && <span className="tm-sched-legend"><i className="b"></i>청 2칸 <i className="w"></i>백 2칸</span>}
                 </div>
                 {isAdmin && hasMatches && (
-                    <button onClick={handleClearScheduledMatches} className="cox-pill-danger">전체삭제</button>
+                    <button type="button" onClick={handleClearScheduledMatches} className="cox-pill-danger" aria-label="예정 경기 전체 삭제">전체삭제</button>
                 )}
             </div>
             <div id="scheduled-matches" className="flex flex-col gap-2">
@@ -139,13 +139,15 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                         // [UI 수정] 내부 요소 정렬 및 간격 유지
                         <div key={`schedule-${matchIndex}`} className="flex items-center w-full bg-gray-800/60 rounded-lg p-1 gap-1">
                             <div
-                                className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
+                                className="cox-rownum flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center"
+                                role={isAdmin ? 'button' : undefined}
+                                aria-label={isAdmin ? `${matchIndex + 1}번 예정 경기 — 길게 누르면 삭제` : `${matchIndex + 1}번 예정 경기`}
                                 onMouseDown={() => handlePressStart(matchIndex)}
                                 onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
                                 onTouchStart={() => handlePressStart(matchIndex)}
                                 onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                             >
-                                <p className="font-bold text-lg text-white arcade-font">{matchIndex + 1}</p>
+                                <p className="font-bold text-lg text-white arcade-font" aria-hidden="true">{matchIndex + 1}</p>
                             </div>
                             <div className={`grid grid-cols-4 gap-1 flex-1 min-w-0 ${teamMode ? 'tm-sched-grid' : ''}`}>
                                 {Array(PLAYERS_PER_MATCH).fill(null).map((_, slotIndex) => {
@@ -164,7 +166,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
                                 })}
                             </div>
                             <div className="flex-shrink-0 w-14 text-center">
-                                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex, 'schedule')}>START</button>
+                                <button type="button" className={`arcade-button w-full min-h-[44px] px-1 rounded-md font-bold transition duration-300 text-[10px] ${playerCount === PLAYERS_PER_MATCH && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={playerCount !== PLAYERS_PER_MATCH || !isAdmin} onClick={() => handleStartMatch(matchIndex, 'schedule')} aria-label={`${matchIndex + 1}번 예정 경기 시작`}>START</button>
                             </div>
                         </div>
                     );
@@ -220,11 +222,11 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
                  <div className="auto-head-left">
                      <div className="lbl green">
                         <span className="tick"></span>
-                        <span>🤖 자동 매칭</span>
+                        <span role="heading" aria-level="2">🤖 자동 매칭</span>
                      </div>
                  </div>
                  {isAdmin && matchList.length > 0 && (
-                    <button onClick={handleClearAutoMatches} className="cox-pill-danger">전체삭제</button>
+                    <button type="button" onClick={handleClearAutoMatches} className="cox-pill-danger" aria-label="자동 매칭 전체 삭제">전체삭제</button>
                  )}
             </div>
             {/* [신규] 누를 때마다 1경기씩 생성하는 '매칭 만들기' 버튼 (관리자 전용) */}
@@ -305,13 +307,15 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
                             {/* [UI 수정] 내부 요소 정렬 및 간격 유지 */}
                             <div className="flex items-center w-full gap-1">
                                 <div
-                                    className="flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center" // [UI 수정] 너비 살짝 늘리고 중앙 정렬
+                                    className="cox-rownum flex-shrink-0 w-8 text-center cursor-pointer flex items-center justify-center"
+                                    role={isAdmin ? 'button' : undefined}
+                                    aria-label={isAdmin ? `${parseInt(matchIndex, 10) + 1}번 자동 매칭 — 길게 누르면 삭제` : `${parseInt(matchIndex, 10) + 1}번 자동 매칭`}
                                     onMouseDown={() => handlePressStart(matchIndex)}
                                     onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
                                     onTouchStart={() => handlePressStart(matchIndex)}
                                     onTouchEnd={handlePressEnd} onTouchCancel={handlePressEnd}
                                 >
-                                    <p className="font-bold text-lg text-white arcade-font">{parseInt(matchIndex, 10) + 1}</p>
+                                    <p className="font-bold text-lg text-white arcade-font" aria-hidden="true">{parseInt(matchIndex, 10) + 1}</p>
                                 </div>
                                 <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                                     {match.map((playerId, slotIndex) => {
@@ -326,9 +330,11 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
                                 </div>
                                 <div className="flex-shrink-0 w-14 text-center">
                                     <button
-                                        className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${canStart && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
+                                        type="button"
+                                        className={`arcade-button w-full min-h-[44px] px-1 rounded-md font-bold transition duration-300 text-[10px] ${canStart && isAdmin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`}
                                         disabled={!canStart || !isAdmin}
                                         onClick={() => handleStartAutoMatch(matchIndex, 'auto')}
+                                        aria-label={`${parseInt(matchIndex, 10) + 1}번 자동 매칭 ${startLabel === 'START' ? '시작' : startLabel}`}
                                     >{startLabel}</button>
                                 </div>
                             </div>
@@ -398,9 +404,9 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
     return (
         <div ref={courtRef} className={courtContainerClass} onClick={handleClick}>
             {/* [UI 수정] 내부 요소 정렬 및 간격 유지 */}
-            <div className="flex-shrink-0 w-8 flex flex-col items-center justify-center">
-                <p className="font-bold text-lg text-white arcade-font">{courtIndex + 1}</p>
-                <p className="font-semibold text-[8px] text-gray-400 arcade-font">코트</p>
+            <div className="cox-rownum flex-shrink-0 w-8 flex flex-col items-center justify-center" aria-label={`${courtIndex + 1}번 코트${isAdmin ? ' — 길게 누르면 코트 이동·교환' : ''}`}>
+                <p className="font-bold text-lg text-white arcade-font" aria-hidden="true">{courtIndex + 1}</p>
+                <p className="font-semibold text-[8px] text-gray-400 arcade-font" aria-hidden="true">코트</p>
             </div>
             <div className="grid grid-cols-4 gap-1 flex-1 min-w-0">
                 {(court?.players || Array(PLAYERS_PER_MATCH).fill(null)).map((playerId, slotIndex) => {
@@ -417,7 +423,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
                 })}
             </div>
             <div className="flex-shrink-0 w-14 text-center">
-                <button className={`arcade-button w-full py-1.5 px-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }}>FINISH</button>
+                <button type="button" className={`arcade-button w-full min-h-[44px] px-1 rounded-md font-bold transition duration-300 text-[10px] ${court && isAdmin ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`} disabled={!court || !isAdmin} onClick={(e) => { e.stopPropagation(); handleEndMatch(courtIndex); }} aria-label={`${courtIndex + 1}번 코트 경기 종료`}>FINISH</button>
                 <CourtTimer court={court} />
             </div>
         </div>
@@ -431,7 +437,7 @@ const InProgressCourtsSection = React.memo(({ numInProgressCourts, inProgressCou
             <div className="cox-secline mb-2.5 px-1">
                 <div className="lbl coral">
                     <span className="tick"></span>
-                    <span>경기 진행</span>
+                    <span role="heading" aria-level="2">경기 진행</span>
                 </div>
             </div>
             <div id="in-progress-courts" className="flex flex-col gap-2">

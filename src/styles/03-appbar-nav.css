@@ -5,12 +5,18 @@
 
 /* ── 상단 앱바 (인사말 + 전광판 타이틀 + 아바타) ── */
 .cox-appbar{
-  position:sticky; top:0; z-index:30;
+  position:sticky; top:0; z-index:49;
   display:flex; align-items:center; justify-content:space-between; gap:12px;
   padding:calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  border-bottom:1px solid var(--line-strong);
+}
+/* 유리 블러는 ::before 에 둔다. 앱바 자체에 backdrop-filter 를 주면 그것이 fixed 요소의
+   기준 상자가 되어, 프로필 메뉴의 화면 전체 배경(.cox-menu-backdrop)이 앱바 안에 갇혔다
+   (메뉴 밖을 탭해도 닫히지 않던 원인). */
+.cox-appbar::before{
+  content:''; position:absolute; inset:0; z-index:-1;
   background:rgba(13,15,20,.72);
   -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
-  border-bottom:1px solid var(--line-strong);
 }
 .cox-appbar-brand{ min-width:0; flex:1; }
 .cox-hello{

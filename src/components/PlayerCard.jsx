@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { isAdminName, getLevelColor, getTeamOf, getWinLoss, TEAM_META } from '../lib/helpers';
 import { Icon } from './Icons';
+import { restRemainingMin } from '../lib/rest';
 
 // ===================================================================================
 // 자식 컴포넌트들
@@ -83,6 +84,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     }
 
     const isLongPressDisabled = context.location === 'court';
+    // [휴식 타이머] 남은 분 — 30초마다 다시 그린다 (시간제 휴식 카드만)
+    const [restNow, setRestNow] = useState(() => Date.now());
+    useEffect(() => {
+        if (!player.isResting || !player.restUntil) return undefined;
+        const id = setInterval(() => setRestNow(Date.now()), 30 * 1000);
+        return () => clearInterval(id);
+    }, [player.isResting, player.restUntil]);
+    const restLeft = player.isResting ? restRemainingMin(player, restNow) : null;
     // ✕ 버튼: 대기 명단에서는 '선수 내보내기', 자동 매칭·경기 예정에서는 '대기자로 이동'(실제 동작과 일치)
     const actionLabel = isWaiting ? '선수 내보내기' : '대기자로 이동';
 
@@ -124,6 +133,11 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''} ${isPlaying ? 'cox-card-playing' : ''} ${teamClass}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
+            role={isMovable && onCardClick ? 'button' : undefined}
+            tabIndex={isMovable && onCardClick ? 0 : undefined}
+            aria-pressed={isMovable && onCardClick ? !!(context.selected || isSelectedForWin) : undefined}
+            aria-label={`${player.name} ${(player.level || '').replace('조', '')}조 ${player.todayRecentGames ? player.todayRecentGames.length : 0}경기${player.isResting ? ' 휴식 중' : ''}${isPlaying ? ' 경기중' : ''}${isCurrentUser ? ' (나)' : ''}`}
+            onKeyDown={isMovable && onCardClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick(); } } : undefined}
             onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
             onMouseUp={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
             onMouseLeave={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
@@ -132,7 +146,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             {/* [접속 표시] 지금 앱을 보고 있는 선수의 초록 펄스 점 */}
             {isOnline && !player.isResting && <span className="cox-online-dot" title="접속 중" />}
             {/* [경기중 표시] 경기가 끝나면 이 딱지가 사라지고 카드 색이 돌아온다 */}
-            {isPlaying && <span className="cox-playing-tag">경기중</span>}
+            {isPlaying && <span className="cox-playing-tag" aria-hidden="true">경기중</span>}
+            {!isPlaying && player.isResting && <span className="cox-rest-badge" aria-hidden="true">{restLeft !== null ? `☕ ${restLeft}분` : '☕ 휴식'}</span>}
             <div>
                 <div className={playerNameClass}>{teamMode && isAce && <span className="tm-ace" title="팀 에이스">⭐</span>}{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>
