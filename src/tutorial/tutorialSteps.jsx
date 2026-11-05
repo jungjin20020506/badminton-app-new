@@ -100,7 +100,8 @@ const TUTORIAL_ADMIN_STEPS = [
         surface: 'menu', target: '[data-tut="menu"]',
         title: '내 메뉴',
         body: (<>
-            <b>휴식</b> · <b>관리자 설정</b> · <b>튜트리얼 다시 보기</b> · <b>나가기</b>가 여기 있어요.
+            <b>관리자 설정</b> · <b>튜트리얼 다시 보기</b> · <b>테마</b> · <b>나가기</b>가 여기 있어요.
+            <br/>휴식은 프로필 왼쪽의 <b>☕ 버튼</b>으로 바로!
         </>),
     },
     {
@@ -187,10 +188,10 @@ const TUTORIAL_USER_STEPS = [
         </>),
     },
     {
-        surface: 'menu', target: '[data-tut="menu"]',
+        surface: 'main', target: '[data-tut="rest"]',
         title: '휴식할 때 · 집에 갈 때',
         body: (<>
-            쉴 때는 <b>잠시 휴식하기</b>, 갈 때는 <b>나가기</b>를 꼭!
+            쉴 때는 위의 <b>☕ 휴식 버튼</b>(몇 분 쉴지 고르면 자동 복귀), 갈 때는 메뉴의 <b>나가기</b>를 꼭!
             <br/>안 누르면 없는 사람이 매칭에 잡혀요.
         </>),
     },

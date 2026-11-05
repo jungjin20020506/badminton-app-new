@@ -229,3 +229,8 @@
 :root[data-theme="light"] .tm-log-row, :root[data-theme="light"] .tm-end-side.mixed, :root[data-theme="light"] .tm-wl-adjust .cell, :root[data-theme="light"] .tm-edit-cell{ background:#F7F8FA; border-color:var(--line-strong); }
 :root[data-theme="light"] .tm-edit-cell.white{ background:rgba(75,85,99,.08); }
 :root[data-theme="light"] .tm-mode-chip{ color:#1D4ED8; }
+
+/* ── 앱바 휴식 버튼 ── */
+:root[data-theme="light"] .cox-rest-btn{ background:#FFFFFF; }
+:root[data-theme="light"] .cox-rest-btn.on{ box-shadow:0 6px 16px -8px rgba(95,138,0,.6); }
+:root[data-theme="light"] .cox-rest-btn-min{ background:#FFFFFF; color:var(--volt-ink); border-color:var(--volt-ink); }

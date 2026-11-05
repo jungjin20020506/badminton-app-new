@@ -43,6 +43,25 @@
 .cox-avatar-btn.admin{ background:linear-gradient(140deg,#FFD45A,#E0A21F); box-shadow:0 6px 18px -6px #FFD45A; }
 .cox-avatar-btn:active{ transform:scale(.94); }
 
+/* [휴식] 앱바 휴식 버튼 — 아바타와 같은 44px, 쉬는 중이면 라임 채움 + 남은 분 배지 */
+.cox-rest-btn{
+  position:relative; flex-shrink:0; width:44px; height:44px; border-radius:15px; cursor:pointer;
+  border:1px solid var(--line-strong); background:var(--card); color:var(--dim);
+  display:flex; align-items:center; justify-content:center;
+  transition:transform .12s, filter .15s, background-color .15s, color .15s;
+}
+.cox-rest-btn:hover{ color:var(--text); }
+.cox-rest-btn:active{ transform:scale(.94); }
+.cox-rest-btn.on{
+  background:var(--volt); color:#0c0d11; border-color:transparent;
+  box-shadow:0 6px 18px -6px var(--volt);
+}
+.cox-rest-btn-min{
+  position:absolute; right:-4px; bottom:-4px; min-width:20px; height:18px; padding:0 4px;
+  border-radius:999px; background:#0c0d11; color:var(--volt); border:1.5px solid var(--volt);
+  font-size:10px; font-weight:900; line-height:15px; text-align:center; white-space:nowrap;
+}
+
 /* 프로필 드롭다운 메뉴 */
 .cox-menu-backdrop{ position:fixed; inset:0; z-index:48; background:transparent; }
 .cox-menu{

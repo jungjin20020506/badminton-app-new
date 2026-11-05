@@ -833,6 +833,21 @@ export default function App() {
                     </h1>
                 </div>
 
+                {/* [휴식] 메뉴를 열지 않고 바로 — 프로필 버튼과 같은 크기, 쉬는 중이면 라임 채움 + 남은 분 */}
+                {!currentUser.isGhostAdmin && (
+                    <button
+                        type="button"
+                        className={`cox-rest-btn ${currentUser.isResting ? 'on' : ''}`}
+                        onClick={handleToggleRest}
+                        aria-label={currentUser.isResting ? `경기 복귀하기${restRemaining !== null ? ` (${restRemaining}분 남음)` : ''}` : '잠시 휴식하기'}
+                        title={currentUser.isResting ? '경기 복귀하기' : '잠시 휴식하기'}
+                        aria-pressed={currentUser.isResting}
+                        data-tut="rest"
+                    >
+                        <Icon name={currentUser.isResting ? 'play' : 'mug-hot'} size={20} />
+                        {currentUser.isResting && restRemaining !== null && <span className="cox-rest-btn-min" aria-hidden="true">{restRemaining}′</span>}
+                    </button>
+                )}
                 <div className="relative flex-shrink-0">
                     <button
                         type="button"
@@ -866,12 +881,6 @@ export default function App() {
                                     </div>
                                 </div>
 
-                                {!currentUser.isGhostAdmin && (
-                                    <button type="button" role="menuitem" className={`cox-menu-item ${currentUser.isResting ? 'accent' : ''}`} onClick={() => { setIsProfileMenuOpen(false); handleToggleRest(); }}>
-                                        <Icon name={currentUser.isResting ? 'play' : 'mug-hot'} size={18} />
-                                        {currentUser.isResting ? `경기 복귀하기${restRemaining !== null ? ` (${restRemaining}분 남음)` : ''}` : '잠시 휴식하기'}
-                                    </button>
-                                )}
                                 {isAdmin && (
                                     <button type="button" role="menuitem" className="cox-menu-item" onClick={() => { setIsProfileMenuOpen(false); setIsSettingsOpen(true); }} data-tut="menu-settings">
                                         <Icon name="sliders" size={18} />관리자 설정
