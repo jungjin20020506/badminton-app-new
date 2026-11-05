@@ -1,0 +1,171 @@
+<!--
+  [링크 미리보기 이미지] public/og-image.png 의 디자인 원본.
+  카카오톡·문자 등에 링크를 공유할 때 보이는 카드 이미지(1200x630)를 이 HTML로 만든다.
+  바꾼 뒤 다시 만드는 법 (Windows, Chrome 필요):
+    chrome --headless=new --hide-scrollbars --force-device-scale-factor=2 --window-size=1200,630 ^
+      --virtual-time-budget=8000 --screenshot=og@2x.png file:///절대경로/scripts/og-image.html
+    그 다음 2400x1260 결과를 1200x630 으로 줄여 public/og-image.png 로 저장한다.
+-->
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Noto+Sans+KR:wght@400;500;700;900&display=block" rel="stylesheet">
+<style>
+  :root{
+    --ink:#08090C; --surface:#101217; --card:#171A21; --card-2:#1E222B;
+    --line:rgba(255,255,255,.07); --volt:#CDFB47; --coral:#FF6A52; --court:#2E6B5E;
+    --text:#F3F5F8; --dim:#8C93A1; --mute:#565D6B; --bolt:#FFD60A;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ width:1200px; height:630px; overflow:hidden; background:var(--ink); }
+  body{ font-family:'Noto Sans KR', sans-serif; color:var(--text); position:relative; }
+
+  /* ── 배경: 코트 라인(원근) + 라임 글로우 + 비네트 ── */
+  .bg{ position:absolute; inset:0; overflow:hidden; }
+  .bg .glow1{ position:absolute; left:-180px; top:-260px; width:900px; height:900px; border-radius:50%;
+    background:radial-gradient(circle, rgba(205,251,71,.22) 0%, rgba(205,251,71,.06) 38%, rgba(205,251,71,0) 68%); }
+  .bg .glow2{ position:absolute; right:-260px; bottom:-380px; width:980px; height:980px; border-radius:50%;
+    background:radial-gradient(circle, rgba(46,107,94,.55) 0%, rgba(46,107,94,.15) 40%, rgba(46,107,94,0) 68%); }
+  .bg .court{ position:absolute; inset:0; }
+  .bg .vignette{ position:absolute; inset:0;
+    background:radial-gradient(120% 90% at 50% 45%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%); }
+  .bg .grid{ position:absolute; inset:0; opacity:.35;
+    background-image:linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size:60px 60px; }
+
+  /* ── 좌측: 브랜드 ── */
+  .brand{ position:absolute; left:84px; top:92px; width:720px; }
+  .brand .mark-row{ display:flex; align-items:center; gap:22px; margin-bottom:34px; }
+  .brand .mark{ width:92px; height:92px; filter:drop-shadow(0 0 22px rgba(255,214,10,.45)); }
+  .brand .label{ text-transform:uppercase; letter-spacing:.34em; font-weight:700; font-size:18px; color:var(--volt); }
+  .brand .label small{ display:block; letter-spacing:.22em; font-size:13px; color:var(--dim); margin-top:8px; font-weight:500; }
+  .brand h1{ font-family:'Anton','Noto Sans KR',sans-serif; font-weight:400; font-size:118px; line-height:.92; letter-spacing:.045em;
+    color:var(--text); text-shadow:0 10px 40px rgba(0,0,0,.6); white-space:nowrap; }
+  .brand h1 em{ font-style:normal; color:var(--volt); text-shadow:0 0 18px rgba(205,251,71,.55), 0 0 60px rgba(205,251,71,.28), 0 10px 40px rgba(0,0,0,.6); }
+  .brand .tag{ margin-top:30px; font-size:38px; font-weight:700; letter-spacing:-.01em; color:#E6E9EF; }
+  .brand .tag b{ color:var(--volt); font-weight:900; }
+
+  /* ── 하단: 칩 + CTA ── */
+  .bottom{ position:absolute; left:84px; right:84px; bottom:62px; display:flex; align-items:center; justify-content:space-between; }
+  .chips{ display:flex; gap:14px; }
+  .chip{ display:flex; align-items:center; gap:10px; height:54px; padding:0 20px 0 16px; border-radius:999px;
+    background:rgba(23,26,33,.85); border:1px solid rgba(255,255,255,.12); font-size:21px; font-weight:700; color:#DDE1E8;
+    box-shadow:0 8px 24px rgba(0,0,0,.35); }
+  .chip .dot{ width:12px; height:12px; border-radius:50%; background:var(--volt); box-shadow:0 0 12px rgba(205,251,71,.8); }
+  .chip .dot.coral{ background:var(--coral); box-shadow:0 0 12px rgba(255,106,82,.8); }
+  .chip .dot.gold{ background:var(--bolt); box-shadow:0 0 12px rgba(255,214,10,.8); }
+  .cta{ display:flex; align-items:center; gap:12px; height:66px; padding:0 30px; border-radius:18px; background:var(--volt); color:#0C0D11;
+    font-size:26px; font-weight:900; letter-spacing:-.01em;
+    box-shadow:0 0 0 2px rgba(205,251,71,.35), 0 0 40px rgba(205,251,71,.45), 0 14px 34px rgba(0,0,0,.5); }
+  .cta .arrow{ font-family:'Anton',sans-serif; font-size:30px; line-height:1; transform:translateY(-1px); }
+
+  /* ── 우측: 라이브 코트 카드 + 셔틀콕 ── */
+  .card{ position:absolute; right:84px; top:92px; width:300px; border-radius:22px; background:linear-gradient(180deg, #1A1E26 0%, #13161C 100%);
+    border:1px solid rgba(255,255,255,.1); box-shadow:0 30px 70px rgba(0,0,0,.6), 0 0 0 1px rgba(205,251,71,.08); padding:22px 24px 24px; }
+  .card .head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .card .court-no{ font-family:'Anton',sans-serif; font-size:22px; letter-spacing:.08em; color:var(--text); }
+  .card .live{ display:flex; align-items:center; gap:7px; font-size:13px; font-weight:900; letter-spacing:.14em; color:var(--volt); }
+  .card .live i{ width:9px; height:9px; border-radius:50%; background:var(--volt); box-shadow:0 0 10px var(--volt); }
+  .team{ display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:14px; background:rgba(255,255,255,.04); border:1px solid var(--line); }
+  .team + .team{ margin-top:10px; }
+  .team .names{ font-size:19px; font-weight:700; color:#E6E9EF; line-height:1.15; }
+  .team .names small{ display:block; font-size:12px; color:var(--dim); font-weight:500; margin-top:3px; letter-spacing:.06em; }
+  .team .score{ font-family:'Anton',sans-serif; font-size:40px; color:var(--text); line-height:1; }
+  .team.win .score{ color:var(--volt); text-shadow:0 0 16px rgba(205,251,71,.5); }
+  .vs{ text-align:center; font-family:'Anton',sans-serif; font-size:13px; letter-spacing:.3em; color:var(--mute); margin:8px 0 -2px; }
+  .card .foot{ margin-top:16px; display:flex; justify-content:space-between; font-size:13px; color:var(--dim); font-weight:500; }
+  .card .foot b{ color:#C9CED8; font-weight:700; }
+
+  .shuttle{ position:absolute; left:560px; top:34px; width:236px; height:236px; transform:rotate(-24deg);
+    filter:drop-shadow(0 20px 40px rgba(0,0,0,.6)); opacity:.95; }
+  .streak{ position:absolute; right:520px; top:330px; width:420px; height:6px; border-radius:3px; transform:rotate(-28deg); transform-origin:right center;
+    background:linear-gradient(90deg, rgba(205,251,71,0) 0%, rgba(205,251,71,.0) 40%, rgba(205,251,71,.75) 100%); filter:blur(1px); }
+  .streak.s2{ top:352px; width:300px; height:3px; opacity:.6; }
+</style>
+</head>
+<body>
+  <div class="bg">
+    <div class="grid"></div>
+    <div class="glow1"></div>
+    <div class="glow2"></div>
+    <!-- 원근감 있는 코트 라인 -->
+    <svg class="court" viewBox="0 0 1200 630" fill="none" stroke="rgba(205,251,71,.16)" stroke-width="2">
+      <path d="M-40 650 L300 120 L900 120 L1240 650" />
+      <path d="M90 450 L1110 450" stroke-width="1.5" />
+      <path d="M190 300 L1010 300" stroke-width="1.5" />
+      <path d="M-40 650 L600 120 M1240 650 L600 120" stroke="rgba(205,251,71,.06)" />
+      <path d="M600 120 L600 650" stroke="rgba(255,255,255,.07)" stroke-dasharray="6 10" />
+      <!-- 네트 -->
+      <path d="M300 120 L900 120" stroke="rgba(255,255,255,.22)" stroke-width="3" />
+    </svg>
+    <div class="vignette"></div>
+  </div>
+
+  <div class="brand">
+    <div class="mark-row">
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="1" y="1" width="62" height="62" rx="16" fill="#0A0A0C" stroke="rgba(255,214,10,.45)" stroke-width="2"/>
+        <path d="M37 6 L15 37 H29 L25 58 L49 26 H34 Z" fill="#FFD60A"/>
+      </svg>
+      <div class="label">Premium Match System<small>실시간 배드민턴 경기 관리</small></div>
+    </div>
+    <h1>COCKS<em>LIGHTING</em></h1>
+    <p class="tag">지금 <b>누가 치고</b> 있는지, <b>내 차례</b>는 언제인지</p>
+  </div>
+
+  <div class="card">
+    <div class="head"><span class="court-no">COURT 1</span><span class="live"><i></i>LIVE</span></div>
+    <div class="team win">
+      <div class="names">김민수 · 박지현<small>A조 · 남복</small></div>
+      <div class="score">21</div>
+    </div>
+    <div class="vs">VS</div>
+    <div class="team">
+      <div class="names">이준호 · 최서연<small>A조 · 남복</small></div>
+      <div class="score">18</div>
+    </div>
+    <div class="foot"><span>대기 <b>12명</b></span><span>다음 경기 <b>2번째</b></span></div>
+  </div>
+
+  <!-- 셔틀콕 -->
+  <svg class="shuttle" viewBox="0 0 200 200" aria-hidden="true">
+    <defs>
+      <linearGradient id="feather" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#FFFFFF"/>
+        <stop offset="1" stop-color="#C9CED8"/>
+      </linearGradient>
+      <radialGradient id="cork" cx=".35" cy=".3" r=".8">
+        <stop offset="0" stop-color="#FFB199"/>
+        <stop offset="1" stop-color="#E24F36"/>
+      </radialGradient>
+    </defs>
+    <g transform="translate(100 100)">
+      <!-- 깃털 -->
+      <g fill="url(#feather)" stroke="#0E1014" stroke-width="2.5" stroke-linejoin="round">
+        <path d="M-8 -20 L-70 -92 L-42 -98 Z"/>
+        <path d="M-4 -24 L-44 -104 L-14 -106 Z"/>
+        <path d="M0 -26 L-12 -110 L14 -110 Z"/>
+        <path d="M4 -24 L16 -108 L44 -100 Z"/>
+        <path d="M8 -20 L46 -96 L70 -86 Z"/>
+      </g>
+      <!-- 깃털 묶음 밴드 -->
+      <path d="M-30 -30 Q0 -20 30 -30 L22 -6 Q0 2 -22 -6 Z" fill="#F3F5F8" stroke="#0E1014" stroke-width="2.5"/>
+      <path d="M-24 -18 Q0 -10 24 -18" stroke="#CDFB47" stroke-width="4" fill="none"/>
+      <!-- 코르크 -->
+      <path d="M-22 -6 Q0 2 22 -6 L22 14 Q22 40 0 40 Q-22 40 -22 14 Z" fill="url(#cork)" stroke="#0E1014" stroke-width="2.5"/>
+    </g>
+  </svg>
+
+  <div class="bottom">
+    <div class="chips">
+      <div class="chip"><span class="dot"></span>진행 중 경기</div>
+      <div class="chip"><span class="dot coral"></span>대기 순서</div>
+      <div class="chip"><span class="dot gold"></span>오늘의 순위</div>
+    </div>
+    <div class="cta">탭해서 경기 현황 보기 <span class="arrow">→</span></div>
+  </div>
+</body>
+</html>
