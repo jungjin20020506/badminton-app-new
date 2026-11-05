@@ -92,3 +92,11 @@ tests/                Vitest (helpers, ranking, dates, matching, 시뮬레이터
 ## 링크 미리보기 이미지
 
 카카오톡 등에 링크를 올릴 때 보이는 카드(`public/og-image.png`)의 원본은 `scripts/og-image.html`입니다. 바꾼 뒤에는 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 보입니다.
+
+## 남은 과제 (의도적으로 이번에 하지 않은 것)
+
+- **선수 id = 이름 구조 분리** — 지금은 `generateId(이름)`이 `players`·`roster` 문서 id라서 이름을 바꿀 수 없고 동명이인을 구분하지 못합니다. 바꾸려면 ① `roster`에 `uid`(임의 문자열)를 추가하고 `players` 문서 id를 `uid`로 ② 기존 문서를 한 번에 이주하는 스크립트 ③ 입장 화면은 이름 → uid 조회로 바꾸는 3단계가 필요합니다. 운영 중 데이터 이주라 운동이 없는 날에 따로 진행해야 합니다.
+- **접속 표시를 Realtime Database `onDisconnect`로** — Firebase 콘솔에서 Realtime Database를 먼저 만들어야 해서 코드만으로는 바꿀 수 없습니다. 지금은 70초 하트비트(단일 문서)로 동작합니다.
+- **카드 목록 가상화** — 카드가 60장 이하라 FLIP 애니메이션과의 충돌 위험 대비 이득이 작아 보류했습니다.
+- **React Compiler** — 자동 메모이제이션은 이득이 크지만 아직 실험 단계라 운영 앱에는 넣지 않았습니다.
+- **폰트 자체 호스팅** — Noto Sans KR은 Google Fonts가 글자 범위별로 나눠 주는 편이 더 빠릅니다. preload만 추가했습니다.
