@@ -3,6 +3,7 @@ import { getDoc, doc } from 'firebase/firestore';
 import { playersRef } from '../lib/firebase';
 import { CoxMark } from './Logo';
 import { TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../lib/helpers';
+import { VersionInfo } from './UpdateBanner';
 
 // ===================================================================================
 // 신규 및 복구된 페이지/모달 컴포넌트들
@@ -208,6 +209,8 @@ function EntryPage({ onEnter, roster, teamMode = false }) {
                         {teamMode && formData.team ? `${TEAM_META[formData.team].label}으로 입장하기` : '입장하기'}
                     </button>
                 </form>
+                {/* [업데이트] 현재 버전 + 업데이트 확인 — 입장 전에도 구버전이면 바로 갱신할 수 있게 */}
+                <VersionInfo className="mt-5" />
             </div>
         </div>
     );

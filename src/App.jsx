@@ -29,7 +29,6 @@ import { TeamScoreBoard } from './components/TeamScoreBoard';
 import { TeamRankingSection } from './components/TeamRanking';
 import { computeRankings, computeAceIds, rankOf } from './lib/ranking';
 import { SkeletonScreen } from './components/Skeleton';
-import { UpdateBanner } from './components/UpdateBanner';
 import { SettingsModal } from './components/SettingsModal';
 import { RosterManageModal } from './components/RosterManageModal';
 import {
@@ -2116,7 +2115,7 @@ useEffect(() => {
     }
 
    if (!currentUser) {
-        return <><EntryPage onEnter={handleEnter} roster={roster} teamMode={teamMode} /><UpdateBanner /></>;
+        return <EntryPage onEnter={handleEnter} roster={roster} teamMode={teamMode} />;
     }
 
     // [소모임 동기화] 오늘 자동 동기화가 실패했는지 (실패 배너 표시 조건)
@@ -2126,9 +2125,6 @@ useEffect(() => {
 
     return (
         <div className="cox-dark text-white min-h-screen font-sans flex flex-col" style={{ fontFamily: "'Noto Sans KR', sans-serif" }}>
-
-            {/* --- [업데이트 안내] 새 버전 배포 감지 배너 --- */}
-            <UpdateBanner />
 
             {/* --- [청백전] 득점 실황 배너 (3초) + 화면 가장자리 팀 색 플래시 --- */}
             {edgeFlash && <div key={`edge-${edgeFlash.id}`} className={`tm-edge ${edgeFlash.key}`} aria-hidden="true" />}

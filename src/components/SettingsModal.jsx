@@ -4,6 +4,7 @@ import { configRef } from '../lib/firebase';
 import { getAdminNames, MATCH_MODE_NORMAL, MATCH_MODE_TEAM, TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../lib/helpers';
 import { AUTO_MATCH_SENSITIVITIES, getSensitivity } from '../lib/matching';
 import { computeDailySummary, drawSummaryCard } from '../lib/summaryCard';
+import { VersionInfo } from './UpdateBanner';
 
 function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, activePlayers, allPlayers, currentUser, roster, onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer, onSomoimSync, onOpenRoster, somoimSync, matchMode = MATCH_MODE_NORMAL, onSwitchMatchMode, teamScores }) {
     // [청백전] 지금 청백전 모드인지
@@ -607,6 +608,8 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
                      <button onClick={onCancel} className="w-full arcade-button bg-gray-600 hover:bg-gray-700 font-bold py-2 rounded-lg">취소</button>
                     <button onClick={handleSave} className="w-full arcade-button bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-2 rounded-lg">저장</button>
                 </div>
+                {/* [업데이트] 현재 버전 + 수동 업데이트 확인 — 회원이 "구버전"이라고 할 때 비교용 */}
+                <VersionInfo className="mt-3 flex-shrink-0" />
             </div>
 
             {/* [자동매칭] 사용설명서 모달 */}
