@@ -15,7 +15,7 @@ import React, { useEffect, useRef, useState } from 'react';
 // ===================================================================================
 
 /** 시청 기록 키 — players/<id>.tutorialSeen 안에 이 이름으로 저장된다 */
-const AUTOMATCH_GUIDE_KEY = 'automatch-v2';
+// 시청 기록 키(AUTOMATCH_GUIDE_KEY)는 ./tutorialStorage.js 에 있다
 
 // ───────────────────────────────────────────────────────────────────────────────────
 // 가상 선수들 (연습 화면 전용 — 실제 데이터와 무관)
@@ -455,4 +455,4 @@ function AutoMatchGuide({ userName, onComplete, onDismiss }) {
     );
 }
 
-export { AutoMatchGuide, AUTOMATCH_GUIDE_KEY };
+export { AutoMatchGuide };

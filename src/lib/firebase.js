@@ -7,6 +7,9 @@ import {
 } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAdminNames, setAdminNamesCache, generateId, filterTodayGames } from './helpers';
+import { log } from './logger';
+import { getDailyResetKey, getKstParts } from './dates';
+import { STORAGE_KEYS, TIMING, KST } from './constants';
 
 // ===================================================================================
 // Firebase & Service Logic (하나의 파일로 통합)
@@ -44,11 +47,12 @@ const forceReconnect = async (reason) => {
     if (reconnectInFlight) return;
     reconnectInFlight = true;
     try {
+        setConnectionState('reconnecting');
         await disableNetwork(db);
         await enableNetwork(db);
-        console.log('[실시간] 연결 재수립:', reason);
+        log.info('[실시간] 연결 재수립:', reason);
     } catch (e) {
-        console.error('[실시간] 재연결 실패:', e);
+        log.error('[실시간] 재연결 실패:', e);
     } finally {
         reconnectInFlight = false;
     }
@@ -56,7 +60,7 @@ const forceReconnect = async (reason) => {
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') { lastHiddenAt = Date.now(); return; }
     // 잠깐 앱 전환(15초 미만)은 그대로 두고, 오래 나갔다 왔을 때만 새로 연결
-    if (lastHiddenAt && Date.now() - lastHiddenAt > 15 * 1000) forceReconnect('화면 복귀');
+    if (lastHiddenAt && Date.now() - lastHiddenAt > TIMING.reconnectAfterHiddenMs) forceReconnect('화면 복귀');
 });
 window.addEventListener('online', () => forceReconnect('네트워크 복구'));
 window.addEventListener('pageshow', (e) => { if (e.persisted) forceReconnect('뒤로가기 복귀'); });
@@ -87,13 +91,13 @@ const writeAuditLog = async (action, detail = {}) => {
         await addDoc(logsRef, {
             action,                                                        // 무엇을 (예: '전체내보내기')
             detail,                                                        // 부가 정보 (누가, 몇 명 등)
-            byPlayerId: localStorage.getItem('badminton-currentUser-id') || null, // 이 기기로 입장한 선수 ID
+            byPlayerId: localStorage.getItem(STORAGE_KEYS.currentUserId) || null, // 이 기기로 입장한 선수 ID
             userAgent: navigator.userAgent,                                // 기기/브라우저 정보
             at: serverTimestamp(),                                         // 서버 기준 시각 (조작 불가)
             atLocal: new Date().toISOString(),                             // 그 기기의 시계 (틀린 시계 탐지용)
         });
     } catch (e) {
-        console.error('[감사 로그] 기록 실패:', e);
+        log.error('[감사 로그] 기록 실패:', e);
     }
 };
 
@@ -111,7 +115,7 @@ const getServerNow = async () => {
         if (!at || typeof at.toDate !== 'function') throw new Error('서버 시간을 확인하지 못했습니다.');
         serverClockOffsetMs = at.toDate().getTime() - Date.now();
         const offsetMin = Math.round(serverClockOffsetMs / 60000);
-        if (Math.abs(offsetMin) >= 10) console.warn(`[시계 오류 방어] 이 기기의 시계가 서버와 약 ${offsetMin}분 차이납니다.`);
+        if (Math.abs(offsetMin) >= 10) log.warn(`[시계 오류 방어] 이 기기의 시계가 서버와 약 ${offsetMin}분 차이납니다.`);
     }
     return new Date(Date.now() + serverClockOffsetMs);
 };
@@ -168,7 +172,31 @@ onSnapshot(activePlayersQuery, async (snapshot) => {
 });
 
 
-onSnapshot(gameStateRef, (doc) => {
+// ===================================================================================
+// [연결 상태] 서버와 붙어 있는지 — ConnectionBanner 가 구독한다
+// -----------------------------------------------------------------------------------
+//  'online'       서버 스냅샷을 받고 있다
+//  'offline'      브라우저가 오프라인이거나, 서버가 아닌 캐시에서만 데이터가 온다
+//  'reconnecting' 네트워크는 돌아왔고 다시 붙는 중
+// 첫 로드는 캐시 우선이라 fromCache=true 가 정상이다 → 서버 스냅샷을 한 번 받은 뒤부터 판정
+// ===================================================================================
+let connectionState = 'online';
+let hadServerSnapshot = false;
+const connectionListeners = new Set();
+const setConnectionState = (next) => {
+    if (next === connectionState) return;
+    connectionState = next;
+    log.info('[연결 상태]', next);
+    connectionListeners.forEach((fn) => { try { fn(next); } catch { /* 무시 */ } });
+};
+const getConnectionState = () => connectionState;
+const subscribeConnection = (fn) => { connectionListeners.add(fn); return () => connectionListeners.delete(fn); };
+window.addEventListener('offline', () => setConnectionState('offline'));
+window.addEventListener('online', () => setConnectionState('reconnecting'));
+
+onSnapshot(gameStateRef, { includeMetadataChanges: true }, (doc) => {
+  if (!doc.metadata.fromCache) { hadServerSnapshot = true; setConnectionState('online'); }
+  else if (hadServerSnapshot && typeof navigator !== 'undefined' && navigator.onLine === false) setConnectionState('offline');
   if (doc.exists()) {
     gameStateData = doc.data();
   } else {
@@ -228,7 +256,7 @@ onSnapshot(rosterRef, (snapshot) => {
     if (resolveRoster) { resolveRoster(); resolveRoster = null; }
     notifySubscribers();
 }, (error) => {
-    console.error("[선수 명단] 로딩 실패:", error);
+    log.error("[선수 명단] 로딩 실패:", error);
     if (resolveRoster) { resolveRoster(); resolveRoster = null; }
 });
 
@@ -237,7 +265,7 @@ onSnapshot(somoimSyncRef, (d) => {
     somoimSyncData = d.exists() ? d.data() : null;
     notifySubscribers();
 }, (error) => {
-    console.error("[소모임 동기화] 상태 로딩 실패:", error);
+    log.error("[소모임 동기화] 상태 로딩 실패:", error);
 });
 
 // [실시간 생명감] 접속 표시 리스너 (로딩을 막지 않음)
@@ -245,12 +273,39 @@ onSnapshot(presenceRef, (d) => {
     presenceData = d.exists() ? d.data() : {};
     notifySubscribers();
 }, (error) => {
-    console.error("[접속 표시] 로딩 실패:", error);
+    log.error("[접속 표시] 로딩 실패:", error);
 });
 
 function notifySubscribers() {
   subscribers.forEach(callback => callback());
 }
+
+// ===================================================================================
+// [트랜잭션 재시도] runTransaction 래퍼 — 몇 번 만에 됐는지, 왜 실패했는지 남긴다
+// -----------------------------------------------------------------------------------
+// Firestore SDK도 내부에서 재시도하지만, 통신사 망·인앱 브라우저에서는 'unavailable'로
+// 끝나는 일이 있다. 그런 일시 오류만 짧은 백오프(0.3s → 0.6s)로 두 번 더 시도한다.
+// 로직 오류(코드에서 throw한 Error)는 재시도하지 않는다.
+// ===================================================================================
+const RETRIABLE_TX_CODES = new Set(['aborted', 'unavailable', 'deadline-exceeded', 'resource-exhausted']);
+const runTx = async (name, updateFunction, { retries = 2 } = {}) => {
+    let attempt = 0;
+    for (;;) {
+        attempt += 1;
+        const startedAt = Date.now();
+        try {
+            const result = await runTransaction(db, updateFunction);
+            if (attempt > 1) log.info(`[트랜잭션] ${name} — ${attempt}번째 시도에 성공 (${Date.now() - startedAt}ms)`);
+            return result;
+        } catch (e) {
+            const code = e?.code || '';
+            const retriable = RETRIABLE_TX_CODES.has(code);
+            log.warn(`[트랜잭션] ${name} 실패 (시도 ${attempt}/${retries + 1}, ${Date.now() - startedAt}ms, ${code || e?.message || e})`);
+            if (!retriable || attempt > retries) throw e;
+            await new Promise((r) => setTimeout(r, 300 * 2 ** (attempt - 1) + Math.random() * 200));
+        }
+    }
+};
 
 // --- 4. Service 객체 ---
 const firebaseService = {
@@ -274,8 +329,8 @@ const firebaseService = {
 //   "접속 중" 판정은 마지막 기록이 3분 이내인지로 한다(수신 측 계산).
 // · 리액션: 마지막 리액션 1건을 덮어쓰는 브로드캐스트. nonce로 중복 재생을 막는다.
 // ===================================================================================
-const PRESENCE_INTERVAL_MS = 70 * 1000;
-const PRESENCE_FRESH_MS = 3 * 60 * 1000;
+const PRESENCE_INTERVAL_MS = TIMING.presenceIntervalMs;
+const PRESENCE_FRESH_MS = TIMING.presenceFreshMs;
 
 const isPresenceFresh = (at) => typeof at === 'number' && (Date.now() - at) < PRESENCE_FRESH_MS;
 
@@ -285,7 +340,7 @@ function startPresenceHeartbeat(playerId) {
     const beat = () => {
         if (stopped || document.visibilityState === 'hidden') return;
         setDoc(presenceRef, { [playerId]: Date.now() }, { merge: true })
-            .catch((e) => console.error('[접속 표시] 하트비트 실패:', e));
+            .catch((e) => log.error('[접속 표시] 하트비트 실패:', e));
     };
     beat();
     const timer = setInterval(beat, PRESENCE_INTERVAL_MS);
@@ -313,16 +368,7 @@ function startPresenceHeartbeat(playerId) {
 // 단 하나의 클라이언트만 초기화를 실행한다.
 // ===================================================================================
 
-// 새벽 2시(KST)를 하루의 경계로 보는 '운영일 키'(YYYY-MM-DD)를 만든다.
-// UTC 시각에 +7시간(KST +9시간에서 초기화 기준 2시를 빼면 +7시간) 한 뒤 날짜를 취하면,
-// 새벽 2시 이전이면 전날, 이후면 당일 날짜가 자연스럽게 나온다.
-const getDailyResetKey = (now = new Date()) => {
-    const shifted = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const y = shifted.getUTCFullYear();
-    const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
-    const d = String(shifted.getUTCDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-};
+// 운영일 키(YYYY-MM-DD, 새벽 2시 경계) 계산은 src/lib/dates.js (서버 크론과 공용)
 
 let dailyResetInFlight = false;
 
@@ -384,10 +430,10 @@ const runDailyResetIfDue = async () => {
         }
         if (count % 400 !== 0) await batch.commit();
 
-        console.log(`[새벽 2시 초기화] ${todayKey} 기준 ${count}명 선수 기록 삭제 및 내보내기 완료`);
+        log.info(`[새벽 2시 초기화] ${todayKey} 기준 ${count}명 선수 기록 삭제 및 내보내기 완료`);
         writeAuditLog('새벽초기화', { key: todayKey, count });
     } catch (e) {
-        console.error("[새벽 2시 초기화] 실패:", e);
+        log.error("[새벽 2시 초기화] 실패:", e);
     } finally {
         dailyResetInFlight = false;
     }
@@ -441,15 +487,7 @@ const ROSTER_SEED = [
 //   - 실패 시 절대 조용히 넘어가지 않고 오류코드를 남긴다. (동기화 실패 배너)
 // ===================================================================================
 
-// KST 기준 현재 시각 정보 (정모 날짜 비교는 '실제 날짜' 기준 — 새벽 2시 경계와 무관)
-const getKstParts = (now = new Date()) => {
-    const s = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    return {
-        dateNumber: s.getUTCFullYear() * 10000 + (s.getUTCMonth() + 1) * 100 + s.getUTCDate(), // YYYYMMDD
-        dateKey: `${s.getUTCFullYear()}-${String(s.getUTCMonth() + 1).padStart(2, '0')}-${String(s.getUTCDate()).padStart(2, '0')}`,
-        hour: s.getUTCHours(),
-    };
-};
+// KST 현재 시각 정보(getKstParts)는 src/lib/dates.js
 
 class SomoimSyncError extends Error {
     constructor(code, message) {
@@ -463,12 +501,12 @@ const fetchSomoimData = async () => {
     let resp, json;
     try {
         resp = await fetch('/api/somoim', { cache: 'no-store' });
-    } catch (e) {
+    } catch {
         throw new SomoimSyncError('NETWORK', '동기화 서버에 접속하지 못했습니다.');
     }
     try {
         json = await resp.json();
-    } catch (e) {
+    } catch {
         throw new SomoimSyncError('BAD_RESPONSE', '동기화 서버 응답을 해석하지 못했습니다.');
     }
     if (!resp.ok || !json.ok) {
@@ -562,7 +600,7 @@ const syncSomoimAttendees = async () => {
 // [소모임 동기화] 18시 자동 동기화 — 여러 기기가 켜져 있어도 트랜잭션으로 딱 한 대만
 // 실행한다. 실패 시 10분 간격으로 최대 3회 재시도하고, 그래도 실패하면 오류 배너를 띄운다.
 let autoSyncInFlight = false;
-const AUTO_SYNC_HOUR = 18; // KST 18시(오후 6시)부터
+const AUTO_SYNC_HOUR = KST.autoSyncHour; // KST 18시(오후 6시)부터
 const AUTO_SYNC_MAX_ATTEMPTS = 3;
 
 const runAutoSomoimSyncIfDue = async () => {
@@ -613,17 +651,17 @@ const runAutoSomoimSyncIfDue = async () => {
                 lastResult: { ...result, at: new Date().toISOString(), trigger: 'auto' },
                 lastError: null,
             }, { merge: true });
-            console.log('[소모임 동기화] 자동 동기화 완료:', result);
+            log.info('[소모임 동기화] 자동 동기화 완료:', result);
         } catch (e) {
             const code = e.code || 'UNKNOWN';
-            console.error('[소모임 동기화] 자동 동기화 실패:', code, e);
+            log.error('[소모임 동기화] 자동 동기화 실패:', code, e);
             await setDoc(somoimSyncRef, {
                 auto: { key: dateKey, status: 'error', lastAttemptAt: new Date().toISOString() },
                 lastError: { at: new Date().toISOString(), code, message: e.message || '', trigger: 'auto', dateKey },
-            }, { merge: true }).catch(err => console.error('[소모임 동기화] 오류 기록 실패:', err));
+            }, { merge: true }).catch(err => log.error('[소모임 동기화] 오류 기록 실패:', err));
         }
     } catch (e) {
-        console.error('[소모임 동기화] 자동 동기화 준비 실패:', e);
+        log.error('[소모임 동기화] 자동 동기화 준비 실패:', e);
     } finally {
         autoSyncInFlight = false;
     }
@@ -631,10 +669,11 @@ const runAutoSomoimSyncIfDue = async () => {
 
 
 export {
-    db, storage,
+    db, storage, runTx,
+    getConnectionState, subscribeConnection,
     playersRef, gameStateRef, configRef, monthlyRankingsRef, notificationsRef, rosterRef, somoimSyncRef,
     firebaseService, readyPromise,
-    runDailyResetIfDue, runAutoSomoimSyncIfDue, syncSomoimAttendees, getKstParts, ROSTER_SEED,
+    runDailyResetIfDue, runAutoSomoimSyncIfDue, syncSomoimAttendees, getKstParts, getDailyResetKey, ROSTER_SEED,
     forceReconnect,
     startPresenceHeartbeat, isPresenceFresh,
     writeAuditLog,

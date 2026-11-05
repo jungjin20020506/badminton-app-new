@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-    UPDATE_ENABLED, formatBuild, fetchServerBuild, isNewerBuild,
+    UPDATE_ENABLED, CURRENT_COMMIT, formatBuild, fetchServerBuild, isNewerBuild,
     applyUpdate, startUpdateWatcher, consumeJustUpdated,
 } from '../lib/appUpdate';
 
@@ -97,7 +97,7 @@ export function VersionInfo({ className = '' }) {
 
     return (
         <div className={`text-[11px] text-gray-500 flex items-center justify-center gap-2 ${className}`}>
-            <span>버전 {formatBuild()}</span>
+            <span>버전 {formatBuild()}{CURRENT_COMMIT !== 'local' && <span className="opacity-70"> · {CURRENT_COMMIT}</span>}</span>
             {UPDATE_ENABLED && (
                 <>
                     <span aria-hidden="true">·</span>

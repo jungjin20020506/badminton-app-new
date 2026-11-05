@@ -1,4 +1,3 @@
-/* global __BUILD_ID__ */
 // ===================================================================================
 // [업데이트] 새 버전 감지 · 자동 적용 로직 (UpdateBanner / SettingsModal / EntryPage 공용)
 // -----------------------------------------------------------------------------------
@@ -19,7 +18,12 @@
 // 로그인은 localStorage(badminton-currentUser-id)에 있어 새로고침해도 유지된다.
 // ===================================================================================
 
+import { log } from './logger';
+import { STORAGE_KEYS } from './constants';
+
 export const CURRENT_BUILD = typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev';
+/** 빌드된 커밋 해시(짧은 형식). 설정 화면의 버전 표시에 쓴다 */
+export const CURRENT_COMMIT = typeof __COMMIT_SHA__ !== 'undefined' ? __COMMIT_SHA__ : 'local';
 // 개발 서버(npm run dev)에는 version.json 이 없으므로 검사하지 않는다
 export const UPDATE_ENABLED = import.meta.env.PROD && CURRENT_BUILD !== 'dev';
 
@@ -27,7 +31,7 @@ export const CHECK_INTERVAL_MS = 3 * 60 * 1000;   // 주기 검사 (배너 안�
 export const AWAY_RELOAD_MS = 60 * 1000;          // 이만큼 나갔다 돌아오면 자동 새로고침
 export const IDLE_RELOAD_MS = 2 * 60 * 1000;      // 새 버전 대기 중 이만큼 조작 없으면 자동 새로고침
 const ATTEMPT_COOLDOWN_MS = 10 * 60 * 1000;       // 같은 버전 자동 새로고침 재시도 간격
-const ATTEMPT_KEY = 'cox-update-attempt';         // localStorage: {buildId, at}
+const ATTEMPT_KEY = STORAGE_KEYS.updateAttempt;    // localStorage: {buildId, at}
 
 const readAttempt = () => {
     try { return JSON.parse(localStorage.getItem(ATTEMPT_KEY) || 'null'); } catch { return null; }
@@ -120,7 +124,7 @@ export function startUpdateWatcher(onUpdateReady) {
 
     const tryAutoReload = (reason) => {
         if (!pending || !canAutoReload(pending)) return false;
-        console.log('[업데이트] 자동 새로고침:', reason, pending);
+        log.info('[업데이트] 자동 새로고침:', reason, pending);
         applyUpdate(pending);
         return true;
     };

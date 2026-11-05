@@ -1,0 +1,13 @@
+/* ══════════════════════════════════════════════════════════════════
+   [자동매칭 v2] 경기중 선수 표시
+   지금 코트에서 뛰는 선수는 어디에 있든(대기 명단·자동 매칭·경기 예정)
+   무채색 + '경기중' 딱지로 보여서, 아직 못 움직이는 카드임을 알린다.
+   경기가 끝나면 이 클래스가 자동으로 빠지면서 원래 색으로 돌아온다.
+══════════════════════════════════════════════════════════════════ */
+.cox-card-playing{ filter:grayscale(1) brightness(.8); }
+.cox-playing-tag{
+  position:absolute; left:50%; bottom:1px; transform:translateX(-50%);
+  font-size:8px; font-weight:900; letter-spacing:.2px; line-height:1.4;
+  color:#101216; background:#a8aeb8; border-radius:5px; padding:0 5px;
+  white-space:nowrap; pointer-events:none;
+}

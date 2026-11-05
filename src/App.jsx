@@ -1,17 +1,24 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-    doc, getDoc, setDoc, updateDoc, writeBatch, runTransaction,
+    doc, getDoc, setDoc, updateDoc, writeBatch,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import {
     db, storage, playersRef, gameStateRef, configRef, somoimSyncRef,
     firebaseService, readyPromise, runDailyResetIfDue, runAutoSomoimSyncIfDue,
-    syncSomoimAttendees, getKstParts, forceReconnect,
+    syncSomoimAttendees, getKstParts, forceReconnect, runTx,
     startPresenceHeartbeat, isPresenceFresh, writeAuditLog,
 } from './lib/firebase';
+import { log } from './lib/logger';
+import { toastError } from './lib/toast';
+import { resizeImageFile } from './lib/image';
+import { GHOST_ADMIN_NAME, STORAGE_KEYS } from './lib/constants';
+import { readLocalTutorialSeen, markTutorialSeen, AUTOMATCH_GUIDE_KEY } from './tutorial/tutorialStorage';
+import { TUTORIAL_ADMIN_STEPS, TUTORIAL_USER_STEPS } from './tutorial/tutorialSteps';
 import { verifyHiddenKey } from './lib/secret';
 import { isSoundEnabled, setSoundEnabled, playStart, playFinish } from './lib/sound';
 import { CoxMark } from './components/Logo';
+import { Icon } from './components/Icons';
 import {
     getAdminNames, generateId, filterTodayGames, calculateLocations,
     PLAYERS_PER_MATCH, LEVEL_ORDER, repairMatchQueues,
@@ -31,18 +38,14 @@ import { computeRankings, computeAceIds, rankOf } from './lib/ranking';
 import { SkeletonScreen } from './components/Skeleton';
 import { SettingsModal } from './components/SettingsModal';
 import { RosterManageModal } from './components/RosterManageModal';
-import {
-    readLocalTutorialSeen, markTutorialSeen, TUTORIAL_ADMIN_STEPS, TUTORIAL_USER_STEPS,
-    TutorialIntroModal, TutorialOverlay,
-} from './tutorial/Tutorial';
-import { AutoMatchGuide, AUTOMATCH_GUIDE_KEY } from './tutorial/AutoMatchGuide';
+import { TutorialIntroModal, TutorialOverlay } from './tutorial/Tutorial';
+import { AutoMatchGuide } from './tutorial/AutoMatchGuide';
 
 // ===================================================================================
 // [유령 관리자] 이름을 '관리자'로 입장하면 선수 카드(Firestore 문서)를 만들지 않고
 // 관리자 기능만 사용한다. 대기 명단·접속 표시 어디에도 나타나지 않는다 — 유령처럼.
 // ===================================================================================
-const GHOST_ADMIN_NAME = '관리자';
-const GHOST_ADMIN_LS_KEY = 'badminton-ghost-admin';
+const GHOST_ADMIN_LS_KEY = STORAGE_KEYS.ghostAdmin;
 const makeGhostAdminUser = () => ({ id: 'ghost-admin', name: GHOST_ADMIN_NAME, isGhostAdmin: true });
 
 // ===================================================================================
@@ -60,7 +63,7 @@ const makeGhostAdminUser = () => ({ id: 'ghost-admin', name: GHOST_ADMIN_NAME, i
 // ===================================================================================
 const IN_APP_BROWSER_RE = /kakaotalk|\bline\/|instagram|naver\(inapp|everytime/i;
 /** '그냥 여기서 계속할게요'를 누른 기록 — 새로고침해도 안내가 다시 뜨지 않게 */
-const IN_APP_SKIP_KEY = 'coxstar-inapp-skip';
+const IN_APP_SKIP_KEY = STORAGE_KEYS.inAppSkip;
 
 // ===================================================================================
 // Main App Component
@@ -108,7 +111,6 @@ export default function App() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [courtMove, setCourtMove] = useState({ sourceIndex: null });
-    const [selectedAutoMatchSlot, setSelectedAutoMatchSlot] = useState(null);
     const [isSeasonModalDismissed, setIsSeasonModalDismissed] = useState(false); // 세션 내 공지 닫기 상태 추가
 
     // [모바일 UI 개선] 화면 너비와 활성 탭 상태를 관리합니다.
@@ -189,7 +191,7 @@ export default function App() {
                             forceReconnect('당겨서 새로고침'),
                             new Promise(resolve => setTimeout(resolve, 4000)), // 안전 타임아웃
                         ]);
-                    } catch (e) { /* 재연결 실패해도 스피너는 멈춘다 */ }
+                    } catch { /* 재연결 실패해도 스피너는 멈춘다 */ }
                     // 재연결 직후 서버 스냅샷이 들어올 짧은 여유를 준 뒤 스피너 종료
                     setTimeout(() => { setIsRefreshing(false); setPullDistance(0); }, 500);
                 })();
@@ -378,11 +380,11 @@ export default function App() {
             if (localStorage.getItem(GHOST_ADMIN_LS_KEY) === '1') {
                 setCurrentUser(makeGhostAdminUser());
             } else {
-                const savedUserId = localStorage.getItem('badminton-currentUser-id');
+                const savedUserId = localStorage.getItem(STORAGE_KEYS.currentUserId);
                 if (savedUserId && playersFromDB[savedUserId] && playersFromDB[savedUserId].status === 'active') {
                     setCurrentUser(playersFromDB[savedUserId]);
                 } else if (savedUserId) {
-                    localStorage.removeItem('badminton-currentUser-id');
+                    localStorage.removeItem(STORAGE_KEYS.currentUserId);
                 }
             }
 
@@ -408,7 +410,7 @@ export default function App() {
                     if (prevUser.isGhostAdmin) return prevUser;
                     const updatedUser = updatedPlayers[prevUser.id];
                     if (!updatedUser || updatedUser.status !== 'active') {
-                        localStorage.removeItem('badminton-currentUser-id');
+                        localStorage.removeItem(STORAGE_KEYS.currentUserId);
                         return null;
                     }
                     return JSON.stringify(prevUser) !== JSON.stringify(updatedUser) ? updatedUser : prevUser;
@@ -421,7 +423,7 @@ export default function App() {
         return () => {
             unsubscribePromise.then(unsubscribe => unsubscribe && unsubscribe());
         };
-    }, []);
+    }, [syncOnlineIds]);
 
     // [새벽 2시 자동 초기화] 앱이 열려 있는 동안 운영일(새벽 2시 기준)이 바뀌면
     // 모든 선수 내보내기 + 일일 기록/게임 수 삭제 + 경기방 비우기를 수행한다.
@@ -663,7 +665,7 @@ useEffect(() => {
 
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
-            await runTransaction(db, async (transaction) => {
+            await runTx('gameState', async (transaction) => {
                 const gameStateDoc = await transaction.get(gameStateRef);
                 if (!gameStateDoc.exists()) {
                     const initialState = {
@@ -682,13 +684,15 @@ useEffect(() => {
                 }
             });
         } catch (err) {
-            console.error("Transaction failed: ", err);
+            log.error('[gameState] 저장 실패:', err);
             // 동시성 문제로 인한 오류는 사용자에게 알리지 않음
             if (err.message.includes("다른 관리자에 의해 슬롯이 이미 채워졌습니다.")) {
-                console.log("Slot already filled, operation cancelled silently.");
+                log.info('Slot already filled, operation cancelled silently.');
             } else {
-                setModal({ type: 'alert', data: { title: '작업 실패', body: customErrorMessage || err.message }});
+                // 모달 대신 토스트 — 경기 중 흐름을 끊지 않으면서 "다시 누르면 된다"는 걸 알린다
+                toastError(`${customErrorMessage || '저장되지 않았어요.'} 다시 눌러주세요.`);
             }
+            throw err;
         }
     }, []);
 
@@ -716,7 +720,7 @@ useEffect(() => {
     const handleDeleteFromWaiting = useCallback((player) => {
         setModal({ type: 'confirm', data: { title: '선수 내보내기', body: `${player.name} 선수를 내보낼까요? (기록은 유지됩니다)`,
             onConfirm: async () => {
-                await updateDoc(doc(playersRef, player.id), { status: 'inactive' }).catch(error => {
+                await updateDoc(doc(playersRef, player.id), { status: 'inactive' }).catch(() => {
                     setModal({ type: 'alert', data: { title: '오류', body: '선수 내보내기에 실패했습니다.' }});
                 });
                 setModal({ type: null, data: null });
@@ -767,7 +771,7 @@ useEffect(() => {
             setModal({ type: 'alert', data: { title: '완료', body: '대기 중인 모든 선수를 내보냈습니다.' }});
         } catch (error) {
             setModal({ type: 'alert', data: { title: '오류', body: '선수들을 내보내는 중 오류가 발생했습니다.' }});
-            console.error("Failed to clear all waiting players:", error);
+            log.error("Failed to clear all waiting players:", error);
         }
     }, [waitingPlayers, currentUser]); // waitingPlayers가 휴식 선수를 포함하므로 올바르게 동작
 
@@ -780,7 +784,7 @@ useEffect(() => {
         // [유령 관리자] '관리자' 이름 입장 — 선수 카드를 만들지 않고 로컬에만 기록한다
         if (formData.isGhostAdmin || name === GHOST_ADMIN_NAME) {
             localStorage.setItem(GHOST_ADMIN_LS_KEY, '1');
-            localStorage.removeItem('badminton-currentUser-id');
+            localStorage.removeItem(STORAGE_KEYS.currentUserId);
             setCurrentUser(makeGhostAdminUser());
             return;
         }
@@ -846,9 +850,9 @@ useEffect(() => {
 
             await setDoc(playerDocRef, playerData, { merge: true });
             setCurrentUser(playerData);
-            localStorage.setItem('badminton-currentUser-id', id);
+            localStorage.setItem(STORAGE_KEYS.currentUserId, id);
         } catch (error) {
-            console.error("Enter failed: ", error);
+            log.error("Enter failed: ", error);
             setModal({ type: 'alert', data: { title: '오류', body: '입장 처리 중 문제가 발생했습니다.' }});
         }
     }, []);
@@ -911,7 +915,7 @@ useEffect(() => {
                         }
                         return { newState };
                     };
-                    await updateGameState(updateFunction);
+                    await updateGameState(updateFunction).catch(() => {}); // 실패해도 퇴장은 진행 (서버 정리는 repair가 한다)
 
                     // 2. 상태 업데이트 분기 처리
                     if (isPlaying) {
@@ -923,11 +927,11 @@ useEffect(() => {
                         await updateDoc(doc(playersRef, currentUser.id), { status: 'inactive' });
                     }
 
-                    localStorage.removeItem('badminton-currentUser-id');
+                    localStorage.removeItem(STORAGE_KEYS.currentUserId);
                     setCurrentUser(null);
                     setModal({ type: null, data: null });
                 } catch (error) {
-                    console.error(error);
+                    log.error(error);
                     setModal({ type: 'alert', data: { title: '오류', body: '나가는 도중 문제가 발생했습니다.' }});
                 }
             }
@@ -1044,7 +1048,7 @@ useEffect(() => {
                 // 슬롯이 이미 채워져 있는지 다시 확인 (동시성 문제 방지)
                 const isSlotOccupied = targetArray.some((p, i) => p !== null && playersToMove.length > 0 && targetArray[i] === null);
                 if (isSlotOccupied) {
-                   console.log("Slot was filled by another admin. Aborting move.");
+                   log.info("Slot was filled by another admin. Aborting move.");
                    return { newState: currentState }; // 변경 사항 없이 현재 상태 반환
                 }
 
@@ -1219,7 +1223,9 @@ useEffect(() => {
                 return { newState };
             };
 
-            await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다. 다른 관리자가 먼저 시작했을 수 있습니다.');
+            try {
+                await updateGameState(updateFunction, '경기를 시작하는 데 실패했습니다. 다른 관리자가 먼저 시작했을 수 있습니다.');
+            } catch { setModal({ type: null, data: null }); return; }
             playStart(); // [사운드] 경기 시작 차임 (효과음 켠 사람만)
 
            setModal({type: null, data: null});
@@ -1241,7 +1247,7 @@ useEffect(() => {
    //  여러 관리자가 동시에 눌러도 코트가 이미 비어 있으면 아무것도 하지 않는다 (중복 기록 방지)
    // ===============================================================================
    const finishCourtTx = useCallback(async (courtIndex, result) => {
-                        await runTransaction(db, async (transaction) => {
+                        await runTx('경기 종료', async (transaction) => {
                             // 1. 최신 경기장 상태 가져오기
                             const gameStateDoc = await transaction.get(gameStateRef);
                             if (!gameStateDoc.exists()) throw new Error("게임 상태가 존재하지 않습니다.");
@@ -1367,7 +1373,7 @@ useEffect(() => {
                     try {
                         await finishCourtTx(courtIndex, null);
                     } catch(e) {
-                        console.error(e);
+                        log.error(e);
                         setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
                     }
                 }
@@ -1381,7 +1387,7 @@ useEffect(() => {
         try {
             await finishCourtTx(courtIndex, { winnerSide });
         } catch (e) {
-            console.error(e);
+            log.error(e);
             setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' }});
         }
     }, [finishCourtTx]);
@@ -1404,9 +1410,11 @@ useEffect(() => {
 
     // [청백전] 점수판 수정 (점수판 길게 누르기)
     const handleTeamScoreSave = useCallback(async (scores) => {
-        await updateGameState((currentState) => ({
-            newState: { ...currentState, teamScores: { blue: scores.blue, white: scores.white } },
-        }), '점수 저장에 실패했습니다.');
+        try {
+            await updateGameState((currentState) => ({
+                newState: { ...currentState, teamScores: { blue: scores.blue, white: scores.white } },
+            }), '점수 저장에 실패했습니다.');
+        } catch { return; }
         writeAuditLog('청백전-점수수정', { by: currentUser?.name || null, scores });
         setModal({ type: null, data: null });
     }, [updateGameState, currentUser]);
@@ -1457,7 +1465,7 @@ useEffect(() => {
                         setModal({ type: 'alert', data: { title: '전환 완료', body: `${toTeam ? '청백전' : '일반'} 모드로 바뀌었습니다. 선수 ${n}명을 내보냈어요.` }});
                     }
                 } catch (e) {
-                    console.error('경기 방식 전환 실패:', e);
+                    log.error('경기 방식 전환 실패:', e);
                     setModal({ type: 'alert', data: { title: '오류', body: '경기 방식 전환 중 문제가 발생했습니다.' }});
                 }
             }
@@ -1536,7 +1544,7 @@ useEffect(() => {
 
             setModal({ type: 'matchOptions', data: { gender, genderLabel, result } });
         } catch (error) {
-            console.error("Auto-match generate error:", error);
+            log.error("Auto-match generate error:", error);
             setModal({ type: 'alert', data: { title: '오류', body: '매칭 후보를 계산하지 못했습니다.' }});
         } finally {
             isGeneratingRef.current = false;
@@ -1557,13 +1565,14 @@ useEffect(() => {
             }
             setModal({ type: 'matchOptions', data: { gender, genderLabel, result } });
         } catch (error) {
-            console.error("Auto-match regenerate error:", error);
+            log.error("Auto-match regenerate error:", error);
         }
     }, [computeMatchOptions]);
 
     /** 관리자가 선택지 하나를 골랐을 때 — 자동 매칭 목록 맨 뒤에 추가 */
     const handleSelectMatchOption = useCallback(async (option) => {
         let failReason = null;
+        try {
         await updateGameState((currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
             if (!newState.autoMatches) newState.autoMatches = {};
@@ -1591,6 +1600,7 @@ useEffect(() => {
             newState.autoMatches[String(nextIndex)] = [...option.ids];
             return { newState };
         }, '자동 매칭 목록에 추가하지 못했습니다.');
+        } catch { return; } // 토스트로 이미 알렸다 — 모달은 열어 두어 다시 고를 수 있게
 
         setModal({ type: null, data: null });
         if (failReason) {
@@ -1627,7 +1637,7 @@ useEffect(() => {
             const { newState } = repairMatchQueues(currentState, allPlayers);
             return { newState };
         })
-            .catch(err => console.error('예약 경기 자동 정리 실패:', err))
+            .catch(err => log.error('예약 경기 자동 정리 실패:', err))
             .finally(() => { isRepairingRef.current = false; });
     }, [isAdmin, gameState, allPlayers, updateGameState]);
 
@@ -1750,7 +1760,7 @@ useEffect(() => {
                     newState.autoMatches = {};
                     return { newState };
                 };
-                await updateGameState(updateFunction, '이동 처리에 실패했습니다.');
+                try { await updateGameState(updateFunction, '이동 처리에 실패했습니다.'); } catch { return; }
                 setModal({ type: 'alert', data: { title: '완료', body: '모든 선수가 대기 명단으로 이동되었습니다.' }});
             }
         }});
@@ -1774,7 +1784,7 @@ useEffect(() => {
                     await batch.commit();
                     setModal({ type: 'alert', data: { title: '완료', body: '모든 선수의 히스토리가 초기화되었습니다.' }});
                 } catch (error) {
-                    console.error("히스토리 초기화 실패: ", error);
+                    log.error("히스토리 초기화 실패: ", error);
                     setModal({ type: 'alert', data: { title: '오류', body: '선수 히스토리 초기화 중 문제가 발생했습니다.' }});
                 }
             }
@@ -1817,7 +1827,7 @@ useEffect(() => {
             await setDoc(playerDocRef, playerData, { merge: true });
             setModal({ type: 'alert', data: { title: '추가 완료', body: `${name} 선수가 수동으로 추가되었습니다.` }});
         } catch (error) {
-            console.error("Admin add player failed: ", error);
+            log.error("Admin add player failed: ", error);
             setModal({ type: 'alert', data: { title: '오류', body: '선수 추가 처리 중 문제가 발생했습니다.' }});
         }
     }, []);
@@ -1838,11 +1848,11 @@ useEffect(() => {
                         lastResult: { ...result, at: new Date().toISOString(), trigger: 'manual' },
                         lastError: null,
                         ...(result.noEvent ? {} : { auto: { key: dateKey, status: 'done', finishedAt: new Date().toISOString() } }),
-                    }, { merge: true }).catch(err => console.error('[소모임 동기화] 결과 기록 실패:', err));
+                    }, { merge: true }).catch(err => log.error('[소모임 동기화] 결과 기록 실패:', err));
                     setModal({ type: 'somoimSyncResult', data: result });
                 } catch (e) {
                     const code = e.code || 'UNKNOWN';
-                    console.error('[소모임 동기화] 수동 동기화 실패:', code, e);
+                    log.error('[소모임 동기화] 수동 동기화 실패:', code, e);
                     setModal({ type: 'alert', data: {
                         title: '동기화 실패',
                         body: `소모임 동기화에 실패하였습니다 (오류코드: ${code}) 관리자에게 문의해주세요.\n\n${e.message || ''}`,
@@ -1881,7 +1891,7 @@ useEffect(() => {
             await batch.commit();
             setModal({ type: 'alert', data: { title: '완료', body: `테스트 로봇 (남 ${maleCount}명, 여 ${femaleCount}명) 생성 완료!` }});
         } catch (error) {
-            console.error("Robot generation failed: ", error);
+            log.error("Robot generation failed: ", error);
             setModal({ type: 'alert', data: { title: '오류', body: '로봇 생성 중 문제가 발생했습니다.' }});
         }
     }, [teamMode]);
@@ -1926,16 +1936,17 @@ useEffect(() => {
                     try {
                         const oldStorageRef = ref(storage, 'announcements/season_image');
                         await deleteObject(oldStorageRef);
-                    } catch (e) { console.log("기존 파일 삭제 스킵"); }
+                    } catch { log.debug('기존 공지 사진 없음 — 삭제 건너뜀'); }
                 }
 
                 const storageRef = ref(storage, 'announcements/season_image');
-                await uploadBytes(storageRef, photoFile);
+                // [성능] 폰 원본(수 MB)을 그대로 올리지 않고 긴 변 1600px 로 줄여서 올린다
+                await uploadBytes(storageRef, await resizeImageFile(photoFile));
                 finalPhotoUrl = await getDownloadURL(storageRef);
             }
 
             // 1. 코트 수(gameState)는 동시성 보장을 위해 트랜잭션으로 갱신
-            await runTransaction(db, async (transaction) => {
+            await runTx('설정 저장', async (transaction) => {
                 const currentGameStateDoc = await transaction.get(gameStateRef);
                 if (!currentGameStateDoc.exists()) throw new Error("GameState document does not exist!");
 
@@ -1985,10 +1996,10 @@ useEffect(() => {
             setIsSettingsOpen(false);
             setModal({ type: 'alert', data: { title: '저장 완료', body: '설정이 성공적으로 저장되었습니다.' } });
         } catch (error) {
-            console.error("Settings save failed:", error);
+            log.error("Settings save failed:", error);
             setModal({ type: 'alert', data: { title: '저장 실패', body: '설정 저장 중 오류가 발생했습니다.' } });
         }
-    }, [seasonConfig, storage]);
+    }, [seasonConfig]);
 
 
     const handleToggleRest = useCallback(async () => {
@@ -2006,7 +2017,7 @@ useEffect(() => {
                 }
             }
             await updateDoc(playerDocRef, { isResting: newRestingState });
-        } catch (error) {
+        } catch {
             setModal({ type: 'alert', data: { title: '오류', body: '휴식 상태 변경에 실패했습니다.' }});
         }
     }, [currentUser, findPlayerLocation, handleReturnToWaiting]);
@@ -2281,7 +2292,7 @@ useEffect(() => {
                                         className={`cox-menu-item ${currentUser.isResting ? 'accent' : ''}`}
                                         onClick={() => { setIsProfileMenuOpen(false); handleToggleRest(); }}
                                     >
-                                        <i className={`fas fa-${currentUser.isResting ? 'play' : 'mug-hot'}`}></i>
+                                        <Icon name={currentUser.isResting ? 'play' : 'mug-hot'} size={18} />
                                         {currentUser.isResting ? '경기 복귀하기' : '잠시 휴식하기'}
                                     </button>
                                 )}
@@ -2292,7 +2303,7 @@ useEffect(() => {
                                         onClick={() => { setIsProfileMenuOpen(false); setIsSettingsOpen(true); }}
                                         data-tut="menu-settings"
                                     >
-                                        <i className="fas fa-sliders"></i>
+                                        <Icon name="sliders" size={18} />
                                         관리자 설정
                                     </button>
                                 )}
@@ -2303,7 +2314,7 @@ useEffect(() => {
                                         className={`cox-menu-item ${hasSeenAutoMatchGuide ? '' : 'accent'}`}
                                         onClick={() => { setIsProfileMenuOpen(false); handleReplayAutoMatchGuide(); }}
                                     >
-                                        <i className="fas fa-robot"></i>
+                                        <Icon name="robot" size={18} />
                                         자동매칭 새 기능 {hasSeenAutoMatchGuide ? '' : '🔴'}
                                     </button>
                                 )}
@@ -2314,7 +2325,7 @@ useEffect(() => {
                                     onClick={() => { setIsProfileMenuOpen(false); handleReplayTutorial(); }}
                                     data-tut="menu-tutorial"
                                 >
-                                    <i className="fas fa-graduation-cap"></i>
+                                    <Icon name="graduation-cap" size={18} />
                                     튜트리얼 다시 보기
                                 </button>
 
@@ -2327,7 +2338,7 @@ useEffect(() => {
                                         setSoundOn(next);
                                     }}
                                 >
-                                    <i className={`fas fa-volume-${soundOn ? 'high' : 'xmark'}`}></i>
+                                    <Icon name={soundOn ? 'volume-high' : 'volume-xmark'} size={18} />
                                     효과음 {soundOn ? '켜짐' : '꺼짐'}
                                 </button>
 
@@ -2335,7 +2346,7 @@ useEffect(() => {
                                     className="cox-menu-item danger"
                                     onClick={() => { setIsProfileMenuOpen(false); handleLogout(); }}
                                 >
-                                    <i className="fas fa-right-from-bracket"></i>
+                                    <Icon name="right-from-bracket" size={18} />
                                     나가기
                                 </button>
                             </div>
@@ -2382,7 +2393,7 @@ useEffect(() => {
                                 <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
                                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
                                     {/* [청백전] 자동 매칭은 쓰지 않는다 — 경기 예정(청 2칸 · 백 2칸)으로만 짠다 */}
-                                    {!teamMode && <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>}
+                                    {!teamMode && <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedPlayerIds={selectedPlayerIds} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>}
                                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
                                 </div>
                             )}
@@ -2395,7 +2406,7 @@ useEffect(() => {
             ) : (
                 <div className="flex flex-col gap-3">
                     <WaitingListSection maleWaitingPlayers={maleWaitingPlayers} femaleWaitingPlayers={femaleWaitingPlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleDeleteFromWaiting={handleDeleteFromWaiting} setModal={setModal} currentUser={currentUser} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
-                    {!teamMode && <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedAutoMatchSlot={selectedAutoMatchSlot} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>}
+                    {!teamMode && <AutoMatchesSection autoMatches={autoMatches} players={activePlayers} allPlayers={allPlayers} courtIndexByPlayer={courtIndexByPlayer} isAdmin={isAdmin} handleStartAutoMatch={handleStartAutoMatch} handleReturnToWaiting={handleReturnToWaiting} handleClearAutoMatches={handleClearAutoMatches} handleDeleteAutoMatch={handleDeleteAutoMatch} currentUser={currentUser} handleAutoMatchCardClick={handleAutoMatchCardClick} selectedPlayerIds={selectedPlayerIds} inProgressPlayerIds={inProgressPlayerIds} handleAutoMatchSlotClick={handleAutoMatchSlotClick} handleGenerateMatch={handleGenerateMatch} generatingGender={generatingGender} onlineIds={onlineIds} teamMode={teamMode} setModal={setModal}/>}
                     <ScheduledMatchesSection numScheduledMatches={gameState.numScheduledMatches} scheduledMatches={gameState.scheduledMatches} players={activePlayers} selectedPlayerIds={selectedPlayerIds} isAdmin={isAdmin} handleCardClick={handleCardClick} handleReturnToWaiting={handleReturnToWaiting} setModal={setModal} handleSlotClick={handleSlotClick} handleStartMatch={handleStartMatch} currentUser={currentUser} handleClearScheduledMatches={handleClearScheduledMatches} handleDeleteScheduledMatch={handleDeleteScheduledMatch} inProgressPlayerIds={inProgressPlayerIds} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
                     <InProgressCourtsSection numInProgressCourts={gameState.numInProgressCourts} inProgressCourts={gameState.inProgressCourts} players={activePlayers} allPlayers={allPlayers} isAdmin={isAdmin} handleEndMatch={handleEndMatch} currentUser={currentUser} courtMove={courtMove} setCourtMove={setCourtMove} handleMoveOrSwapCourt={handleMoveOrSwapCourt} onlineIds={onlineIds} teamMode={teamMode} aceIds={aceIds} />
                 </div>

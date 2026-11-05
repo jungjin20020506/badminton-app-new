@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { setDoc } from 'firebase/firestore';
 import { configRef } from '../lib/firebase';
 import { getAdminNames, MATCH_MODE_NORMAL, MATCH_MODE_TEAM, TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../lib/helpers';
 import { AUTO_MATCH_SENSITIVITIES, getSensitivity } from '../lib/matching';
@@ -53,8 +53,18 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
         [roster]
     );
 
+    // [자동매칭] 현재 활성 인원수 (대기+진행+예정 모두 포함, 휴식 제외, 게스트 포함)
+    // 훅은 조건부 return 보다 앞에 있어야 한다 (React 훅 규칙)
+    const { malePlayerCount, femalePlayerCount } = useMemo(() => {
+        const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting);
+        return {
+            malePlayerCount: activePlayersList.filter(p => p.gender === '남').length,
+            femalePlayerCount: activePlayersList.filter(p => p.gender === '여').length,
+        };
+    }, [activePlayers]);
+
     if (!isAdmin) return null;
-    
+
     const handleSave = () => {
         onSave({ scheduled, courts, announcement, autoMatchConfig });
     };
@@ -107,15 +117,6 @@ function SettingsModal({ isAdmin, scheduledCount, courtCount, seasonConfig, acti
             }
         }});
     };
-
-// [자동매칭] 현재 활성 인원수 (대기+진행+예정 모두 포함, 휴식 제외, 게스트 포함)
-    const { malePlayerCount, femalePlayerCount } = useMemo(() => {
-        const activePlayersList = Object.values(activePlayers).filter(p => !p.isResting);
-        return {
-            malePlayerCount: activePlayersList.filter(p => p.gender === '남').length,
-            femalePlayerCount: activePlayersList.filter(p => p.gender === '여').length,
-        };
-    }, [activePlayers]);
 
     // [자동매칭] 민감도 세그먼트 선택 컴포넌트
     const SensitivitySelect = ({ value, onChange }) => (
@@ -704,7 +705,7 @@ function DailySummaryModal({ allPlayers, onClose }) {
                     document.fonts.load('700 30px "Noto Sans KR"'),
                     document.fonts.load('400 34px "Anton"'),
                 ]);
-            } catch (e) { /* 폰트 실패해도 시스템 폰트로 그린다 */ }
+            } catch { /* 폰트 실패해도 시스템 폰트로 그린다 */ }
             if (cancelled) return;
             const canvas = document.createElement('canvas');
             drawSummaryCard(canvas, summary);

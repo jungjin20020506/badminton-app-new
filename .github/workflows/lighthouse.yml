@@ -1,0 +1,35 @@
+# ===================================================================================
+# Lighthouse — 배포된 사이트의 모바일 성능·접근성 점수를 매주 측정한다
+# -----------------------------------------------------------------------------------
+# 결과는 Actions 실행 화면의 요약과 artifacts(HTML 리포트)에서 본다.
+# 수동 실행: Actions 탭 → lighthouse → Run workflow
+# ===================================================================================
+name: lighthouse
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'   # 매주 월요일 00:00 UTC (09:00 KST)
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lighthouse (mobile)
+        id: lh
+        uses: treosh/lighthouse-ci-action@v12
+        with:
+          urls: |
+            https://badminton-app-new.vercel.app/
+          runs: 3
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+          configPath: ./.github/lighthouserc.json
+      - name: Summary
+        run: |
+          echo "## Lighthouse (mobile, 3회 중앙값)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          echo '${{ steps.lh.outputs.manifest }}' | head -c 4000 >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

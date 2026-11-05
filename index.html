@@ -6,16 +6,17 @@
     <!-- 모바일 앱처럼: 확대/축소 차단 + 노치 안전영역 대응 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#08090C" />
+    <meta name="color-scheme" content="dark light" />
 
     <!-- iOS/안드로이드 홈화면 설치 시 네이티브 앱 느낌 -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="COCKSLIGHTING" />
-    
+
     <!-- 브라우저 탭 제목 -->
     <title>⚡ COCKSLIGHTING</title>
-    
+
     <!-- 링크 공유 시 미리보기 정보 — 카카오톡·문자·SNS에 링크를 올리면 이 제목/설명/이미지로 카드가 보인다.
          이미지 원본은 scripts/og-image.html (1200x630). 카카오톡은 한 번 읽은 미리보기를 캐시하므로
          바꾼 뒤에는 https://developers.kakao.com/tool/clear/og 에서 캐시를 지워야 새 카드가 보인다. -->
@@ -37,13 +38,23 @@
     <meta name="twitter:description" content="지금 누가 치고 있는지, 내 차례는 언제인지. 탭해서 바로 확인하세요.">
     <meta name="twitter:image" content="https://badminton-app-new.vercel.app/og-image.png">
 
-    <!-- 아이콘 표시를 위한 Font Awesome 라이브러리 링크 -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" xintegrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    
-       <!-- 구글 폰트 링크: 디스플레이(Anton) + 본문 한글(Noto Sans KR) -->
+    <!-- 아이콘은 src/components/Icons.jsx 의 인라인 SVG (Font Awesome 제거 — 약 100KB + 웹폰트 절약) -->
+
+    <!-- 구글 폰트: 디스플레이(Anton) + 본문 한글(Noto Sans KR). display=swap 으로 글자가 먼저 보인다 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Anton&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
     <link href="https://fonts.googleapis.com/css2?family=Anton&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <!-- 첫 그리기 전에 저장된 테마를 적용해 라이트 모드 사용자의 깜빡임을 막는다 (main.jsx 의 initTheme 보다 먼저) -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('cox-theme');
+          if (t === 'auto') t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+          if (t === 'light') { document.documentElement.setAttribute('data-theme', 'light'); document.documentElement.style.colorScheme = 'light'; }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <!-- React 앱이 렌더링될 DOM 컨테이너 -->
@@ -77,4 +88,3 @@
     </script>
   </body>
 </html>
-

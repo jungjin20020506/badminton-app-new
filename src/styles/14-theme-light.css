@@ -1,0 +1,220 @@
+/* ══════════════════════════════════════════════════════════════════
+   LIGHT THEME  ·  html[data-theme="light"]
+   체육관 햇빛·밝은 실내에서 쓰는 밝은 모드. 다크의 정체성(라임 포인트·Anton 전광판
+   타이포)은 그대로 두고 "종이 위의 전광판"처럼 바꾼다.
+   원칙
+   · 배경은 순백이 아니라 아주 옅은 청회색(#F4F6F9) — 눈부심을 줄이고 카드(흰색)가 떠 보인다
+   · 라임(#CDFB47)은 '채움'에만 쓴다. 흰 바탕 위 라임 글자는 안 보이므로
+     글자/선/점에는 어두운 라임(--volt-ink #5F8A00)을 쓴다 (대비 4.5:1 이상)
+   · 글로우 그림자는 라임 대신 연한 그림자로, 강도는 절반
+   · 팀 색(청/백)은 백팀이 흰 바탕에 묻히므로 백팀을 짙은 회색(#4B5563)으로 표현
+══════════════════════════════════════════════════════════════════ */
+:root[data-theme="light"]{
+  --ink:        #F4F6F9;
+  --surface:    #FFFFFF;
+  --card:       #FFFFFF;
+  --card-2:     #EEF1F5;
+  --line:        rgba(16,24,40,.08);
+  --line-strong: rgba(16,24,40,.14);
+  --volt:      #CDFB47;
+  --volt-soft: rgba(95,138,0,.12);
+  --volt-ink:  #5F8A00;       /* 밝은 바탕 위 라임 '글자' 색 */
+  --coral: #E5533A;
+  --court: #2E6B5E;
+  --text: #0E1116;
+  --dim:  #5B6472;
+  --mute: #8B94A3;
+  --tm-blue:       #2563EB;
+  --tm-blue-soft:  rgba(37,99,235,.12);
+  --tm-blue-text:  #1D4ED8;
+  --tm-white:      #4B5563;
+  --tm-white-soft: rgba(75,85,99,.12);
+  --tm-white-text: #374151;
+}
+:root[data-theme="light"] html, :root[data-theme="light"] body{ background:var(--ink); color:var(--text); }
+:root[data-theme="light"] body::before{
+  background:
+    radial-gradient(1100px 700px at 18% -8%,  rgba(205,251,71,.22) 0%, transparent 55%),
+    radial-gradient(900px 600px  at 92% 108%, rgba(46,107,94,.12) 0%, transparent 50%);
+}
+
+/* ── 라임 글자 → 어두운 라임 ── */
+:root[data-theme="light"] .cox-title em,
+:root[data-theme="light"] .cox-wordmark-text .line1 em,
+:root[data-theme="light"] .cox-online-count,
+:root[data-theme="light"] .cox-nav-btn.active,
+:root[data-theme="light"] .cox-menu-item.accent,
+:root[data-theme="light"] .cox-menu-item.accent .cox-icon,
+:root[data-theme="light"] .cox-stat .v.volt,
+:root[data-theme="light"] .tut-body em,
+:root[data-theme="light"] .tut-intro p b,
+:root[data-theme="light"] .amg-lead .hl,
+:root[data-theme="light"] .amg2-coach-text b,
+:root[data-theme="light"] .tm-center .title,
+:root[data-theme="light"] .tm-log-row.none .who,
+:root[data-theme="light"] .tm-live.none .t,
+:root[data-theme="light"] .cox-modal-title.accent,
+:root[data-theme="light"] .cox-stepper .val,
+:root[data-theme="light"] .cox-conn.online{ color:var(--volt-ink) !important; }
+:root[data-theme="light"] .cox-dark .text-yellow-400,
+:root[data-theme="light"] .cox-dark .text-green-400{ color:var(--volt-ink) !important; }
+:root[data-theme="light"] .tut-badge, :root[data-theme="light"] .tut-intro .who{ color:var(--volt-ink); background:var(--volt-soft); border-color:rgba(95,138,0,.3); }
+
+/* ── 라임 채움은 유지하되 글로우는 약하게 ── */
+:root[data-theme="light"] .cox-fab,
+:root[data-theme="light"] .cox-avatar-btn,
+:root[data-theme="light"] .tut-btn.primary,
+:root[data-theme="light"] .cox-btn.primary,
+:root[data-theme="light"] .cox-error-btn.primary,
+:root[data-theme="light"] .cox-toast-action,
+:root[data-theme="light"] .amg2-coach-btn,
+:root[data-theme="light"] .cox-dark .bg-yellow-500{ box-shadow:0 8px 20px -10px rgba(95,138,0,.55) !important; }
+:root[data-theme="light"] .cox-avatar-btn.admin{ background:linear-gradient(140deg,#FFD45A,#E0A21F); box-shadow:0 6px 16px -8px #E0A21F; }
+:root[data-theme="light"] .cox-livedot{ background:var(--volt-ink); box-shadow:0 0 0 4px var(--volt-soft); }
+:root[data-theme="light"] .cox-secline .lbl .tick{ background:var(--volt-ink); }
+:root[data-theme="light"] .cox-secline .lbl.coral .tick{ background:var(--coral); }
+:root[data-theme="light"] .cox-secline .lbl.cyan .tick{ background:#2563EB; }
+:root[data-theme="light"] .tut-track span, :root[data-theme="light"] .amg2-dot.on, :root[data-theme="light"] .amg-flow span{ background:var(--volt-ink); color:#fff; }
+:root[data-theme="light"] .tut-spot{ box-shadow:0 0 0 9999px rgba(16,24,40,.55), 0 0 0 2px var(--volt-ink), 0 0 24px 5px var(--volt-soft); }
+:root[data-theme="light"] .tut-block.solid{ background:rgba(16,24,40,.5); }
+:root[data-theme="light"] .tut-intro-wrap{ background:rgba(16,24,40,.5); }
+:root[data-theme="light"] .amg-wrap{ background:rgba(16,24,40,.55); }
+:root[data-theme="light"] .amg2-hi{ animation-name:amg2HiPulseLight; }
+@keyframes amg2HiPulseLight{
+  0%,100%{ box-shadow:0 0 0 2px var(--volt-ink), 0 0 12px rgba(95,138,0,.2); }
+  50%    { box-shadow:0 0 0 3px var(--volt-ink), 0 0 22px rgba(95,138,0,.4); }
+}
+:root[data-theme="light"] .cox-flash{ animation-name:coxFlashLight; }
+@keyframes coxFlashLight{
+  0%,100%{ box-shadow:0 0 0 0 rgba(95,138,0,0); }
+  18%,60%{ box-shadow:0 0 0 3px var(--volt-ink), 0 0 20px 4px rgba(95,138,0,.25); }
+}
+
+/* ── 면: 유리(blur) 톤을 밝게 ── */
+:root[data-theme="light"] .cox-appbar{ background:rgba(255,255,255,.78); border-bottom-color:var(--line-strong); }
+:root[data-theme="light"] .cox-bottomnav{ background:rgba(255,255,255,.86); box-shadow:0 18px 40px -18px rgba(16,24,40,.35); }
+:root[data-theme="light"] .cox-menu{ box-shadow:0 24px 60px -18px rgba(16,24,40,.35); }
+:root[data-theme="light"] .ptr-circle{ background:rgba(255,255,255,.95); }
+:root[data-theme="light"] .ptr-circle svg{ stroke:var(--volt-ink); }
+:root[data-theme="light"] .cox-dark .bg-gray-900\/80{ background:rgba(255,255,255,.8) !important; }
+:root[data-theme="light"] .cox-dark .bg-gray-700\/50{ background:rgba(238,241,245,.8) !important; }
+:root[data-theme="light"] .cox-dark .player-slot{ background:rgba(16,24,40,.025) !important; border-color:var(--line-strong) !important; }
+:root[data-theme="light"] .player-card{ background-color:#FFFFFF; box-shadow:0 1px 2px rgba(16,24,40,.06), 0 4px 12px -6px rgba(16,24,40,.12); }
+:root[data-theme="light"] .cox-dark .bg-gray-800{ box-shadow:0 1px 2px rgba(16,24,40,.04); }
+:root[data-theme="light"] .cox-dark .bg-gray-800\/50,
+:root[data-theme="light"] .cox-dark .bg-gray-800\/60{ box-shadow:0 1px 3px rgba(16,24,40,.05); }
+:root[data-theme="light"] .cox-card-playing{ filter:grayscale(1) brightness(.96); }
+:root[data-theme="light"] .cox-playing-tag, :root[data-theme="light"] .mo-chip-tag{ background:#6B7280; color:#fff; }
+:root[data-theme="light"] .cox-online-dot{ border-color:#fff; }
+:root[data-theme="light"] .sk{ background:#E6EAF0; }
+:root[data-theme="light"] .sk::after{ background:linear-gradient(100deg, transparent 30%, rgba(255,255,255,.7) 50%, transparent 70%); }
+
+/* ── 텍스트 위계 (Tailwind 회색 리맵) ── */
+:root[data-theme="light"] .cox-dark .text-gray-300{ color:#3B4454 !important; }
+:root[data-theme="light"] .cox-dark .text-gray-600{ color:#9AA3B2 !important; }
+:root[data-theme="light"] .cox-dark .text-cyan-400{ color:var(--dim) !important; }
+:root[data-theme="light"] .cox-modal-text, :root[data-theme="light"] .tut-body, :root[data-theme="light"] .tut-intro p{ color:#3B4454; }
+:root[data-theme="light"] .player-card .player-name{ color:var(--text) !important; }
+:root[data-theme="light"] .player-card .player-info{ color:var(--dim) !important; }
+:root[data-theme="light"] .player-card .player-info .text-gray-300{ color:#3B4454 !important; }
+:root[data-theme="light"] .arcade-font.text-white{ color:var(--text) !important; }
+/* 급수 글자: 네온 그림자 대신 또렷하게 */
+:root[data-theme="light"] .player-info > span:first-child{ text-shadow:none !important; filter:saturate(1.1) brightness(.85); }
+
+/* ── 매칭 후보 시트 / 안내 시트 / 튜트리얼 카드 ── */
+:root[data-theme="light"] .mo-sheet{ background:#FFFFFF; color:var(--text); border-color:var(--line-strong); }
+:root[data-theme="light"] .mo-title, :root[data-theme="light"] .mo-chip-name{ color:var(--text); }
+:root[data-theme="light"] .mo-sub, :root[data-theme="light"] .mo-vs{ color:var(--dim); }
+:root[data-theme="light"] .mo-card{ background:#F7F8FA; }
+:root[data-theme="light"] .mo-card.best{ background:linear-gradient(180deg, rgba(255,199,64,.18), rgba(255,199,64,.05)); }
+:root[data-theme="light"] .mo-card.best .mo-tier{ color:#A86E00; }
+:root[data-theme="light"] .mo-card.normal .mo-tier{ color:#15803D; }
+:root[data-theme="light"] .mo-card.bad .mo-tier{ color:#A16207; }
+:root[data-theme="light"] .mo-chip{ background:#FFFFFF; border-color:var(--line-strong); }
+:root[data-theme="light"] .mo-reasons li{ color:#3B4454; }
+:root[data-theme="light"] .mo-reasons li.tone-good{ color:#15803D; }
+:root[data-theme="light"] .mo-reasons li.tone-bad{ color:#B91C1C; }
+:root[data-theme="light"] .mo-reasons li.tone-mid, :root[data-theme="light"] .mo-reasons li.tone-wait{ color:#5B6472; }
+:root[data-theme="light"] .mo-hint{ color:#7A4F00; background:rgba(255,196,0,.14); border-color:rgba(255,196,0,.4); }
+:root[data-theme="light"] .mo-wait-chip, :root[data-theme="light"] .auto-wait-note{ color:#3B4454; background:#F1F3F7; border-color:var(--line-strong); }
+:root[data-theme="light"] .mo-foot{ background:#FFFFFF; border-top-color:var(--line); }
+:root[data-theme="light"] .mo-btn{ background:#F1F3F7; color:var(--text); border-color:var(--line-strong); }
+:root[data-theme="light"] .mo-btn.cancel{ background:rgba(229,83,58,.1); color:#B91C1C; border-color:rgba(229,83,58,.3); }
+:root[data-theme="light"] .amg-sheet{ background:#FFFFFF; color:var(--text); }
+:root[data-theme="light"] .amg-title, :root[data-theme="light"] .amg-box-title{ color:var(--text); }
+:root[data-theme="light"] .amg-title.cover{ color:#A86E00; text-shadow:none; }
+:root[data-theme="light"] .amg-lead, :root[data-theme="light"] .amg-desc, :root[data-theme="light"] .amg-box-body, :root[data-theme="light"] .amg-flow > div{ color:#3B4454; }
+:root[data-theme="light"] .amg-box.plain, :root[data-theme="light"] .amg-flow > div{ background:#F7F8FA; border-color:var(--line-strong); }
+:root[data-theme="light"] .amg2-coach{ background:#F7F8FA; border-top-color:var(--line); }
+:root[data-theme="light"] .amg2-coach-text{ color:var(--text); }
+:root[data-theme="light"] .amg2-dot{ background:rgba(16,24,40,.15); }
+:root[data-theme="light"] .amg-body .tone-good{ color:#15803D; } :root[data-theme="light"] .amg-body .tone-bad{ color:#B91C1C; }
+:root[data-theme="light"] .amg-body .tone-mid, :root[data-theme="light"] .amg-body .tone-wait{ color:#5B6472; }
+:root[data-theme="light"] .tut-key{ background:#F1F3F7; }
+:root[data-theme="light"] .auto-make-btn.male{ color:#1D4ED8; background:rgba(37,99,235,.1); border-color:rgba(37,99,235,.35); box-shadow:none; }
+:root[data-theme="light"] .auto-make-btn.female{ color:#BE185D; background:rgba(236,72,153,.1); border-color:rgba(236,72,153,.35); box-shadow:none; }
+:root[data-theme="light"] .auto-make-btn.mixed{ color:#6D28D9; background:rgba(168,85,247,.1); border-color:rgba(168,85,247,.35); box-shadow:none; }
+:root[data-theme="light"] .cox-pill-danger{ background:rgba(229,83,58,.1); }
+
+/* ── 토스트·연결 띠·모달 ── */
+:root[data-theme="light"] .cox-toast, :root[data-theme="light"] .cox-conn{ background:rgba(255,255,255,.96); box-shadow:0 14px 34px -14px rgba(16,24,40,.35); }
+:root[data-theme="light"] .cox-conn.offline{ color:#B91C1C; }
+:root[data-theme="light"] .cox-conn.reconnecting{ color:#92400E; }
+:root[data-theme="light"] .cox-conn button{ background:#F1F3F7; }
+:root[data-theme="light"] .cox-modal-backdrop{ background:rgba(16,24,40,.45); }
+:root[data-theme="light"] .cox-modal{ box-shadow:0 30px 80px -24px rgba(16,24,40,.45); }
+:root[data-theme="light"] .cox-box.warn{ color:#7A4F00; }
+:root[data-theme="light"] .cox-box.danger{ color:#B91C1C; }
+:root[data-theme="light"] .cox-field{ background:#FFFFFF; }
+:root[data-theme="light"] .cox-dark .bg-red-900\/50{ background:rgba(229,83,58,.14) !important; color:#B91C1C !important; }
+:root[data-theme="light"] .cox-error-screen{ background:var(--ink); }
+
+/* ── 청백전: 백팀을 흰 바탕에서도 보이게 (짙은 회색) ── */
+:root[data-theme="light"] .tm-board{ background:linear-gradient(90deg, rgba(37,99,235,.14) 0%, #FFFFFF 42%, #FFFFFF 58%, rgba(75,85,99,.12) 100%); }
+:root[data-theme="light"] .tm-side.blue .sc{ color:#1D4ED8; text-shadow:none; }
+:root[data-theme="light"] .tm-side.white .sc{ color:#374151; text-shadow:none; }
+:root[data-theme="light"] .tm-side.white .nm .dot{ box-shadow:0 0 6px rgba(75,85,99,.6); }
+:root[data-theme="light"] .tm-bar{ background:rgba(16,24,40,.08); }
+:root[data-theme="light"] .tm-center .lead-tag{ background:#F1F3F7; }
+:root[data-theme="light"] .tm-center .lead-tag.white{ color:#fff; background:var(--tm-white); border-color:var(--tm-white); }
+:root[data-theme="light"] .player-card.tm-white{ background-image:linear-gradient(180deg, rgba(75,85,99,.12), rgba(75,85,99,0) 70%); }
+:root[data-theme="light"] .player-card.tm-white::before{ box-shadow:none; }
+:root[data-theme="light"] .player-card.tm-blue::before{ box-shadow:none; }
+:root[data-theme="light"] .tm-team-pick{ border-color:var(--line-strong); background:#F7F8FA; color:#3B4454; }
+:root[data-theme="light"] .tm-team-pick.white.on{ background:linear-gradient(160deg, #6B7280, #374151); color:#fff; border-color:#374151; box-shadow:0 10px 26px -12px rgba(55,65,81,.8); }
+:root[data-theme="light"] .tm-submit.white{ background:linear-gradient(160deg, #6B7280, #374151) !important; color:#fff !important; }
+:root[data-theme="light"] .tm-win-btn.white{ background:linear-gradient(160deg, #6B7280, #374151); color:#fff; }
+:root[data-theme="light"] .tm-win-btn.side{ background:#F1F3F7; color:var(--text); border-color:var(--line-strong); }
+:root[data-theme="light"] .tm-end-side{ background:#F7F8FA; border-color:var(--line-strong); }
+:root[data-theme="light"] .tm-end-side.white{ background:rgba(75,85,99,.1); border-color:rgba(75,85,99,.35); }
+:root[data-theme="light"] .tm-end-side .p, :root[data-theme="light"] .tm-rank-row .rt, :root[data-theme="light"] .tm-log-body b,
+:root[data-theme="light"] .tm-wl-adjust .cell .ctr b{ color:var(--text); }
+:root[data-theme="light"] .tm-log-row.white .who{ color:#374151; }
+:root[data-theme="light"] .tm-edit-cell .ctr input{ background:#FFFFFF; color:var(--text); border-color:var(--line-strong); }
+:root[data-theme="light"] .tm-edit-cell .ctr button, :root[data-theme="light"] .tm-wl-adjust .cell .ctr button{ background:#E6EAF0; color:var(--text); }
+:root[data-theme="light"] .tm-mode-btn{ border-color:var(--line-strong); background:#F7F8FA; color:#3B4454; }
+:root[data-theme="light"] .tm-mode-btn.on{ color:var(--text); }
+:root[data-theme="light"] .tm-mode-btn.on .tm-mode-btn-desc{ color:#3B4454; }
+:root[data-theme="light"] .tm-slot.white{ color:#374151 !important; background:rgba(75,85,99,.08) !important; border-color:rgba(75,85,99,.45) !important; }
+:root[data-theme="light"] .tm-sched-legend i.w{ background:var(--tm-white); }
+:root[data-theme="light"] .tm-sched-grid::after{ background:linear-gradient(180deg, transparent, rgba(16,24,40,.2), transparent); }
+:root[data-theme="light"] .tm-rank-seg{ background:#F1F3F7; }
+:root[data-theme="light"] .tm-rank-seg .seg.on{ background:var(--volt-ink); color:#fff; }
+:root[data-theme="light"] .tm-rank-seg .seg.white.on{ background:var(--tm-white); color:#fff; }
+:root[data-theme="light"] .tm-rank-row{ background:#F7F8FA; }
+:root[data-theme="light"] .tm-rank-row.top1{ background:linear-gradient(90deg, rgba(255,212,90,.35), #F7F8FA); }
+:root[data-theme="light"] .tm-rank-row.top1 .rk{ color:#A86E00; }
+:root[data-theme="light"] .tm-rank-row.top2 .rk{ color:#6B7280; }
+:root[data-theme="light"] .tm-rank-more{ background:#F1F3F7; }
+:root[data-theme="light"] .tm-wl .w, :root[data-theme="light"] .tm-rank-row .wl .w, :root[data-theme="light"] .tm-wl-adjust .cell.w .k{ color:#15803D; }
+:root[data-theme="light"] .tm-wl .l, :root[data-theme="light"] .tm-rank-row .wl .l, :root[data-theme="light"] .tm-wl-adjust .cell.l .k{ color:#B91C1C; }
+:root[data-theme="light"] .tm-result-badge.win{ background:rgba(21,128,61,.12); color:#15803D; border-color:rgba(21,128,61,.35); }
+:root[data-theme="light"] .tm-result-badge.loss{ background:rgba(185,28,28,.1); color:#B91C1C; border-color:rgba(185,28,28,.35); }
+:root[data-theme="light"] .tm-live{ background:rgba(255,255,255,.96); }
+:root[data-theme="light"] .tm-live.blue .t{ color:#1D4ED8; }
+:root[data-theme="light"] .tm-live.white{ border-color:rgba(75,85,99,.6); }
+:root[data-theme="light"] .tm-live.white .t{ color:#374151; }
+:root[data-theme="light"] .tm-edge.white{ box-shadow:inset 0 0 0 4px #4B5563, inset 0 0 70px 10px rgba(75,85,99,.35); }
+:root[data-theme="light"] .tm-log-row, :root[data-theme="light"] .tm-end-side.mixed, :root[data-theme="light"] .tm-wl-adjust .cell, :root[data-theme="light"] .tm-edit-cell{ background:#F7F8FA; border-color:var(--line-strong); }
+:root[data-theme="light"] .tm-edit-cell.white{ background:rgba(75,85,99,.08); }
+:root[data-theme="light"] .tm-mode-chip{ color:#1D4ED8; }

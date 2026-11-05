@@ -1,0 +1,126 @@
+/* ══════════════════════════════════════════════════════════════════
+   REFERENCE POLISH  ·  앱바 / 아바타 메뉴 / 통계바 / 섹션 헤더
+   첨부 레퍼런스(COX·MATCH) 톤으로 끌어올리는 컴포넌트
+══════════════════════════════════════════════════════════════════ */
+
+/* ── 상단 앱바 (인사말 + 전광판 타이틀 + 아바타) ── */
+.cox-appbar{
+  position:sticky; top:0; z-index:30;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+  background:rgba(13,15,20,.72);
+  -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--line-strong);
+}
+.cox-appbar-brand{ min-width:0; flex:1; }
+.cox-hello{
+  display:flex; align-items:center; gap:7px;
+  font-size:11.5px; color:var(--dim); letter-spacing:.03em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cox-title{
+  font-family:'Anton','Noto Sans KR',sans-serif; font-weight:800;
+  font-size:24px; line-height:1; margin-top:4px; letter-spacing:.01em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.cox-title em{ color:var(--volt); font-style:normal; }
+
+/* 아바타 버튼 (메뉴 트리거) */
+.cox-avatar-btn{
+  flex-shrink:0; width:44px; height:44px; border-radius:15px; border:none; cursor:pointer;
+  background:linear-gradient(140deg,var(--volt),#7fae1f); color:#0c0d11;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Noto Sans KR',sans-serif; font-weight:900; font-size:14px;
+  box-shadow:0 6px 18px -6px var(--volt);
+  transition:transform .12s, filter .15s;
+}
+.cox-avatar-btn.admin{ background:linear-gradient(140deg,#FFD45A,#E0A21F); box-shadow:0 6px 18px -6px #FFD45A; }
+.cox-avatar-btn:active{ transform:scale(.94); }
+
+/* 프로필 드롭다운 메뉴 */
+.cox-menu-backdrop{ position:fixed; inset:0; z-index:48; background:transparent; }
+.cox-menu{
+  position:absolute; top:calc(100% - 4px); right:14px; z-index:49; width:208px;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:18px;
+  padding:8px; box-shadow:0 24px 60px -18px rgba(0,0,0,.85);
+  animation:modalScaleIn .16s cubic-bezier(.2,.7,.2,1) both; transform-origin:top right;
+}
+.cox-menu-head{
+  padding:10px 12px 12px; margin-bottom:6px; border-bottom:1px solid var(--line);
+  display:flex; align-items:center; gap:10px;
+}
+.cox-menu-head .nm{ font-size:14px; font-weight:800; color:var(--text); }
+.cox-menu-head .rl{ font-size:11px; color:var(--dim); margin-top:1px; }
+.cox-menu-item{
+  width:100%; display:flex; align-items:center; gap:11px;
+  padding:11px 12px; border:none; border-radius:12px; cursor:pointer;
+  background:transparent; color:var(--text);
+  font-family:'Noto Sans KR',sans-serif; font-size:13.5px; font-weight:700; text-align:left;
+  transition:background .14s;
+}
+.cox-menu-item i{ width:18px; text-align:center; color:var(--dim); font-size:14px; }
+.cox-menu-item:hover{ background:var(--card-2); }
+.cox-menu-item:active{ background:var(--card-2); }
+.cox-menu-item.danger{ color:var(--coral); }
+.cox-menu-item.danger i{ color:var(--coral); }
+.cox-menu-item.accent{ color:var(--volt); }
+.cox-menu-item.accent i{ color:var(--volt); }
+
+/* ── 통계 요약 바 (출석 / 진행 / 대기) ── */
+.cox-statbar{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin:2px 0 4px; }
+.cox-stat{
+  background:var(--card); border:1px solid var(--line); border-radius:16px;
+  padding:13px 12px; min-width:0;
+}
+.cox-stat .v{ font-family:'Anton','Noto Sans KR',sans-serif; font-size:26px; line-height:.9; }
+.cox-stat .v.volt{ color:var(--volt); }
+.cox-stat .v.coral{ color:var(--coral); }
+.cox-stat .k{ font-size:10.5px; color:var(--dim); margin-top:7px; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* ── 섹션 헤더 라인 (라벨 + 액션) ── */
+.cox-secline{ display:flex; align-items:center; justify-content:space-between; gap:8px; min-width:0; }
+.cox-secline .lbl{
+  display:flex; align-items:center; gap:8px; min-width:0;
+  font-size:13px; font-weight:800; letter-spacing:.02em;
+}
+.cox-secline .lbl .tick{ width:3px; height:15px; border-radius:3px; background:var(--volt); flex-shrink:0; }
+.cox-secline .lbl .count{ color:var(--dim); font-weight:700; font-size:12px; }
+.cox-secline .lbl.cyan .tick{ background:#6FB3FF; }
+.cox-secline .lbl.green .tick{ background:var(--volt); }
+.cox-secline .lbl.coral .tick{ background:var(--coral); }
+.cox-pill-danger{
+  flex-shrink:0; background:rgba(255,106,82,.14); color:var(--coral);
+  border:1px solid rgba(255,106,82,.32); border-radius:10px;
+  padding:6px 11px; font-size:11px; font-weight:800; cursor:pointer;
+  white-space:nowrap; transition:transform .12s, filter .15s;
+}
+.cox-pill-danger:active{ transform:scale(.95); }
+
+/* ── [자동매칭] '매칭 만들기' 버튼 (누를 때마다 한 경기씩 생성) ── */
+.auto-head-left{ display:flex; align-items:center; gap:8px; min-width:0; flex-wrap:wrap; }
+.auto-make-row{ display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+.auto-make-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:4px;
+  width:100%; padding:11px 4px; border-radius:12px;
+  font-size:12.5px; font-weight:800; letter-spacing:.2px; line-height:1;
+  white-space:nowrap; cursor:pointer;
+  border:1px solid transparent; transition:transform .12s, filter .15s, box-shadow .2s;
+}
+.auto-make-btn:active:not(:disabled){ transform:scale(.96); }
+.auto-make-btn:disabled{ opacity:.5; cursor:not-allowed; }
+.auto-make-btn.male{
+  color:#dbeafe; background:rgba(59,130,246,.18);
+  border-color:rgba(59,130,246,.55); box-shadow:0 0 10px rgba(59,130,246,.25);
+}
+.auto-make-btn.male:hover:not(:disabled){ background:rgba(59,130,246,.30); box-shadow:0 0 14px rgba(59,130,246,.45); }
+.auto-make-btn.female{
+  color:#fce7f3; background:rgba(236,72,153,.18);
+  border-color:rgba(236,72,153,.55); box-shadow:0 0 10px rgba(236,72,153,.25);
+}
+.auto-make-btn.female:hover:not(:disabled){ background:rgba(236,72,153,.30); box-shadow:0 0 14px rgba(236,72,153,.45); }
+/* [혼복 매칭] 보라색 버튼 (남/여/혼복 일렬 3버튼) */
+.auto-make-btn.mixed{
+  color:#ede9fe; background:rgba(168,85,247,.18);
+  border-color:rgba(168,85,247,.55); box-shadow:0 0 10px rgba(168,85,247,.25);
+}
+.auto-make-btn.mixed:hover:not(:disabled){ background:rgba(168,85,247,.30); box-shadow:0 0 14px rgba(168,85,247,.45); }

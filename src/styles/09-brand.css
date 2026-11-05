@@ -1,0 +1,18 @@
+/* ══════════════════════════════════════════════════════════════════
+   BRAND CI  ·  로고 마크 / 워드마크 / 입장 화면 브랜드 모먼트
+══════════════════════════════════════════════════════════════════ */
+.cox-appbar-mark{ flex-shrink:0; border-radius:11px; }
+.cox-entry-mark{
+  display:flex; justify-content:center; margin-bottom:14px;
+  animation:coxMarkIn .7s var(--ease-spring) both;
+}
+@keyframes coxMarkIn{
+  0%  { opacity:0; transform:translateY(-14px) scale(.7) rotate(-8deg); }
+  60% { opacity:1; transform:translateY(2px) scale(1.06) rotate(1deg); }
+  100%{ opacity:1; transform:none; }
+}
+.cox-wordmark{ display:flex; align-items:center; gap:10px; }
+.cox-wordmark-text .line1{
+  font-family:'Anton','Noto Sans KR',sans-serif; font-size:20px; letter-spacing:.05em; color:var(--text);
+}
+.cox-wordmark-text .line1 em{ color:var(--volt); font-style:normal; }

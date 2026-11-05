@@ -1,0 +1,14 @@
+/* ══════════════════════════════════════════════════════════════════
+   LIVE LAYER  ·  실시간 생명감 (접속 점 / 라이브 리액션)
+══════════════════════════════════════════════════════════════════ */
+/* 접속 중인 선수의 초록 펄스 점 (카드 왼쪽 위 모서리) */
+.cox-online-dot{
+  position:absolute; top:-3px; left:-3px; z-index:2;
+  width:10px; height:10px; border-radius:50%;
+  background:#34E27A; border:2px solid #0c0d11;
+  box-shadow:0 0 6px rgba(52,226,122,.8);
+  animation:coxPulse 2s infinite;
+  pointer-events:none;
+}
+/* 헤더의 접속 인원 수 */
+.cox-online-count{ color:var(--volt); font-weight:800; }

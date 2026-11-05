@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process'
 
 // [소모임 동기화] 개발 서버(npm run dev)에서도 Vercel의 /api/somoim 과 동일하게
 // 동작하도록 하는 미들웨어. (배포 시에는 Vercel serverless function이 처리)
@@ -24,20 +25,52 @@ const somoimDevApi = () => ({
   },
 })
 
-// [업데이트 안내] 빌드할 때마다 새로 찍히는 빌드 번호. 코드(__BUILD_ID__)와
-// 서버 파일(version.json) 양쪽에 새겨져, 앱이 두 값을 비교해 새 버전을 감지한다.
+// [업데이트 안내] 빌드할 때마다 새로 찍히는 빌드 번호 + 커밋 해시.
+// 코드(__BUILD_ID__/__COMMIT_SHA__)와 서버 파일(version.json) 양쪽에 새겨져,
+// 앱이 두 값을 비교해 새 버전을 감지한다. 커밋 해시는 "지금 떠 있는 코드가 어느
+// 커밋인지"를 설정 화면에서 바로 알 수 있게 해 준다.
 const buildId = new Date().toISOString();
+const commitSha = (() => {
+  if (process.env.VERCEL_GIT_COMMIT_SHA) return process.env.VERCEL_GIT_COMMIT_SHA.slice(0, 7);
+  try { return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return 'local'; }
+})();
 const versionJson = () => ({
   name: 'emit-version-json',
   apply: 'build',
   generateBundle() {
-    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ buildId }) });
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ buildId, commit: commitSha }) });
   },
 });
 
 export default defineConfig({
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
+    __COMMIT_SHA__: JSON.stringify(commitSha),
+  },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        // [성능] 한 덩어리(895KB)였던 번들을 역할별로 나눈다.
+        //  · 벤더 청크는 앱 코드가 바뀌어도 해시가 그대로라 브라우저 캐시가 살아남는다
+        //  · firebase 가 가장 크다 — firestore / storage 를 분리해 병렬로 받는다
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('@sentry')) return 'vendor-sentry';
+          if (id.includes('firebase/firestore') || id.includes('@firebase/firestore')) return 'vendor-firestore';
+          if (id.includes('@firebase/storage') || id.includes('firebase/storage')) return 'vendor-storage';
+          if (id.includes('@firebase') || id.includes('firebase')) return 'vendor-firebase';
+          if (id.includes('react-dom') || id.includes('/react/') || id.includes('scheduler')) return 'vendor-react';
+          return 'vendor';
+        },
+      },
+    },
+  },
+  // [테스트] Vitest 설정 — `npm test`
+  test: {
+    environment: 'node',
+    include: ['tests/**/*.test.js'],
+    testTimeout: 60000,
   },
   plugins: [
     somoimDevApi(),

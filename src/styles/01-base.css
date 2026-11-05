@@ -1,0 +1,51 @@
+/* ══════════════════════════════════════════════════════════════════
+   APP-LIKE BEHAVIOR  ·  네이티브 앱 느낌 / 확대·축소 차단 / 안전영역
+══════════════════════════════════════════════════════════════════ */
+html{
+  -webkit-text-size-adjust:100%;   /* iOS 자동 글자 확대 방지 */
+  text-size-adjust:100%;
+  -webkit-tap-highlight-color:transparent;
+}
+html,body{
+  touch-action:manipulation;        /* 더블탭 줌 비활성화 (클릭은 유지) */
+  overscroll-behavior-y:none;       /* 당겨서 새로고침/바운스 억제 */
+}
+*{ -webkit-tap-highlight-color:transparent; }
+/* 인터랙티브 요소가 텍스트로 선택되어 깨지는 현상 방지 (입력창은 예외) */
+/* 앱 전체에서 길게 누를 때 텍스트 선택/'복사' 콜아웃 메뉴가 뜨지 않도록 차단
+   (코트 번호를 길게 눌러 코트 이동/교환 시 복사 메뉴가 뜨던 문제 해결) */
+html, body, #root{
+  -webkit-user-select:none; -moz-user-select:none; -ms-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+}
+button, .cox-nav-btn, .cox-fab, .player-card, .player-slot, .cox-avatar-btn, .cox-menu-item{
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none;
+}
+/* 입력창은 선택/편집 가능하도록 예외 처리 */
+input, textarea{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; touch-action:auto; }
+img{ max-width:100%; }
+
+/* ── 당겨서 새로고침(Pull-to-refresh) 인디케이터 ── */
+.ptr-indicator{
+  position:fixed; left:50%; z-index:60;
+  top:calc(env(safe-area-inset-top, 0px) + 6px);
+  margin-top:-44px;            /* 기본 위치는 화면 위로 숨김 */
+  pointer-events:none;
+  will-change:transform, opacity;
+}
+.ptr-circle{
+  width:40px; height:40px; border-radius:50%;
+  background:rgba(20,23,29,.92);
+  border:1px solid var(--line-strong);
+  -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px);
+  box-shadow:0 8px 22px -8px rgba(0,0,0,.6);
+  display:flex; align-items:center; justify-content:center;
+}
+.ptr-circle svg{
+  width:20px; height:20px; fill:none; stroke:var(--volt);
+  stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round;
+  transition:transform .05s linear;
+}
+.ptr-circle.refreshing svg{ animation:ptrspin .7s linear infinite; }
+@keyframes ptrspin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }

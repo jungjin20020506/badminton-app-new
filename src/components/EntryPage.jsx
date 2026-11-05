@@ -4,6 +4,7 @@ import { playersRef } from '../lib/firebase';
 import { CoxMark } from './Logo';
 import { TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../lib/helpers';
 import { VersionInfo } from './UpdateBanner';
+import { log } from '../lib/logger';
 
 // ===================================================================================
 // 신규 및 복구된 페이지/모달 컴포넌트들
@@ -37,7 +38,7 @@ function EntryPage({ onEnter, roster, teamMode = false }) {
                         team: d.team === TEAM_BLUE || d.team === TEAM_WHITE ? d.team : prev.team,
                     }));
                 }
-            }).catch(e => console.error("이전 입장 정보 불러오기 실패:", e));
+            }).catch(e => log.error("이전 입장 정보 불러오기 실패:", e));
         }
     }, []);
 

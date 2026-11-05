@@ -1,0 +1,41 @@
+# ===================================================================================
+# CI — 푸시·PR 마다 린트 → 테스트(시뮬레이터 포함) → 빌드
+# -----------------------------------------------------------------------------------
+# Vercel 은 main 푸시를 그대로 배포하므로, 이 워크플로가 "배포를 막지는" 못한다.
+# 배포 전에 막고 싶다면: GitHub → Settings → Branches → main 보호 규칙에
+# "Require status checks to pass" 로 이 워크플로(ci)를 지정하고 PR 로만 합친다.
+# ===================================================================================
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Test (unit + simulators)
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Bundle size report
+        run: |
+          echo "## 빌드 결과 (dist/assets)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          ls -la dist/assets | awk '{ printf "%8.0f KB  %s\n", $5/1024, $9 }' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

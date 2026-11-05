@@ -176,7 +176,7 @@ const ScheduledMatchesSection = React.memo(({ numScheduledMatches, scheduledMatc
 
 // [자동매칭] 자동 매칭 섹션 컴포넌트 (UI 변경)
 // [수정] 자동 ON/OFF(일정 주기 생성) → '남자/여자 매칭 만들기' 버튼으로 1경기씩 생성
-const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedAutoMatchSlot, inProgressPlayerIds, courtIndexByPlayer, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender, onlineIds, teamMode = false, setModal }) => {
+const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdmin, handleStartAutoMatch, handleReturnToWaiting, handleClearAutoMatches, handleDeleteAutoMatch, currentUser, handleAutoMatchCardClick, selectedPlayerIds = [], inProgressPlayerIds, courtIndexByPlayer, handleAutoMatchSlotClick, handleGenerateMatch, generatingGender, onlineIds, teamMode = false, setModal }) => {
     const pressTimerRef = useRef(null);
 
     const handlePressStart = (matchIndex) => {
@@ -317,7 +317,8 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
                                     {match.map((playerId, slotIndex) => {
                                         const player = players[playerId];
                                         const cardKey = playerId ? `${playerId}-${matchIndex}-${slotIndex}` : `auto-empty-${matchIndex}-${slotIndex}`;
-                                        const isSelected = selectedAutoMatchSlot && selectedAutoMatchSlot.matchIndex === matchIndex && selectedAutoMatchSlot.slotIndex === slotIndex;
+                                        // 관리자가 교환하려고 고른 카드는 자동 매칭 줄에서도 라임 테두리로 표시한다 (예전엔 표시가 없어 헷갈렸다)
+                                        const isSelected = !!playerId && selectedPlayerIds.includes(playerId);
                                         return player ?
                                             (<PlayerCard key={cardKey} player={player} context={{location: 'auto', selected: isSelected}} isAdmin={isAdmin} onCardClick={() => handleAutoMatchCardClick(matchIndex, slotIndex)} onAction={handleReturnToWaiting} onLongPress={setModal ? (p) => setModal({type: 'adminEditPlayer', data: { player: p, mode: 'simple' }}) : undefined} isCurrentUser={currentUser && player.id === currentUser.id} isPlaying={inProgressPlayerIds.has(playerId)} isOnline={!!onlineIds && onlineIds.has(playerId)} teamMode={teamMode} />) :
                                             (<EmptySlot key={cardKey} onSlotClick={() => handleAutoMatchSlotClick(matchIndex, slotIndex)} />)

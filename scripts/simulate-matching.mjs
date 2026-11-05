@@ -275,7 +275,6 @@ function analyze(gym, mode) {
 
     // 같은 사람과 몇 번이나 다시 만났는지
     const meetCount = new Map();
-    let totalMeetings = 0;
     players.forEach(p => {
         (p.todayRecentGames || []).forEach(g => {
             [...(g.partners || []), ...(g.opponents || [])].forEach(other => {
@@ -286,7 +285,6 @@ function analyze(gym, mode) {
     });
     // 양쪽에서 세었으므로 2로 나눈다
     const meetings = [...meetCount.values()].map(v => Math.round(v / 2));
-    meetings.forEach(v => { totalMeetings += v; });
     const maxRepeat = meetings.length ? Math.max(...meetings) : 0;
     const pairsUsed = meetings.length;
     const possiblePairs = (players.length * (players.length - 1)) / 2;
@@ -569,7 +567,7 @@ console.log('\n[5] 예외 상황 — 터지지 않는지');
     }
     // 5-7. 경기 도중 선수가 나가도 매칭이 계속 되는가
     {
-        const { gym, log } = runSession({
+        const { log } = runSession({
             maleCount: 14, femaleCount: 0, minutes: 120, sensitivity: 'high', seed: 9,
             leaveEvents: [{ at: 40, id: '남3' }, { at: 70, id: '남7' }],
             restEvents: [{ at: 30, id: '남5', resting: true }, { at: 90, id: '남5', resting: false }],

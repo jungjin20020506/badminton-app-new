@@ -6,7 +6,9 @@
 // 기본은 꺼짐(체육관은 시끄럽다) — 프로필 메뉴 ▸ 효과음에서 켠다. localStorage 저장.
 // ===================================================================================
 
-const SOUND_LS_KEY = 'cox-sound-enabled';
+import { STORAGE_KEYS } from './constants';
+
+const SOUND_LS_KEY = STORAGE_KEYS.soundEnabled;
 
 let audioCtx = null;
 const getCtx = () => {
@@ -21,11 +23,11 @@ const getCtx = () => {
 };
 
 export const isSoundEnabled = () => {
-    try { return localStorage.getItem(SOUND_LS_KEY) === 'on'; } catch (e) { return false; }
+    try { return localStorage.getItem(SOUND_LS_KEY) === 'on'; } catch { return false; }
 };
 
 export const setSoundEnabled = (on) => {
-    try { localStorage.setItem(SOUND_LS_KEY, on ? 'on' : 'off'); } catch (e) { /* 무시 */ }
+    try { localStorage.setItem(SOUND_LS_KEY, on ? 'on' : 'off'); } catch { /* 무시 */ }
     if (on) getCtx(); // 켜는 순간(사용자 제스처)에 오디오 컨텍스트를 미리 깨워둔다
 };
 
@@ -56,11 +58,11 @@ const play = (fn) => {
     if (!isSoundEnabled()) return;
     const ctx = getCtx();
     if (!ctx) return;
-    try { fn(ctx); } catch (e) { /* 사운드 실패는 조용히 */ }
+    try { fn(ctx); } catch { /* 사운드 실패는 조용히 */ }
 };
 
 // E 메이저 펜타토닉 주파수 (E5 기준)
-const E5 = 659.26, Gs5 = 830.61, B5 = 987.77, Cs6 = 1108.73, E6 = 1318.51;
+const E5 = 659.26, Gs5 = 830.61, B5 = 987.77, E6 = 1318.51;
 
 /** 매칭 카드 딜 — 카드 4장이 꽂히는 타이밍에 맞춘 상승 아르페지오 */
 export const playDeal = () => play((ctx) => {
@@ -79,10 +81,4 @@ export const playFinish = () => play((ctx) => {
     tone(ctx, Gs5, 0.02, 0.40, { type: 'sine', gain: 0.055 });
     tone(ctx, B5, 0.04, 0.38, { type: 'sine', gain: 0.05 });
     tone(ctx, E6, 0.16, 0.34, { type: 'triangle', gain: 0.05 });
-});
-
-/** 라이브 리액션 — 짧고 귀엽게 튀는 팝 */
-export const playReaction = () => play((ctx) => {
-    tone(ctx, Cs6 / 2, 0, 0.10, { type: 'square', gain: 0.035, slideTo: Cs6 });
-    tone(ctx, Cs6, 0.06, 0.14, { type: 'sine', gain: 0.07 });
 });

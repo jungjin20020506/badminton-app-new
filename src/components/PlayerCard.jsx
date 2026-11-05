@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { isAdminName, getLevelColor, getTeamOf, getWinLoss, TEAM_META } from '../lib/helpers';
+import { Icon } from './Icons';
 
 // ===================================================================================
 // 자식 컴포넌트들
@@ -82,8 +83,8 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     }
 
     const isLongPressDisabled = context.location === 'court';
-    // [수정] actionLabel이 'auto' 위치도 인식하도록 수정
-    const actionLabel = (isWaiting || context.location === 'auto') ? '선수 내보내기' : '대기자로 이동';
+    // ✕ 버튼: 대기 명단에서는 '선수 내보내기', 자동 매칭·경기 예정에서는 '대기자로 이동'(실제 동작과 일치)
+    const actionLabel = isWaiting ? '선수 내보내기' : '대기자로 이동';
 
     // [청백전] 팀 틴트(윗줄 색 바) + 승패 한 줄. 경기중 딱지가 붙으면 승패 줄은 숨긴다(겹침 방지)
     const team = teamMode ? getTeamOf(player) : null;
@@ -150,10 +151,12 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             </div>
             {isAdmin && onAction && (
                 <button
+                    type="button"
                     onClick={(e) => { e.stopPropagation(); onAction(player); }}
-                    className={`absolute -top-2 -right-2 p-1 text-gray-500 hover:text-yellow-400`}
-                    aria-label={actionLabel}
-                ><i className={"fas fa-times-circle fa-xs"}></i></button>
+                    className="cox-card-x"
+                    aria-label={`${player.name} ${actionLabel}`}
+                    title={actionLabel}
+                ><Icon name="close-circle" size={16} /></button>
             )}
         </div>
     );

@@ -1,0 +1,135 @@
+/* ══════════════════════════════════════════════════════════════════
+   [자동매칭 v2] 매칭 선택지 모달
+   베스트=금색(빛남) / 보통=초록 / 아쉬움=노랑
+══════════════════════════════════════════════════════════════════ */
+.mo-sheet{
+  width:100%; max-width:520px; display:flex; flex-direction:column;
+  max-height:92vh; background:#14161b; color:#fff;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:20px 20px 0 0; overflow:hidden;
+}
+@media (min-width:640px){ .mo-sheet{ border-radius:20px; } }
+
+.mo-head{
+  flex-shrink:0; display:flex; align-items:flex-start; justify-content:space-between;
+  gap:10px; padding:14px 16px 10px; border-bottom:1px solid rgba(255,255,255,.07);
+}
+.mo-title{ font-size:16px; font-weight:900; color:#fff; line-height:1.2; }
+.mo-sub{ font-size:11px; color:#8b919c; margin-top:3px; line-height:1.4; }
+.mo-close{
+  flex-shrink:0; font-size:26px; line-height:1; color:#6b7280;
+  padding:0 4px; background:none; border:none; cursor:pointer;
+}
+.mo-close:hover{ color:#fff; }
+
+.mo-hint{
+  flex-shrink:0; margin:10px 12px 0; padding:9px 11px; border-radius:11px;
+  font-size:11.5px; line-height:1.5; color:#ffe08a;
+  background:rgba(255,196,0,.09); border:1px solid rgba(255,196,0,.28);
+}
+
+.mo-list{
+  flex:1 1 auto; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding:10px 12px 12px; display:flex; flex-direction:column; gap:9px;
+}
+
+.mo-card{
+  width:100%; text-align:left; padding:10px 11px 9px; border-radius:14px;
+  background:#1c1f26; border:1.5px solid transparent; cursor:pointer;
+  transition:transform .12s var(--ease-pop), filter .15s, box-shadow .2s;
+}
+.mo-card:active:not(:disabled){ transform:scale(.98); }
+.mo-card:disabled{ opacity:.55; cursor:wait; }
+
+/* 베스트 — 금색으로 은은하게 빛난다 */
+.mo-card.best{
+  border-color:rgba(255,199,64,.75);
+  background:linear-gradient(180deg, rgba(255,199,64,.13), rgba(255,199,64,.03));
+  box-shadow:0 0 16px rgba(255,199,64,.20);
+  animation:moGoldPulse 2.6s ease-in-out infinite;
+}
+@keyframes moGoldPulse{
+  0%,100%{ box-shadow:0 0 12px rgba(255,199,64,.16); }
+  50%    { box-shadow:0 0 22px rgba(255,199,64,.42); }
+}
+.mo-card.best .mo-tier{ color:#ffc740; }
+
+/* 보통 — 초록 */
+.mo-card.normal{
+  border-color:rgba(52,226,122,.5);
+  background:linear-gradient(180deg, rgba(52,226,122,.09), rgba(52,226,122,.02));
+}
+.mo-card.normal .mo-tier{ color:#34e27a; }
+
+/* 아쉬움 — 노랑 */
+.mo-card.bad{
+  border-color:rgba(250,204,21,.42);
+  background:linear-gradient(180deg, rgba(250,204,21,.07), rgba(250,204,21,.015));
+}
+.mo-card.bad .mo-tier{ color:#facc15; }
+
+.mo-card-head{ display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:7px; }
+.mo-tier{ font-size:12px; font-weight:900; letter-spacing:.2px; }
+.mo-wait-chip{
+  flex-shrink:0; font-size:9.5px; font-weight:800; color:#c9ced8;
+  background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.13);
+  border-radius:999px; padding:2px 7px; white-space:nowrap;
+}
+
+.mo-teams{ display:flex; align-items:center; gap:6px; }
+.mo-team{ flex:1 1 0; min-width:0; display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.mo-vs{ flex-shrink:0; font-size:9.5px; font-weight:900; color:#6b7280; letter-spacing:.5px; }
+
+.mo-chip{
+  position:relative; min-width:0; padding:5px 3px 4px; border-radius:9px; text-align:center;
+  background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.07);
+}
+.mo-chip.playing{ filter:grayscale(1); opacity:.72; padding-bottom:11px; }
+.mo-chip-name{
+  font-size:11.5px; font-weight:800; color:#fff; line-height:1.15;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.mo-chip-sub{ font-size:9.5px; font-weight:700; margin-top:1px; display:flex; justify-content:center; gap:4px; }
+.mo-chip-games{ color:#9aa0aa; }
+.mo-chip-tag{
+  position:absolute; left:50%; bottom:1px; transform:translateX(-50%);
+  font-size:7.5px; font-weight:900; color:#101216; background:#a8aeb8;
+  border-radius:4px; padding:0 4px; white-space:nowrap;
+}
+
+.mo-reasons{ margin-top:8px; display:flex; flex-direction:column; gap:2px; }
+.mo-reasons li{
+  position:relative; padding-left:11px; font-size:11px; line-height:1.5; color:#c3c9d3;
+}
+.mo-reasons li::before{
+  content:''; position:absolute; left:2px; top:7px;
+  width:4px; height:4px; border-radius:50%; background:currentColor; opacity:.5;
+}
+.mo-reasons li.tone-good{ color:#8ee9b0; }
+.mo-reasons li.tone-mid { color:#b9bfc9; }
+.mo-reasons li.tone-bad { color:#ffab9a; }
+.mo-reasons li.tone-wait{ color:#a8b4c8; }
+
+.mo-foot{
+  flex-shrink:0; display:flex; gap:7px; padding:10px 12px;
+  border-top:1px solid rgba(255,255,255,.07); background:#14161b;
+  padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px));
+}
+.mo-btn{
+  flex:1 1 0; padding:11px 6px; border-radius:12px; cursor:pointer;
+  font-size:12px; font-weight:800; white-space:nowrap;
+  border:1px solid rgba(255,255,255,.13); background:rgba(255,255,255,.06); color:#d7dce4;
+  transition:transform .12s, filter .15s;
+}
+.mo-btn:active:not(:disabled){ transform:scale(.96); }
+.mo-btn:disabled{ opacity:.5; cursor:not-allowed; }
+.mo-btn.cancel{ background:rgba(255,106,82,.13); border-color:rgba(255,106,82,.3); color:#ffb1a3; }
+
+/* ── [자동매칭 v2] 예약 경기 안내 줄 (자동 매칭 목록 위에 붙는 얇은 띠) ── */
+.auto-wait-note{
+  display:flex; align-items:center; gap:5px;
+  font-size:10px; font-weight:800; line-height:1.4; color:#b9c4d6;
+  background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09);
+  border-radius:8px; padding:3px 8px; margin:0 2px 1px;
+}
+.auto-wait-note.broken{ color:#ffb1a3; background:rgba(255,106,82,.1); border-color:rgba(255,106,82,.3); }

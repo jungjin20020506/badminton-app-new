@@ -1,0 +1,53 @@
+/* ════════════════════════════════════════════════════════════
+   DARK THEME — 기존 Tailwind 유틸리티를 COX 토큰으로 리매핑
+   (.cox-dark 하위에서만 적용)
+════════════════════════════════════════════════════════════ */
+/* 배경 면 */
+.cox-dark .bg-gray-900\/80{
+  background:rgba(13,15,20,.72) !important;
+  -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px);
+  border-color:var(--line-strong) !important;
+}
+.cox-dark .bg-gray-800\/50{ background:var(--card) !important; border:1px solid var(--line) !important; border-radius:18px !important; }
+.cox-dark .bg-gray-800\/60{ background:var(--card) !important; border:1px solid var(--line) !important; border-radius:16px !important; }
+.cox-dark .bg-gray-800{ background:var(--card) !important; border:1px solid var(--line) !important; }
+.cox-dark .bg-gray-700{ background:var(--card-2) !important; }
+.cox-dark .bg-gray-700\/50{ background:rgba(30,34,43,.55) !important; }
+.cox-dark .bg-gray-600{ background:var(--card-2) !important; }
+.cox-dark .player-slot{ background:rgba(255,255,255,.02) !important; border-color:var(--line-strong) !important; }
+
+/* 텍스트 위계 (색이 아니라 밝기) */
+.cox-dark .text-white{ color:var(--text) !important; }
+.cox-dark .text-gray-300{ color:#C3C9D4 !important; }
+.cox-dark .text-gray-400{ color:var(--dim) !important; }
+.cox-dark .text-gray-500{ color:var(--mute) !important; }
+.cox-dark .text-gray-600{ color:#454B58 !important; }
+
+/* 시그니처 강조 */
+.cox-dark .text-yellow-400{ color:var(--volt) !important; }
+.cox-dark .text-cyan-400{ color:var(--dim) !important; }
+.cox-dark .text-green-400{ color:var(--volt) !important; }
+.cox-dark .text-red-500{ color:var(--coral) !important; }
+.cox-dark .text-red-300{ color:var(--coral) !important; }
+
+/* 보더 */
+.cox-dark .border-gray-700{ border-color:var(--line-strong) !important; }
+.cox-dark .border-gray-600{ border-color:var(--line) !important; }
+.cox-dark .border-yellow-400{ border-color:var(--volt) !important; }
+.cox-dark .hover\:border-yellow-400:hover{ border-color:var(--volt) !important; }
+.cox-dark hr{ border-color:var(--line) !important; }
+
+/* 1차 액션 = 볼트 채움 + 라임 글로우 */
+.cox-dark .bg-yellow-500{ background:var(--volt) !important; color:#0c0d11 !important; box-shadow:0 8px 22px -10px var(--volt); }
+.cox-dark .hover\:bg-yellow-600:hover{ background:#d8ff66 !important; }
+.cox-dark .bg-gradient-to-r.from-yellow-400{ background-image:none !important; background:var(--volt) !important; color:#0c0d11 !important; }
+
+/* 위험/종료 = 코랄 */
+.cox-dark .bg-red-600,
+.cox-dark .bg-red-500{ background:var(--coral) !important; }
+.cox-dark .bg-red-800{ background:#e0573f !important; }
+.cox-dark .bg-red-900\/50{ background:rgba(224,87,63,.45) !important; }
+.cox-dark .hover\:bg-red-700:hover,
+.cox-dark .hover\:bg-red-600:hover,
+.cox-dark .hover\:bg-red-900:hover,
+.cox-dark .hover\:bg-red-800:hover{ filter:brightness(1.08); }

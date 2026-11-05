@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { doc, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, rosterRef, ROSTER_SEED } from '../lib/firebase';
 import { generateId, getLevelColor } from '../lib/helpers';
+import { log } from '../lib/logger';
 
 // ===================================================================================
 // [선수 명단] 선수 정보 관리 모달 — 관리자 설정 > 선수 정보 관리
@@ -51,7 +52,7 @@ function RosterManageModal({ roster, onClose, setModal }) {
                 body: `기본 명단 ${toAdd.length}명이 등록되었습니다.\n\n⚠ 성별은 이름으로 추정한 값입니다. 목록을 확인하고 잘못된 선수는 수정해주세요.`,
             }});
         } catch (e) {
-            console.error('명단 기본 등록 실패:', e);
+            log.error('명단 기본 등록 실패:', e);
             showError('기본 명단 등록에 실패했습니다.');
         } finally {
             setIsBusy(false);
@@ -72,7 +73,7 @@ function RosterManageModal({ roster, onClose, setModal }) {
             setAddForm({ name: '', level: 'A조', gender: '남' });
             setShowAddForm(false);
         } catch (e) {
-            console.error('명단 추가 실패:', e);
+            log.error('명단 추가 실패:', e);
             showError('선수 추가에 실패했습니다.');
         } finally {
             setIsBusy(false);
@@ -88,7 +89,7 @@ function RosterManageModal({ roster, onClose, setModal }) {
             }, { merge: true });
             setEditingId(null);
         } catch (e) {
-            console.error('명단 수정 실패:', e);
+            log.error('명단 수정 실패:', e);
             showError('선수 정보 수정에 실패했습니다.');
         } finally {
             setIsBusy(false);
@@ -103,7 +104,7 @@ function RosterManageModal({ roster, onClose, setModal }) {
                 try {
                     await deleteDoc(doc(rosterRef, entry.id));
                 } catch (e) {
-                    console.error('명단 삭제 실패:', e);
+                    log.error('명단 삭제 실패:', e);
                     showError('삭제에 실패했습니다.');
                 }
                 setModal({ type: null, data: null });

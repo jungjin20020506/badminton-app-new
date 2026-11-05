@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { playersRef } from '../lib/firebase';
 import { getLevelColor, getTeamOf, getWinLoss, TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../lib/helpers';
+import { log } from '../lib/logger';
 
 // [청백전] 길게 눌러서 열리는 모달용 — 손가락을 뗄 때 브라우저가 만들어 내는 '클릭'이
 // 방금 열린 모달의 배경에 떨어져 곧바로 닫혀 버리는 것을 막는다 (열린 뒤 600ms는 배경 탭 무시)
@@ -211,7 +212,7 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, teamMode 
         try {
             await updateDoc(doc(playersRef, player.id), { [field]: next });
         } catch (error) {
-            console.error("Win/loss adjustment failed:", error);
+            log.error("Win/loss adjustment failed:", error);
         }
     };
     // [청백전] 팀 바꾸기 — 입장할 때 팀을 잘못 골랐을 때
@@ -221,7 +222,7 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, teamMode 
         try {
             await updateDoc(doc(playersRef, player.id), { team });
         } catch (error) {
-            console.error("Team change failed:", error);
+            log.error("Team change failed:", error);
         }
     };
 
@@ -238,7 +239,7 @@ function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, teamMode 
         try {
             await updateDoc(doc(playersRef, player.id), { todayRecentGames: newGames });
         } catch (error) {
-            console.error("Game count adjustment failed:", error);
+            log.error("Game count adjustment failed:", error);
         }
     };
 

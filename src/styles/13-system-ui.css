@@ -1,0 +1,217 @@
+/* ══════════════════════════════════════════════════════════════════
+   SYSTEM UI  ·  토스트 / 연결 띠 / 오류 화면 / 모달 셸 / 접근성·터치 보조
+══════════════════════════════════════════════════════════════════ */
+
+/* ── 토스트 (화면 아래, 하단 내비 위) ── */
+.cox-toasts{
+  position:fixed; left:16px; right:16px; z-index:95;
+  bottom:calc(96px + env(safe-area-inset-bottom, 0px));
+  display:flex; flex-direction:column; gap:8px; align-items:center;
+  pointer-events:none;
+}
+@media (min-width:768px){ .cox-toasts{ bottom:calc(24px + env(safe-area-inset-bottom, 0px)); } }
+.cox-toast{
+  pointer-events:auto; max-width:440px; width:100%;
+  display:flex; align-items:center; gap:10px;
+  padding:11px 14px; border-radius:14px;
+  background:rgba(20,23,29,.94); color:var(--text);
+  border:1px solid var(--line-strong);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  box-shadow:0 14px 34px -14px rgba(0,0,0,.8);
+  font-size:13px; font-weight:700; line-height:1.4;
+  animation:toastIn .26s var(--ease-pop) both;
+  cursor:pointer;
+}
+.cox-toast.success{ border-color:rgba(205,251,71,.5); }
+.cox-toast.error{ border-color:rgba(255,106,82,.6); }
+.cox-toast.warn{ border-color:rgba(255,196,0,.55); }
+.cox-toast-text{ flex:1 1 auto; min-width:0; }
+.cox-toast-action{
+  flex-shrink:0; border:none; cursor:pointer; border-radius:9px; padding:7px 11px;
+  background:var(--volt); color:#0c0d11; font-size:12px; font-weight:900;
+  min-height:32px;
+}
+.cox-toast.error .cox-toast-action{ background:var(--coral); color:#fff; }
+@keyframes toastIn{ from{ opacity:0; transform:translateY(10px) scale(.98); } to{ opacity:1; transform:none; } }
+
+/* ── 연결 상태 띠 (앱바 아래) ── */
+.cox-conn{
+  position:fixed; left:50%; transform:translateX(-50%); z-index:58;
+  top:calc(env(safe-area-inset-top, 0px) + 74px);
+  display:flex; align-items:center; gap:10px;
+  padding:8px 10px 8px 14px; border-radius:999px;
+  font-size:12px; font-weight:800; white-space:nowrap;
+  background:rgba(20,23,29,.94); border:1px solid var(--line-strong);
+  -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+  box-shadow:0 14px 34px -14px rgba(0,0,0,.8);
+  animation:toastIn .26s var(--ease-pop) both;
+}
+.cox-conn.offline{ border-color:rgba(255,106,82,.65); color:#FFB1A3; }
+.cox-conn.reconnecting{ border-color:rgba(255,196,0,.6); color:#FFE08A; }
+.cox-conn.online{ border-color:rgba(205,251,71,.6); color:var(--volt); padding-right:14px; }
+.cox-conn button{
+  border:none; cursor:pointer; border-radius:999px; padding:5px 10px; min-height:28px;
+  background:rgba(255,255,255,.1); color:var(--text); font-size:11px; font-weight:800;
+}
+
+/* ── 오류 화면 (ErrorBoundary) ── */
+.cox-error-screen{
+  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  padding:24px 18px; background:var(--ink); color:var(--text);
+  font-family:'Noto Sans KR', system-ui, sans-serif;
+}
+.cox-error-card{
+  width:min(380px, 100%); text-align:center; padding:28px 22px 20px;
+  background:var(--card); border:1px solid var(--line-strong); border-radius:24px;
+  box-shadow:0 30px 80px -24px rgba(0,0,0,.9);
+}
+.cox-error-emoji{ font-size:44px; line-height:1; margin-bottom:12px; }
+.cox-error-title{ font-size:19px; font-weight:900; margin:0 0 8px; }
+.cox-error-desc{ font-size:13.5px; line-height:1.7; color:var(--dim); margin:0 0 18px; }
+.cox-error-btn{
+  display:block; width:100%; border:none; cursor:pointer; border-radius:13px;
+  padding:13px 16px; font-size:14px; font-weight:800; margin-bottom:9px; min-height:48px;
+  font-family:inherit;
+}
+.cox-error-btn.primary{ background:var(--volt); color:#0c0d11; box-shadow:0 8px 22px -10px var(--volt); }
+.cox-error-btn.ghost{ background:var(--card-2); color:var(--text); border:1px solid var(--line-strong); }
+.cox-error-meta{ margin:8px 0 0; font-size:10.5px; color:var(--mute); word-break:break-all; }
+
+/* ── 모달 셸 (ModalShell) — 모든 대화상자가 같은 뼈대를 쓴다 ── */
+.cox-modal-backdrop{
+  position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  padding:16px; background:rgba(4,5,8,.78);
+  -webkit-backdrop-filter:blur(4px); backdrop-filter:blur(4px);
+  animation:tutSpot .18s ease-out both;
+}
+.cox-modal-backdrop.sheet{ align-items:flex-end; padding:0; }
+@media (min-width:640px){ .cox-modal-backdrop.sheet{ align-items:center; padding:16px; } }
+.cox-modal{
+  position:relative; width:100%; max-width:400px; max-height:calc(100vh - 32px);
+  display:flex; flex-direction:column;
+  background:var(--card); color:var(--text);
+  border:1px solid var(--line-strong); border-radius:22px;
+  box-shadow:0 30px 80px -24px rgba(0,0,0,.92);
+  animation:modalScaleIn .2s var(--ease-pop) both;
+  outline:none;
+}
+.cox-modal.md{ max-width:480px; }
+.cox-modal.lg{ max-width:560px; }
+.cox-modal-backdrop.sheet .cox-modal{ border-radius:22px 22px 0 0; max-height:94vh; }
+@media (min-width:640px){ .cox-modal-backdrop.sheet .cox-modal{ border-radius:22px; } }
+.cox-modal.tone-danger{ border-color:rgba(255,106,82,.45); }
+.cox-modal.tone-accent{ border-color:rgba(205,251,71,.4); box-shadow:0 30px 80px -24px rgba(0,0,0,.92), 0 0 24px -8px rgba(205,251,71,.35); }
+.cox-modal-head{
+  flex-shrink:0; display:flex; align-items:flex-start; justify-content:space-between; gap:10px;
+  padding:18px 18px 10px;
+}
+.cox-modal-head.centered{ justify-content:center; text-align:center; padding-top:22px; }
+.cox-modal-title{
+  margin:0; font-size:17px; font-weight:900; line-height:1.3; color:var(--text);
+  font-family:'Noto Sans KR', sans-serif;
+}
+.cox-modal-title.display{ font-family:'Anton','Noto Sans KR',sans-serif; font-weight:800; letter-spacing:.01em; font-size:19px; }
+.cox-modal-title.accent{ color:var(--volt); }
+.cox-modal-title.danger{ color:var(--coral); }
+.cox-modal-sub{ margin:4px 0 0; font-size:11.5px; color:var(--dim); line-height:1.45; }
+.cox-modal-x{
+  flex-shrink:0; width:36px; height:36px; margin:-8px -8px 0 0;
+  border:none; border-radius:11px; background:transparent; color:var(--mute);
+  display:flex; align-items:center; justify-content:center; cursor:pointer;
+  font-size:24px; line-height:1; transition:background .14s, color .14s;
+}
+.cox-modal-x:hover, .cox-modal-x:focus-visible{ background:var(--card-2); color:var(--text); }
+.cox-modal-body{ flex:1 1 auto; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:4px 18px 16px; }
+.cox-modal-body.center{ text-align:center; }
+.cox-modal-text{ margin:0; font-size:14px; line-height:1.7; color:#C3C9D4; white-space:pre-line; word-break:keep-all; }
+.cox-modal-foot{
+  flex-shrink:0; display:flex; gap:9px; padding:10px 18px 18px;
+  padding-bottom:calc(18px + env(safe-area-inset-bottom, 0px));
+}
+.cox-modal-foot.stack{ flex-direction:column; }
+.cox-btn{
+  flex:1 1 0; min-height:46px; padding:11px 14px; border-radius:13px; border:1px solid transparent;
+  cursor:pointer; font-family:'Noto Sans KR', sans-serif; font-size:14px; font-weight:800;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  transition:transform .12s var(--ease-pop), filter .15s, background-color .15s;
+  white-space:nowrap;
+}
+.cox-btn:active:not(:disabled){ transform:scale(.96); }
+.cox-btn:disabled{ opacity:.5; cursor:not-allowed; }
+.cox-btn.primary{ background:var(--volt); color:#0c0d11; box-shadow:0 8px 22px -10px var(--volt); }
+.cox-btn.primary:hover:not(:disabled){ filter:brightness(1.05); }
+.cox-btn.danger{ background:var(--coral); color:#fff; box-shadow:0 8px 22px -10px var(--coral); }
+.cox-btn.ghost{ background:var(--card-2); color:var(--text); border-color:var(--line-strong); }
+.cox-btn.ghost:hover:not(:disabled){ filter:brightness(1.1); }
+.cox-btn.link{ background:transparent; color:var(--mute); text-decoration:underline; text-underline-offset:3px; font-size:12px; min-height:36px; }
+.cox-btn.sm{ min-height:38px; font-size:12.5px; padding:8px 12px; border-radius:11px; }
+.cox-btn.block{ width:100%; flex:none; }
+.cox-field{
+  width:100%; min-height:46px; padding:11px 14px; border-radius:13px;
+  background:var(--surface); color:var(--text); border:1px solid var(--line-strong);
+  font-family:'Noto Sans KR', sans-serif; font-size:15px;
+  outline:none; transition:border-color .15s, box-shadow .15s;
+}
+.cox-field:focus{ border-color:var(--volt); box-shadow:0 0 0 3px var(--volt-soft); }
+.cox-field::placeholder{ color:var(--mute); }
+.cox-box{ background:var(--card-2); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }
+.cox-box.soft{ background:rgba(255,255,255,.04); }
+.cox-box.warn{ background:rgba(255,196,0,.08); border-color:rgba(255,196,0,.32); color:#FFE3A3; }
+.cox-box.danger{ background:rgba(255,106,82,.1); border-color:rgba(255,106,82,.35); color:#FFB1A3; }
+.cox-box.accent{ background:var(--volt-soft); border-color:rgba(205,251,71,.3); }
+.cox-stepper{ display:inline-flex; align-items:center; gap:10px; }
+.cox-stepper button{
+  width:44px; height:44px; border-radius:13px; border:1px solid var(--line-strong); cursor:pointer;
+  background:var(--card-2); color:var(--text); font-size:22px; font-weight:900; line-height:1;
+  display:flex; align-items:center; justify-content:center; transition:transform .12s, filter .15s;
+}
+.cox-stepper button:active:not(:disabled){ transform:scale(.92); }
+.cox-stepper button:disabled{ opacity:.4; cursor:not-allowed; }
+.cox-stepper .val{
+  min-width:64px; text-align:center; font-family:'Anton','Noto Sans KR',sans-serif; font-size:30px; line-height:1; color:var(--volt);
+}
+.cox-stepper .val small{ font-family:'Noto Sans KR',sans-serif; font-size:13px; font-weight:800; color:var(--dim); margin-left:3px; }
+
+/* ── 접근성: 키보드 포커스는 보이게, 마우스/터치는 조용하게 ── */
+:focus-visible{ outline:2px solid var(--volt); outline-offset:2px; border-radius:8px; }
+button:focus:not(:focus-visible){ outline:none; }
+
+/* ── 터치 영역 보조: 보이는 크기는 그대로 두고 손가락 영역만 44px 로 넓힌다 ── */
+.tap-44{ position:relative; }
+.tap-44::after{ content:''; position:absolute; inset:50% auto auto 50%; width:44px; height:44px; transform:translate(-50%,-50%); }
+/* 선수 카드 모서리 ✕ — 실제 보이는 건 14px 아이콘, 눌리는 영역은 44px */
+.cox-card-x{
+  position:absolute; top:-10px; right:-10px; width:44px; height:44px;
+  display:flex; align-items:center; justify-content:center;
+  border:none; background:transparent; color:var(--mute); cursor:pointer; padding:0;
+  transition:color .14s;
+}
+.cox-card-x:hover, .cox-card-x:focus-visible{ color:var(--volt); }
+.cox-card-x .cox-icon{ background:var(--card-2); border-radius:50%; box-shadow:0 2px 6px rgba(0,0,0,.45); }
+/* 메뉴 아이콘 (Font Awesome <i> 대체) */
+.cox-menu-item .cox-icon{ width:18px; height:18px; flex-shrink:0; color:var(--dim); }
+.cox-menu-item.danger .cox-icon{ color:var(--coral); }
+.cox-menu-item.accent .cox-icon{ color:var(--volt); }
+.cox-menu-item{ min-height:44px; }
+.cox-nav-btn{ min-height:44px; }
+.cox-pill-danger{ min-height:34px; }
+.auto-make-btn{ min-height:44px; }
+.mo-close, .tut-x, .amg-skip{ min-width:44px; min-height:44px; display:inline-flex; align-items:center; justify-content:center; }
+/* 경기 예정·자동 매칭·코트 번호 (길게 누르기 대상) */
+.cox-rownum{ min-width:34px; min-height:44px; }
+
+/* ── 움직임 줄이기 설정을 켠 기기: 장식 애니메이션을 전부 끈다 (prefers-reduced-motion) ── */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{
+    animation-duration:.01ms !important; animation-iteration-count:1 !important;
+    transition-duration:.01ms !important; scroll-behavior:auto !important;
+  }
+}
+
+/* ── [휴식 타이머] 카드 위 남은 시간 배지 ── */
+.cox-rest-badge{
+  position:absolute; left:50%; bottom:1px; transform:translateX(-50%);
+  font-size:8.5px; font-weight:900; letter-spacing:.2px; line-height:1.4;
+  color:#0c0d11; background:#FFD45A; border-radius:5px; padding:0 5px;
+  white-space:nowrap; pointer-events:none;
+}
