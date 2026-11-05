@@ -73,7 +73,7 @@ export function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, te
             <div className="space-y-3">
                 <button type="button" onClick={handleToggleRest} className={`cox-btn block ${currentPlayer.isResting ? 'primary' : 'ghost'}`}>
                     {currentPlayer.isResting
-                        ? `휴식 해제 (복귀)${remaining !== null ? ` · ${remaining}분 남음` : ''}`
+                        ? `휴식 해제 (복귀) · ${remaining !== null ? `${remaining}분 남음` : '∞ 시간 제한 없음'}`
                         : '휴식 상태로 전환'}
                 </button>
 

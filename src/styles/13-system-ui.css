@@ -208,10 +208,17 @@ button:focus:not(:focus-visible){ outline:none; }
   }
 }
 
-/* ── [휴식 타이머] 카드 위 남은 시간 배지 ── */
+/* ── [휴식 타이머] 카드 아래 작은 배지 ──
+   선수에게는 '☕ 휴식', 관리자에게는 남은 분(또는 ∞ = 복귀 누를 때까지).
+   카드 높이(56px)는 그대로 두고, 배지가 차지하는 아래 13px 만큼 안쪽 여백을 줘서
+   이름·급수 줄(2줄 ≈ 33px)이 위쪽 37px 안에 가운데 정렬되게 → 글자와 배지가 겹치지 않는다. */
 .cox-rest-badge{
   position:absolute; left:50%; bottom:1px; transform:translateX(-50%);
   font-size:8.5px; font-weight:900; letter-spacing:.2px; line-height:1.4;
   color:#0c0d11; background:#FFD45A; border-radius:5px; padding:0 5px;
+  max-width:calc(100% - 6px); overflow:hidden; text-overflow:ellipsis;
   white-space:nowrap; pointer-events:none;
 }
+/* 관리자용(남은 시간)은 숫자가 읽히도록 반 포인트 키우고 살짝 더 진하게 */
+.cox-rest-badge.admin{ font-size:9px; background:#FFC93C; font-variant-numeric:tabular-nums; }
+.player-card.cox-card-resting{ padding-bottom:13px !important; }

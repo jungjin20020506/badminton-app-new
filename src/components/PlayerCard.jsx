@@ -84,14 +84,28 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
     }
 
     const isLongPressDisabled = context.location === 'court';
-    // [휴식 타이머] 남은 분 — 30초마다 다시 그린다 (시간제 휴식 카드만)
+    // [휴식 타이머] 카드 아래 작은 배지 — 경기중 딱지가 붙은 카드에는 붙이지 않는다(같은 자리)
+    //  · 관리자: 시간제 휴식은 남은 분(30초마다 갱신), 시간 없이 쉬는 선수는 ∞ (복귀를 누를 때까지)
+    //  · 선수들: '☕ 휴식'만 — 몇 분 남았는지는 관리자만 본다
+    const showRestBadge = !isPlaying && !!player.isResting;
+    const tickRest = isAdmin && showRestBadge && !!player.restUntil;
     const [restNow, setRestNow] = useState(() => Date.now());
     useEffect(() => {
-        if (!player.isResting || !player.restUntil) return undefined;
+        if (!tickRest) return undefined;
+        setRestNow(Date.now()); // 휴식이 새로 시작되면 바로 지금 시각 기준으로
         const id = setInterval(() => setRestNow(Date.now()), 30 * 1000);
         return () => clearInterval(id);
-    }, [player.isResting, player.restUntil]);
-    const restLeft = player.isResting ? restRemainingMin(player, restNow) : null;
+    }, [tickRest, player.restUntil]);
+    const restLeft = tickRest ? restRemainingMin(player, restNow) : null;
+    const restLabel = !showRestBadge ? null
+        : !isAdmin ? '☕ 휴식'
+        : restLeft === null ? '☕ ∞'
+        : restLeft <= 0 ? '☕ 곧 복귀'
+        : `☕ ${restLeft}분`;
+    const restAria = !player.isResting ? ''
+        : !isAdmin ? ' 휴식 중'
+        : restLeft === null ? ' 휴식 중 (시간 제한 없음)'
+        : ` 휴식 중 (${restLeft}분 남음)`;
     // ✕ 버튼: 대기 명단에서는 '선수 내보내기', 자동 매칭·경기 예정에서는 '대기자로 이동'(실제 동작과 일치)
     const actionLabel = isWaiting ? '선수 내보내기' : '대기자로 이동';
 
@@ -130,13 +144,14 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             // [수정] 휴식 중일 때 filter grayscale 클래스 적용 (기존 코드 복원)
             // [경기중 표시] 지금 코트에서 뛰는 선수는 무채색 + '경기중' 딱지를 붙여
             //               "이 카드는 아직 못 움직인다"는 걸 한눈에 알 수 있게 한다.
-            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''} ${isPlaying ? 'cox-card-playing' : ''} ${teamClass}`}
+            // [휴식 타이머] cox-card-resting: 아래 배지 자리만큼 안쪽 여백을 줘서 이름·급수 글자와 절대 겹치지 않게 (카드 높이는 그대로)
+            className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''} ${showRestBadge ? 'cox-card-resting' : ''} ${isPlaying ? 'cox-card-playing' : ''} ${teamClass}`}
             style={cardStyle}
             onClick={isMovable && onCardClick ? () => onCardClick() : null}
             role={isMovable && onCardClick ? 'button' : undefined}
             tabIndex={isMovable && onCardClick ? 0 : undefined}
             aria-pressed={isMovable && onCardClick ? !!(context.selected || isSelectedForWin) : undefined}
-            aria-label={`${player.name} ${(player.level || '').replace('조', '')}조 ${player.todayRecentGames ? player.todayRecentGames.length : 0}경기${player.isResting ? ' 휴식 중' : ''}${isPlaying ? ' 경기중' : ''}${isCurrentUser ? ' (나)' : ''}`}
+            aria-label={`${player.name} ${(player.level || '').replace('조', '')}조 ${player.todayRecentGames ? player.todayRecentGames.length : 0}경기${restAria}${isPlaying ? ' 경기중' : ''}${isCurrentUser ? ' (나)' : ''}`}
             onKeyDown={isMovable && onCardClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCardClick(); } } : undefined}
             onMouseDown={isAdmin && isMovable && !isLongPressDisabled ? handlePressStart : null}
             onMouseUp={isAdmin && isMovable && !isLongPressDisabled ? handlePressEnd : null}
@@ -147,14 +162,15 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             {isOnline && !player.isResting && <span className="cox-online-dot" title="접속 중" />}
             {/* [경기중 표시] 경기가 끝나면 이 딱지가 사라지고 카드 색이 돌아온다 */}
             {isPlaying && <span className="cox-playing-tag" aria-hidden="true">경기중</span>}
-            {!isPlaying && player.isResting && <span className="cox-rest-badge" aria-hidden="true">{restLeft !== null ? `☕ ${restLeft}분` : '☕ 휴식'}</span>}
+            {restLabel && <span className={`cox-rest-badge ${isAdmin ? 'admin' : ''}`} aria-hidden="true">{restLabel}</span>}
             <div>
                 <div className={playerNameClass}>{teamMode && isAce && <span className="tm-ace" title="팀 에이스">⭐</span>}{adminIcon}{player.name}</div>
                 <div className={playerInfoClass}>
                     <span style={levelStyle}>{(player.level || '').replace('조','')}</span>
                     <span className="ml-1 text-gray-300 font-bold">{player.todayRecentGames ? player.todayRecentGames.length : 0}G</span>
                 </div>
-                {teamMode && !isPlaying && (
+                {/* [청백전] 경기중 딱지·휴식 배지가 붙은 카드는 승패 줄을 숨긴다 (같은 자리라 겹침 방지) */}
+                {teamMode && !isPlaying && !showRestBadge && (
                     wins + losses === 0
                         ? <div className="tm-wl zero">0승 0패</div>
                         : <div className={`tm-wl ${bump.w || bump.l ? 'bumped' : ''}`}>
