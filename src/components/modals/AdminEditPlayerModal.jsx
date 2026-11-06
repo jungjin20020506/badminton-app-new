@@ -2,7 +2,7 @@ import React from 'react';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ModalShell } from './ModalShell';
 import { ResultBadge } from './shared';
-import { playersRef } from '../../lib/firebase';
+import { playersRef, runTx } from '../../lib/firebase';
 import { getTeamOf, getWinLoss, TEAM_BLUE, TEAM_WHITE, TEAM_META } from '../../lib/helpers';
 import { log } from '../../lib/logger';
 import { startRest, resumeFromRest, restRemainingMin } from '../../lib/rest';
@@ -24,12 +24,19 @@ export function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, te
     };
 
     const { wins, losses } = getWinLoss(currentPlayer);
+    // ± 버튼은 화면 값이 아니라 '지금 문서 값'을 읽어서 고친다 — 빠르게 두 번 누르거나 관리자 둘이
+    // 동시에 눌러도 한 번이 사라지지 않는다 (화면 값 기준으로 쓰면 두 번째 탭이 첫 번째를 덮어쓴다)
     const handleAdjustWinLoss = async (field, delta) => {
-        const cur = field === 'todayWins' ? wins : losses;
-        const next = Math.max(0, cur + delta);
-        if (next === cur) return;
-        try { await updateDoc(doc(playersRef, player.id), { [field]: next }); }
-        catch (error) { log.error('Win/loss adjustment failed:', error); }
+        try {
+            await runTx('승패 조작', async (tx) => {
+                const ref = doc(playersRef, player.id);
+                const snap = await tx.get(ref);
+                if (!snap.exists()) return;
+                const cur = Math.max(0, Number(snap.data()[field]) || 0);
+                const next = Math.max(0, cur + delta);
+                if (next !== cur) tx.update(ref, { [field]: next });
+            });
+        } catch (error) { log.error('Win/loss adjustment failed:', error); }
     };
     const currentTeam = getTeamOf(currentPlayer);
     const handleSetTeam = async (team) => {
@@ -38,12 +45,18 @@ export function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, te
         catch (error) { log.error('Team change failed:', error); }
     };
     const handleAdjustGameCount = async (delta) => {
-        const currentGames = currentPlayer.todayRecentGames || [];
-        const newGames = [...currentGames];
-        if (delta > 0) newGames.unshift({ timestamp: new Date().toISOString(), partners: [], opponents: [], isManual: true });
-        else if (delta < 0 && newGames.length > 0) newGames.shift();
-        try { await updateDoc(doc(playersRef, player.id), { todayRecentGames: newGames }); }
-        catch (error) { log.error('Game count adjustment failed:', error); }
+        try {
+            await runTx('게임 수 조작', async (tx) => {
+                const ref = doc(playersRef, player.id);
+                const snap = await tx.get(ref);
+                if (!snap.exists()) return;
+                const newGames = [...(snap.data().todayRecentGames || [])];
+                if (delta > 0) newGames.unshift({ timestamp: new Date().toISOString(), partners: [], opponents: [], isManual: true });
+                else if (delta < 0 && newGames.length > 0) newGames.shift();
+                else return;
+                tx.update(ref, { todayRecentGames: newGames });
+            });
+        } catch (error) { log.error('Game count adjustment failed:', error); }
     };
     const handleDeletePermanently = () => {
         setModal({ type: 'confirm', data: {

@@ -281,7 +281,8 @@
   position:absolute; left:50%; top:-7px; transform:translateX(-50%); z-index:3;
   font-size:8px; font-weight:900; color:#0c0d11; background:#F59E0B; border-radius:5px; padding:0 5px; white-space:nowrap; pointer-events:none;
 }
-.tm-ace{ margin-right:1px; font-size:10px; filter:drop-shadow(0 0 4px rgba(255,214,0,.8)); }
+/* 팀 에이스 ⭐ — 이름 줄 안에 두면 좁은 폰에서 '⭐👑정…'처럼 이름이 잘리므로 카드 왼쪽 위 모서리에 띄운다 */
+.tm-ace{ position:absolute; top:1px; left:5px; font-size:9px; line-height:1; filter:drop-shadow(0 0 4px rgba(255,214,0,.8)); pointer-events:none; }
 
 /* ── [청백전] 🏆 오늘의 순위 ── */
 .tm-rank{

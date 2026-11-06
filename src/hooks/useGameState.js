@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { gameStateRef, runTx } from '../lib/firebase';
+import { gameStateRef, runTx, normalizeGameState } from '../lib/firebase';
 import { calculateLocations, LEVEL_ORDER } from '../lib/helpers';
 import { log } from '../lib/logger';
 import { toastError } from '../lib/toast';
@@ -11,20 +11,13 @@ import { toastError } from '../lib/toast';
 //   읽고 → 순수 함수로 새 상태 만들고 → set (전체 덮어쓰기). 일시 오류는 runTx 가 재시도.
 //   실패하면 토스트로 알리고 throw 한다 — 호출처는 후속 동작(모달 닫기 등)을 건너뛸 수 있다.
 // ===================================================================================
-const INITIAL_GAME_STATE = () => ({
-    scheduledMatches: {},
-    inProgressCourts: Array(4).fill(null),
-    autoMatches: {},
-    numScheduledMatches: 4,
-    numInProgressCourts: 4,
-});
-
 export function useGameState({ gameState, activePlayers }) {
     const updateGameState = useCallback(async (updateFunction, customErrorMessage) => {
         try {
             await runTx('gameState', async (transaction) => {
                 const snap = await transaction.get(gameStateRef);
-                const currentState = snap.exists() ? snap.data() : INITIAL_GAME_STATE();
+                // 문서가 없거나 코트 수 등이 빠져 있어도 갱신 함수가 NaN 인덱스를 만들지 않도록 기본값을 채운다
+                const currentState = normalizeGameState(snap.exists() ? snap.data() : null);
                 const { newState } = updateFunction(currentState);
                 transaction.set(gameStateRef, newState);
             });

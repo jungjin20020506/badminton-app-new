@@ -30,6 +30,9 @@ export default async function handler(req, res) {
             if (gs.lastDailyResetKey && gs.lastDailyResetKey >= todayKey) return false;
             const numCourts = gs.numInProgressCourts || 4;
             tx.set(gsRef, {
+                // 문서가 처음 만들어지는 경우에도 코트 수·예정 경기 수가 비지 않게 (없으면 앱이 코트 0개로 그려진다)
+                numInProgressCourts: numCourts,
+                numScheduledMatches: gs.numScheduledMatches || 4,
                 lastDailyResetKey: todayKey,
                 inProgressCourts: Array(numCourts).fill(null),
                 scheduledMatches: {},

@@ -11,6 +11,28 @@ import { ModalShell } from './modals/ModalShell';
 // 명단(이름/급수/성별) 조회·검색·추가·수정·삭제. 소모임 연동(mid) 상태도 표시.
 // 문서 id 는 generateId(이름)이라 이름은 수정할 수 없다 (급수·성별만).
 // ===================================================================================
+// 입력 부품은 컴포넌트 밖에 — 렌더마다 새 타입이 되면 버튼이 다시 마운트되어 포커스가 튄다
+const LevelPicker = ({ value, onChange, label }) => (
+    <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label={label}>
+        {LEVELS.map((level) => (
+            <button key={level} type="button" role="radio" aria-checked={value === level} onClick={() => onChange(level)}
+                className={`min-h-[40px] rounded text-xs font-bold arcade-button ${value === level ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-white'}`}>
+                {level}
+            </button>
+        ))}
+    </div>
+);
+const GenderPicker = ({ value, onChange, label }) => (
+    <div className="flex gap-2" role="radiogroup" aria-label={label}>
+        {['남', '여'].map((g) => (
+            <button key={g} type="button" role="radio" aria-checked={value === g} onClick={() => onChange(g)}
+                className={`flex-1 min-h-[40px] rounded text-xs font-bold arcade-button ${value === g ? (g === '남' ? 'bg-blue-500 text-white' : 'bg-pink-500 text-white') : 'bg-gray-600 text-white'}`}>
+                {g === '남' ? '👨 남자' : '👩 여자'}
+            </button>
+        ))}
+    </div>
+);
+
 export function RosterManageModal({ roster, onClose, setModal }) {
     const [search, setSearch] = useState('');
     const [editingId, setEditingId] = useState(null);
@@ -84,27 +106,6 @@ export function RosterManageModal({ roster, onClose, setModal }) {
             },
         } });
     };
-
-    const LevelPicker = ({ value, onChange, label }) => (
-        <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label={label}>
-            {LEVELS.map((level) => (
-                <button key={level} type="button" role="radio" aria-checked={value === level} onClick={() => onChange(level)}
-                    className={`min-h-[40px] rounded text-xs font-bold arcade-button ${value === level ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-white'}`}>
-                    {level}
-                </button>
-            ))}
-        </div>
-    );
-    const GenderPicker = ({ value, onChange, label }) => (
-        <div className="flex gap-2" role="radiogroup" aria-label={label}>
-            {['남', '여'].map((g) => (
-                <button key={g} type="button" role="radio" aria-checked={value === g} onClick={() => onChange(g)}
-                    className={`flex-1 min-h-[40px] rounded text-xs font-bold arcade-button ${value === g ? (g === '남' ? 'bg-blue-500 text-white' : 'bg-pink-500 text-white') : 'bg-gray-600 text-white'}`}>
-                    {g === '남' ? '👨 남자' : '👩 여자'}
-                </button>
-            ))}
-        </div>
-    );
 
     return (
         <ModalShell

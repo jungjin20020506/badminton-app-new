@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { execSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
 // [소모임 동기화] 개발 서버(npm run dev)에서도 Vercel의 /api/somoim 과 동일하게
 // 동작하도록 하는 미들웨어. (배포 시에는 Vercel serverless function이 처리)
@@ -42,7 +43,15 @@ const versionJson = () => ({
   },
 });
 
-export default defineConfig({
+// [시뮬레이션] `vite --mode sim` 이면 firebase/firestore 를 브라우저 안의 가짜 Firestore
+// (src/sim/fakeFirestore.js)로 바꿔치기한다. 실제 서버를 건드리지 않고 전체 흐름을 돌려볼 때 쓴다.
+// 배포 빌드(mode=production)·일반 dev 에는 적용되지 않는다.
+const simAlias = (mode) => (mode === 'sim'
+  ? { alias: { 'firebase/firestore': fileURLToPath(new URL('./src/sim/fakeFirestore.js', import.meta.url)) } }
+  : undefined);
+
+export default defineConfig(({ mode }) => ({
+  resolve: simAlias(mode),
   define: {
     __BUILD_ID__: JSON.stringify(buildId),
     __COMMIT_SHA__: JSON.stringify(commitSha),
@@ -107,4 +116,4 @@ export default defineConfig({
       }
     })
   ],
-})
+}))

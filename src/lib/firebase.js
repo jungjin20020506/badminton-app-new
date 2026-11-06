@@ -172,6 +172,21 @@ onSnapshot(activePlayersQuery, async (snapshot) => {
 });
 
 
+// gameState/live 문서의 기본 모양. 코트 수가 없으면 4, 코트 배열은 코트 수만큼 채운다.
+const normalizeGameState = (raw) => {
+    const g = { ...(raw || {}) };
+    const num = (v, d) => (Number.isInteger(v) && v > 0 ? v : d);
+    g.numInProgressCourts = num(g.numInProgressCourts, 4);
+    g.numScheduledMatches = num(g.numScheduledMatches, 4);
+    const courts = Array.isArray(g.inProgressCourts) ? g.inProgressCourts.slice(0, g.numInProgressCourts) : [];
+    while (courts.length < g.numInProgressCourts) courts.push(null);
+    g.inProgressCourts = courts;
+    if (!g.scheduledMatches || typeof g.scheduledMatches !== 'object') g.scheduledMatches = {};
+    if (!g.autoMatches || typeof g.autoMatches !== 'object') g.autoMatches = {};
+    if (!g.teamScores || typeof g.teamScores !== 'object') g.teamScores = { blue: 0, white: 0 }; // [청백전] 팀 점수판
+    return g;
+};
+
 // ===================================================================================
 // [연결 상태] 서버와 붙어 있는지 — ConnectionBanner 가 구독한다
 // -----------------------------------------------------------------------------------
@@ -197,39 +212,30 @@ window.addEventListener('online', () => setConnectionState('reconnecting'));
 onSnapshot(gameStateRef, { includeMetadataChanges: true }, (doc) => {
   if (!doc.metadata.fromCache) { hadServerSnapshot = true; setConnectionState('online'); }
   else if (hadServerSnapshot && typeof navigator !== 'undefined' && navigator.onLine === false) setConnectionState('offline');
-  if (doc.exists()) {
-    gameStateData = doc.data();
-  } else {
-    gameStateData = {
-        scheduledMatches: {},
-        inProgressCourts: Array(4).fill(null),
-        autoMatches: {}, // 자동 매칭 데이터 추가
-        numScheduledMatches: 4,
-        numInProgressCourts: 4,
-        teamScores: { blue: 0, white: 0 }, // [청백전] 팀 점수판
-    };
-  }
+  // 문서가 없거나(첫 운영) 일부 필드가 빠져 있어도(새벽 초기화가 먼저 만든 문서 등) 앱이 코트 0개로
+  // 그려지지 않도록 기본값을 채운다. 코트 수·예정 경기 수가 없으면 4개가 기본이다.
+  gameStateData = normalizeGameState(doc.exists() ? doc.data() : null);
   if(resolveGameState) { resolveGameState(); resolveGameState = null; }
   notifySubscribers();
 });
 
-onSnapshot(configRef, (doc) => {
-    if (doc.exists()) {
-        seasonConfigData = doc.data();
-    } else {
-        seasonConfigData = {
-            announcement: "랭킹전 시즌에 오신 것을 환영합니다! 공지사항은 관리자 설정에서 변경할 수 있습니다.",
-            seasonId: "default-season",
-            pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP",
-            // [자동매칭] 기본 설정값 (민감도 프리셋 — ON/OFF 없이 '매칭 만들기' 버튼으로 생성)
-            autoMatchConfig: {
-                sensitivity: 'normal',
-                perGenderSensitivity: false,
-                maleSensitivity: 'normal',
-                femaleSensitivity: 'normal'
-            }
-        };
+// config/season 기본값 — 문서가 없을 때뿐 아니라, 설정 저장으로 처음 만들어진 문서에 seasonId 등이
+// 빠져 있을 때도 채운다. (seasonId 가 없으면 '오늘 하루 보지 않기'가 기억되지 않아 공지가 계속 뜬다)
+const DEFAULT_SEASON_CONFIG = () => ({
+    announcement: "랭킹전 시즌에 오신 것을 환영합니다! 공지사항은 관리자 설정에서 변경할 수 있습니다.",
+    seasonId: "default-season",
+    pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP",
+    // [자동매칭] 기본 설정값 (민감도 프리셋 — ON/OFF 없이 '매칭 만들기' 버튼으로 생성)
+    autoMatchConfig: {
+        sensitivity: 'normal',
+        perGenderSensitivity: false,
+        maleSensitivity: 'normal',
+        femaleSensitivity: 'normal'
     }
+});
+
+onSnapshot(configRef, (doc) => {
+    seasonConfigData = doc.exists() ? { ...DEFAULT_SEASON_CONFIG(), ...doc.data() } : DEFAULT_SEASON_CONFIG();
     // [자동매칭] 기존 설정에 autoMatchConfig가 없으면 기본값 병합
 if (seasonConfigData && !seasonConfigData.autoMatchConfig) {
     seasonConfigData.autoMatchConfig = {
@@ -398,6 +404,8 @@ const runDailyResetIfDue = async () => {
             const numCourts = gs.numInProgressCourts || 4;
             tx.set(gameStateRef, {
                 lastDailyResetKey: todayKey,
+                numInProgressCourts: numCourts,
+                numScheduledMatches: gs.numScheduledMatches || 4,
                 inProgressCourts: Array(numCourts).fill(null),
                 scheduledMatches: {},
                 autoMatches: {},
@@ -674,6 +682,7 @@ export {
     playersRef, gameStateRef, configRef, monthlyRankingsRef, notificationsRef, rosterRef, somoimSyncRef,
     firebaseService, readyPromise,
     runDailyResetIfDue, runAutoSomoimSyncIfDue, syncSomoimAttendees, getKstParts, getDailyResetKey, ROSTER_SEED,
+    normalizeGameState,
     forceReconnect,
     startPresenceHeartbeat, isPresenceFresh,
     writeAuditLog,

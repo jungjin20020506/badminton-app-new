@@ -234,3 +234,6 @@
 :root[data-theme="light"] .cox-rest-btn{ background:#FFFFFF; }
 :root[data-theme="light"] .cox-rest-btn.on{ box-shadow:0 6px 16px -8px rgba(95,138,0,.6); }
 :root[data-theme="light"] .cox-rest-btn-min{ background:#FFFFFF; color:var(--volt-ink); border-color:var(--volt-ink); }
+
+/* [청백전] 대기 명단의 '백팀' 제목 — 인라인 팀 색(#F3F4F6)이 흰 배경에서 안 보이므로 라이트 모드에선 진하게 */
+:root[data-theme="light"] .tm-wait-group[data-team="white"] .lbl > span:not(.tick):not(.count){ color:#3B4454 !important; }

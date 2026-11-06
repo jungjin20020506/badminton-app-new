@@ -658,15 +658,29 @@ export default function App() {
                 finalPhotoUrl = await getDownloadURL(storageRef);
             }
 
+            // 코트 수를 줄일 때: 잘려 나가는 코트에 경기가 진행 중이면 저장하지 않는다 (경기 기록이 통째로
+            // 사라지는 사고 방지). 잘려 나가는 '경기 예정' 줄에 선수가 있으면 그 줄을 비워 대기 명단으로 돌려보낸다
+            // (안 그러면 화면에 보이지 않는 줄에 갇혀 매칭에서도 빠진다).
+            let blockedCourt = null;
             await runTx('설정 저장', async (transaction) => {
                 const snap = await transaction.get(doc(db, 'gameState', 'live'));
                 if (!snap.exists()) throw new Error('GameState document does not exist!');
                 const g = snap.data();
                 const next = { ...g, numScheduledMatches: scheduled, numInProgressCourts: courts };
                 const cur = next.inProgressCourts || [];
+                const busy = cur.findIndex((c, i) => i >= courts && c && Array.isArray(c.players) && c.players.some(Boolean));
+                if (busy !== -1) { blockedCourt = busy + 1; return; }
                 next.inProgressCourts = cur.length > courts ? cur.slice(0, courts) : [...cur, ...Array(courts - cur.length).fill(null)];
+                const sched = { ...(next.scheduledMatches || {}) };
+                Object.keys(sched).forEach((k) => { if (Number(k) >= scheduled) delete sched[k]; });
+                next.scheduledMatches = sched;
                 transaction.set(doc(db, 'gameState', 'live'), next);
             });
+            if (blockedCourt !== null) {
+                setModal({ type: 'alert', data: { title: '코트 수를 줄일 수 없어요', body: `${blockedCourt}번 코트에 경기가 진행 중이에요.
+그 경기를 먼저 종료(FINISH)한 뒤 코트 수를 줄여주세요.` } });
+                return;
+            }
 
             const pure = { ...autoMatchConfig };
             delete pure.photoFile;

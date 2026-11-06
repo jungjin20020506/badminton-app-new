@@ -180,14 +180,17 @@ button:focus:not(:focus-visible){ outline:none; }
 .tap-44{ position:relative; }
 .tap-44::after{ content:''; position:absolute; inset:50% auto auto 50%; width:44px; height:44px; transform:translate(-50%,-50%); }
 /* 선수 카드 모서리 ✕ — 실제 보이는 건 14px 아이콘, 눌리는 영역은 44px */
+/* 선수 카드 ✕ — 버튼 크기를 '동그라미 아이콘 그 자체'(16px)로 맞춘다.
+   예전엔 44×44 터치 영역이 카드 오른쪽 절반을 덮어서, 카드를 누르려다 ✕가 눌려
+   '선수 내보내기' 창이 뜨는 일이 잦았다. 이제 동그라미를 정확히 눌러야만 반응한다. */
 .cox-card-x{
-  position:absolute; top:-10px; right:-10px; width:44px; height:44px;
+  position:absolute; top:-6px; right:-6px; width:16px; height:16px;
   display:flex; align-items:center; justify-content:center;
-  border:none; background:transparent; color:var(--mute); cursor:pointer; padding:0;
-  transition:color .14s;
+  border:none; border-radius:50%; background:transparent; color:var(--mute); cursor:pointer; padding:0;
+  transition:color .14s; z-index:2;
 }
 .cox-card-x:hover, .cox-card-x:focus-visible{ color:var(--volt); }
-.cox-card-x .cox-icon{ background:var(--card-2); border-radius:50%; box-shadow:0 2px 6px rgba(0,0,0,.45); }
+.cox-card-x .cox-icon{ width:16px; height:16px; background:var(--card-2); border-radius:50%; box-shadow:0 2px 6px rgba(0,0,0,.45); pointer-events:none; }
 /* 메뉴 아이콘 (Font Awesome <i> 대체) */
 .cox-menu-item .cox-icon{ width:18px; height:18px; flex-shrink:0; color:var(--dim); }
 .cox-menu-item.danger .cox-icon{ color:var(--coral); }

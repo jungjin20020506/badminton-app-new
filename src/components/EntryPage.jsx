@@ -101,7 +101,8 @@ function EntryPage({ onEnter, roster, teamMode = false }) {
             type="button"
             name="level"
             onClick={() => { setEntryError(null); setFormData(prev => ({ ...prev, level })); }}
-            className={`w-full p-3 rounded-md font-bold transition-colors arcade-button ${formData.level === level ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-white'}`}
+            // 좁은 폰(375px)에서 S~D 5칸일 때 'A조'가 두 줄로 꺾이지 않도록 가로 여백은 줄이고 줄바꿈을 막는다
+            className={`w-full py-3 px-1 rounded-md font-bold whitespace-nowrap transition-colors arcade-button ${formData.level === level ? 'bg-yellow-500 text-black' : 'bg-gray-600 text-white'}`}
         >
             {level}
         </button>
@@ -159,6 +160,7 @@ function EntryPage({ onEnter, roster, teamMode = false }) {
                                                 onClick={() => { setEntryError(null); setFormData(prev => ({ ...prev, team })); }}
                                                 className={`tm-team-pick ${meta.key} ${on ? 'on' : ''}`}
                                                 aria-pressed={on}
+                                                aria-label={`${meta.label} 선택`}
                                             >
                                                 <span className="tm-team-pick-mark">{team}</span>
                                                 <span className="tm-team-pick-name">{meta.label}</span>

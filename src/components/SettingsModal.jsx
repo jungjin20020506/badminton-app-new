@@ -16,6 +16,29 @@ import { ModalShell } from './modals/ModalShell';
 // ===================================================================================
 const SECTION = 'bg-gray-700 p-3 rounded-lg';
 
+// 작은 입력 부품들은 컴포넌트 밖에 둔다 — 렌더마다 새 컴포넌트 타입이 만들어지면
+// 버튼이 매번 다시 마운트되어 포커스가 튀고, 누른 버튼의 DOM 참조가 바로 낡아 버린다.
+const SensitivitySelect = ({ value, onChange, label }) => (
+    <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label={label}>
+        {AUTO_MATCH_SENSITIVITIES.map((s) => (
+            <button
+                key={s.key} type="button" role="radio" aria-checked={value === s.key}
+                onClick={() => onChange(s.key)}
+                className={`min-h-[40px] rounded-md text-xs font-bold arcade-button transition-colors ${value === s.key ? 'bg-green-500 text-black' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}
+            >
+                {s.label}
+            </button>
+        ))}
+    </div>
+);
+const Stepper = ({ value, onChange, min = 1, label }) => (
+    <div className="cox-stepper" role="group" aria-label={label}>
+        <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={`${label} 줄이기`}>−</button>
+        <span className="val" style={{ minWidth: 44, fontSize: 26 }}>{value}</span>
+        <button type="button" onClick={() => onChange(value + 1)} aria-label={`${label} 늘리기`}>+</button>
+    </div>
+);
+
 export function SettingsModal({
     isAdmin, scheduledCount, courtCount, seasonConfig, adminNames, activePlayers, allPlayers, currentUser, roster,
     onSave, onCancel, setModal, onSystemReset, onClearPlayerHistory, onGenerateRobots, onAdminAddPlayer,
@@ -134,26 +157,6 @@ export function SettingsModal({
 
     if (!isAdmin) return null;
 
-    const SensitivitySelect = ({ value, onChange, label }) => (
-        <div className="grid grid-cols-4 gap-1" role="radiogroup" aria-label={label}>
-            {AUTO_MATCH_SENSITIVITIES.map((s) => (
-                <button
-                    key={s.key} type="button" role="radio" aria-checked={value === s.key}
-                    onClick={() => onChange(s.key)}
-                    className={`min-h-[40px] rounded-md text-xs font-bold arcade-button transition-colors ${value === s.key ? 'bg-green-500 text-black' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}
-                >
-                    {s.label}
-                </button>
-            ))}
-        </div>
-    );
-    const Stepper = ({ value, onChange, min = 1, label }) => (
-        <div className="cox-stepper" role="group" aria-label={label}>
-            <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={`${label} 줄이기`}>−</button>
-            <span className="val" style={{ minWidth: 44, fontSize: 26 }}>{value}</span>
-            <button type="button" onClick={() => onChange(value + 1)} aria-label={`${label} 늘리기`}>+</button>
-        </div>
-    );
 
     return (
         <ModalShell

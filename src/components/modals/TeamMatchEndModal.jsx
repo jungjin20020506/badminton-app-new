@@ -43,7 +43,7 @@ export function TeamMatchEndModal({ courtIndex, court, allPlayers, onPickWinner,
     );
 
     const winBtn = (side, team, label) => (
-        <button type="button" disabled={busy} onClick={() => pick(side)} className={`tm-win-btn ${team ? TEAM_META[team].key : 'side'}`}>
+        <button type="button" disabled={busy} onClick={() => pick(side)} className={`tm-win-btn ${team ? TEAM_META[team].key : 'side'}`} aria-label={team ? `${TEAM_META[team].label} 승리로 기록` : `${label}쪽 승리로 기록`}>
             <span className="big">{team ? `${TEAM_META[team].label} 승리` : `${label}쪽 승리`}</span>
             <span className="sm">{team ? `${TEAM_META[team].short}팀 점수 +1` : '선수 승패만 기록'}</span>
         </button>
