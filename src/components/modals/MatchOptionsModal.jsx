@@ -25,6 +25,27 @@ function OptionPlayerChip({ player }) {
     );
 }
 
+/**
+ * [비교 뱃지] 모든 후보 카드에 같은 순서·같은 자리로 붙는 4개 지표.
+ * 세로로 훑으면 "겹침 0쌍인 건 어느 거지?"가 한눈에 보인다. (이유 문장은 그 아래 그대로)
+ */
+function OptionMetrics({ facts }) {
+    const overlapTone = facts.lastGamePairs.length > 0 || facts.metPairs.length >= 3 ? 'bad'
+        : facts.metPairs.length === 0 ? 'good' : 'mid';
+    const waitTone = facts.maxWaitMin >= 15 ? 'good' : 'mid';
+    const spreadTone = facts.levelSpread >= 3 ? 'bad' : facts.levelSpread === 2 ? 'mid' : 'good';
+    const gamesTone = facts.allSameGames ? 'good' : (facts.gamesMax - facts.gamesMin > 2 ? 'bad' : 'mid');
+    const gamesText = facts.allSameGames ? `${facts.gamesMin}` : `${facts.gamesMin}~${facts.gamesMax}`;
+    return (
+        <div className="mo-metrics" aria-label="후보 비교 지표">
+            <span className={`mo-metric ${overlapTone}`}><i>겹침</i><b>{facts.metPairs.length}쌍</b></span>
+            <span className={`mo-metric ${waitTone}`}><i>대기</i><b>{facts.maxWaitMin}분</b></span>
+            <span className={`mo-metric ${spreadTone}`}><i>급수폭</i><b>{facts.levelSpread}</b></span>
+            <span className={`mo-metric ${gamesTone}`}><i>경기</i><b>{gamesText}</b></span>
+        </div>
+    );
+}
+
 export function MatchOptionsModal({ genderLabel, result, queueCount, onSelect, onRegenerate, onCancel }) {
     const [pageIndex, setPageIndex] = useState(0);
     const [busy, setBusy] = useState(false);
@@ -53,6 +74,7 @@ export function MatchOptionsModal({ genderLabel, result, queueCount, onSelect, o
                 </div>
 
                 {result.qualityHint && <div className="mo-hint">💡 {result.qualityHint}</div>}
+                <p className="mo-legend">겹침은 적을수록 · 대기는 길수록 · 급수폭은 작을수록 좋아요</p>
 
                 <div className="mo-list" role="list">
                     {options.map((option, i) => (
@@ -71,6 +93,7 @@ export function MatchOptionsModal({ genderLabel, result, queueCount, onSelect, o
                                     <span className="mo-wait-chip">⏳ {option.waitCourts.map((c) => `${c + 1}번`).join('·')} 코트 대기</span>
                                 )}
                             </div>
+                            <OptionMetrics facts={option.facts} />
                             <div className="mo-teams">
                                 <div className="mo-team">
                                     <OptionPlayerChip player={option.players[0]} />

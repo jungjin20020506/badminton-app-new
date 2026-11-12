@@ -225,3 +225,35 @@ button:focus:not(:focus-visible){ outline:none; }
 /* 관리자용(남은 시간)은 숫자가 읽히도록 반 포인트 키우고 살짝 더 진하게 */
 .cox-rest-badge.admin{ font-size:9px; background:#FFC93C; font-variant-numeric:tabular-nums; }
 .player-card.cox-card-resting{ padding-bottom:13px !important; }
+
+/* ── 확인창 본문 아래 작은 보조 링크 (예: 경기 종료 창의 '기록 없이 경기 취소') ──
+   44px 높이를 지키되 글씨는 작게, 주 버튼과 헷갈리지 않게 밑줄 링크 모양 */
+.cox-confirm-secondary{
+  display:block; width:100%; margin:12px auto 0; min-height:44px; padding:10px 8px;
+  background:transparent; border:none; cursor:pointer;
+  font-family:'Noto Sans KR', sans-serif; font-size:12px; font-weight:700; color:var(--mute);
+  text-decoration:underline; text-underline-offset:3px; text-decoration-color:rgba(255,255,255,.25);
+  transition:color .14s;
+}
+.cox-confirm-secondary:hover, .cox-confirm-secondary:focus-visible{ color:var(--coral); text-decoration-color:currentColor; }
+
+/* ── 세그먼트 탭 (설정창: 오늘 운영 / 클럽 설정) — 본문 맨 위에 붙어 스크롤해도 보인다 ── */
+.cox-seg{
+  position:sticky; top:-4px; z-index:3; display:grid; grid-template-columns:1fr 1fr; gap:4px;
+  padding:4px; margin:0 0 4px; border-radius:14px;
+  background:var(--card); border:1px solid var(--line-strong);
+  box-shadow:0 8px 20px -14px rgba(0,0,0,.8);
+}
+.cox-seg-btn{
+  position:relative; min-height:42px; border:none; border-radius:11px; cursor:pointer;
+  background:transparent; color:var(--dim);
+  font-family:'Noto Sans KR', sans-serif; font-size:13.5px; font-weight:800; white-space:nowrap;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  transition:background .14s, color .14s, transform .12s;
+}
+.cox-seg-btn:active{ transform:scale(.97); }
+.cox-seg-btn.on{ background:var(--card-2); color:var(--text); box-shadow:inset 0 0 0 1px var(--line-strong); }
+.cox-seg-badge{
+  min-width:18px; height:18px; padding:0 5px; border-radius:999px;
+  background:var(--volt); color:#0c0d11; font-size:11px; font-weight:900; line-height:18px; text-align:center;
+}

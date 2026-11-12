@@ -19,6 +19,7 @@ import {
     getTeamOf, emptyTeamScores,
 } from './lib/helpers';
 import { computeRankings, computeAceIds, rankOf } from './lib/ranking';
+import { gameMinutesOf } from './lib/myStatus';
 
 import { CoxMark } from './components/Logo';
 import { Icon } from './components/Icons';
@@ -28,6 +29,7 @@ import { SkeletonScreen } from './components/Skeleton';
 import { InAppBrowserGuide } from './components/InAppBrowserGuide';
 import { TeamScoreBoard } from './components/TeamScoreBoard';
 import { TeamRankingSection } from './components/TeamRanking';
+import { PlayerHome } from './components/PlayerHome';
 import {
     SeasonModal, AdminEditPlayerModal, ConfirmationModal, AlertModal, CourtSelectionModal,
     SomoimSyncResultModal, MyHistoryModal, HiddenKeyModal, TeamMatchEndModal, TeamScoreEditModal,
@@ -643,7 +645,7 @@ export default function App() {
     // 설정 저장 — 코트 수·공지·자동매칭 민감도·관리자 목록을 한 번에 (저장 버튼 하나로 일관되게)
     const handleSettingsUpdate = useCallback(async (settings) => {
         try {
-            const { scheduled, courts, announcement, autoMatchConfig, adminNames: nextAdmins } = settings;
+            const { scheduled, courts, announcement, autoMatchConfig, adminNames: nextAdmins, gameMinutes } = settings;
             const { announcementType, photoFile } = autoMatchConfig;
             let finalPhotoUrl = seasonConfig.announcementPhotoUrl || '';
 
@@ -693,6 +695,8 @@ export default function App() {
             pure.femaleSensitivity = pure.femaleSensitivity || pure.sensitivity;
 
             const configUpdate = { announcement, autoMatchConfig: pure, announcementType: announcementType || 'text', announcementPhotoUrl: finalPhotoUrl };
+            // [대기 시간 예측] 평균 경기 시간(분) — 선수 화면의 "약 n분 뒤"와 매칭 엔진의 예약 판단에 쓴다
+            if (Number.isFinite(Number(gameMinutes))) configUpdate.gameMinutes = Math.min(40, Math.max(3, Math.round(Number(gameMinutes))));
             if (Array.isArray(nextAdmins) && nextAdmins.length > 0) {
                 configUpdate.adminNames = nextAdmins;
                 if (adminNames.join('|') !== nextAdmins.join('|')) writeAuditLog('관리자목록변경', { by: currentUser?.name || null, from: adminNames, to: nextAdmins });
@@ -843,7 +847,7 @@ export default function App() {
                         </span>
                     </div>
                     <h1 className="cox-title">
-                        {teamMode ? (<>청백<em>전</em></>) : activeTab === 'inProgress' ? (<>경기 <em>진행</em></>) : (<>오늘의 <em>경기</em></>)}
+                        {teamMode ? (<>청백<em>전</em></>) : activeTab === 'inProgress' ? (isAdmin ? <>경기 <em>진행</em></> : <>코트 <em>현황</em></>) : (<>오늘의 <em>경기</em></>)}
                     </h1>
                 </div>
 
@@ -900,6 +904,11 @@ export default function App() {
                                         <Icon name="sliders" size={18} />관리자 설정
                                     </button>
                                 )}
+                                {!currentUser.isGhostAdmin && (
+                                    <button type="button" role="menuitem" className="cox-menu-item" onClick={() => { setIsProfileMenuOpen(false); setModal({ type: 'myHistory', data: null }); }}>
+                                        <Icon name="timer" size={18} />내 기록
+                                    </button>
+                                )}
                                 {isAdmin && (
                                     <button type="button" role="menuitem" className={`cox-menu-item ${onboarding.hasSeenAutoMatchGuide ? '' : 'accent'}`} onClick={() => { setIsProfileMenuOpen(false); onboarding.handleReplayAutoMatchGuide(); }}>
                                         <Icon name="robot" size={18} />자동매칭 새 기능 {onboarding.hasSeenAutoMatchGuide ? '' : '🔴'}
@@ -943,7 +952,24 @@ export default function App() {
                     />
                 )}
                 {teamMode && rankings && <TeamRankingSection rankings={rankings} currentUserId={currentUser.isGhostAdmin ? null : currentUser.id} aceIds={aceIds} />}
-                {isMobile ? (
+                {/* [선수 화면] 관리자가 아니면 조회 전용 선수 화면 — 내 상태 · 다음 경기 · 대기 명단 · 코트 현황 */}
+                {!isAdmin ? (
+                    <PlayerHome
+                        me={currentUser}
+                        gameState={gameState}
+                        activePlayers={activePlayers}
+                        allPlayers={allPlayers}
+                        maleWaitingPlayers={maleWaitingPlayers}
+                        femaleWaitingPlayers={femaleWaitingPlayers}
+                        onlineIds={onlineIds}
+                        teamMode={teamMode}
+                        isMobile={isMobile}
+                        activeTab={activeTab}
+                        onOpenHistory={() => setModal({ type: 'myHistory', data: null })}
+                        onToggleRest={handleToggleRest}
+                        gameMin={gameMinutesOf(seasonConfig)}
+                    />
+                ) : isMobile ? (
                     <div className="flex flex-col gap-3">
                         {activeTab === 'matching' && (
                             <div key="tab-matching" className="flex flex-col gap-3 tab-fade-in">
@@ -973,14 +999,21 @@ export default function App() {
                 <nav className="cox-bottomnav" data-tut="nav" aria-label="화면 이동">
                     <button type="button" className={`cox-nav-btn ${activeTab === 'matching' ? 'active' : ''}`} onClick={() => setActiveTab('matching')} aria-current={activeTab === 'matching' ? 'page' : undefined}>
                         <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2.5" /><path d="M3 9h18M8 2.5v3M16 2.5v3" /></svg>
-                        <span>경기 예정</span>
+                        <span>{isAdmin ? '경기 예정' : '내 경기'}</span>
                     </button>
-                    <button type="button" className="cox-fab" onClick={handleLocateMe} title="내 위치 찾기" aria-label="내 위치 찾기" data-tut="fab">
-                        <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8" /><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" /></svg>
-                    </button>
+                    {isAdmin ? (
+                        <button type="button" className="cox-fab" onClick={handleLocateMe} title="내 위치 찾기" aria-label="내 위치 찾기" data-tut="fab">
+                            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2" /><circle cx="12" cy="12" r="8" /><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3" /></svg>
+                        </button>
+                    ) : (
+                        // [선수 화면] 가운데 버튼 = 📋 내 기록 (내 카드를 찾을 필요가 없어졌다 — 맨 위 카드가 내 상태다)
+                        <button type="button" className="cox-fab history" onClick={() => setModal({ type: 'myHistory', data: null })} title="내 기록" aria-label="내 기록 보기" data-tut="fab">
+                            <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M9 3.5v2h6v-2M8.5 10h7M8.5 14h7M8.5 18h4" /></svg>
+                        </button>
+                    )}
                     <button type="button" className={`cox-nav-btn ${activeTab === 'inProgress' ? 'active' : ''}`} onClick={() => setActiveTab('inProgress')} aria-current={activeTab === 'inProgress' ? 'page' : undefined}>
                         <svg viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12h3l2.5-7 5 16 2.5-9H21" /></svg>
-                        <span>경기 진행</span>
+                        <span>{isAdmin ? '경기 진행' : '코트 현황'}</span>
                     </button>
                 </nav>
             )}

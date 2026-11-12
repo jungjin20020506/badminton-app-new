@@ -140,12 +140,19 @@ const TUTORIAL_USER_STEPS = [
         </>),
     },
     {
-        target: '[data-tut="waiting"]', tab: 'matching',
-        title: '① 내 카드',
+        target: '[data-tut="my-next"]', tab: 'matching',
+        title: '① 내 다음 경기',
         body: (<>
-            <b>주황 테두리</b>가 나예요. <b>3G</b> = 오늘 3경기.
-            <br/><b>내 카드를 탭하면</b> 오늘 누구와 쳤는지 기록이 보여요.
-            아래 가운데 ⌖ 버튼은 내 카드를 찾아줍니다.
+            맨 위 큰 카드가 <b>지금 내 상태</b>예요. 대기 중 · 다음 경기 · 경기 중 · 휴식.
+            <br/>다음 경기가 잡히면 <b>누구와 치는지, 몇 번 코트가 끝나면 시작하는지</b>가 여기 떠요.
+            <br/><b>📋 내 기록</b>을 누르면 오늘 누구와 쳤는지 보여요. (아래 가운데 버튼도 같아요)
+        </>),
+    },
+    {
+        target: '[data-tut="waiting"]', tab: 'matching',
+        title: '대기 명단',
+        body: (<>
+            <b>주황 테두리</b>가 나예요. <b>3G</b> = 오늘 3경기. 급수 순으로 서 있어요.
         </>),
     },
     {
@@ -164,34 +171,33 @@ const TUTORIAL_USER_STEPS = [
         </>),
     },
     {
-        mode: 'normal', target: '[data-tut="auto"]', tab: 'matching',
-        title: '② 자동 매칭 ★',
+        target: '[data-tut="auto"]', tab: 'matching',
+        title: '② 다음 경기 목록 ★',
         body: (<>
-            여기 <b>내 이름이 뜨면 다음 경기</b>예요!
+            관리자가 만든 경기가 <b>순서대로</b> 떠요. <b>주황색 줄 = 내 경기</b>.
             <br/><em>안 만난 사람끼리 · 오래 기다린 사람 먼저 · 급수 맞춰</em> — 아무도 소외되지 않게 뽑혀요.
-            <br/>경기중이라도 뽑힐 수 있어요. 그때는 카드가 <b>회색 「경기중」</b>으로 보이다가,
-            경기가 끝나면 색이 돌아옵니다.
+            <br/>「⏳ n번 코트 끝나면」은 그 코트가 끝나야 시작한다는 뜻이에요.
         </>),
     },
     {
         target: '[data-tut="courts"]', tab: 'inProgress',
-        title: '③ 경기 진행',
+        title: '③ 코트 현황',
         body: (<>
-            여기 내 이름이 뜨면 <b>그 번호 코트로</b> 가시면 됩니다!
+            내 경기가 시작되면 <b>주황색 코트</b>가 돼요. <b>그 번호 코트로</b> 가시면 됩니다!
         </>),
     },
     {
         only: 'mobile', interactive: true, advanceOnTab: 'inProgress', tab: 'matching',
         title: '직접 해보세요! 👈',
         body: (<>
-            화면을 <b>왼쪽으로 밀어보세요</b> — 경기 진행 화면으로 넘어갑니다.
+            화면을 <b>왼쪽으로 밀어보세요</b> — 코트 현황 화면으로 넘어갑니다.
         </>),
     },
     {
         surface: 'main', target: '[data-tut="rest"]',
         title: '휴식할 때 · 집에 갈 때',
         body: (<>
-            쉴 때는 위의 <b>☕ 휴식 버튼</b>(몇 분 쉴지 고르면 자동 복귀), 갈 때는 메뉴의 <b>나가기</b>를 꼭!
+            쉴 때는 <b>☕ 휴식 버튼</b>(몇 분 쉴지 고르면 자동 복귀), 갈 때는 메뉴의 <b>나가기</b>를 꼭!
             <br/>안 누르면 없는 사람이 매칭에 잡혀요.
         </>),
     },

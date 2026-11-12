@@ -225,6 +225,8 @@ const DEFAULT_SEASON_CONFIG = () => ({
     announcement: "랭킹전 시즌에 오신 것을 환영합니다! 공지사항은 관리자 설정에서 변경할 수 있습니다.",
     seasonId: "default-season",
     pointSystemInfo: "- 참석: +20 RP (3경기 완료시)\n- 승리: +30 RP\n- 패배: +10 RP\n- 3연승 보너스: +20 RP",
+    // [대기 시간 예측] 평균 경기 시간(분) — 선수 화면 "약 n분 뒤"와 매칭 엔진 예약 판단에 쓴다
+    gameMinutes: 8,
     // [자동매칭] 기본 설정값 (민감도 프리셋 — ON/OFF 없이 '매칭 만들기' 버튼으로 생성)
     autoMatchConfig: {
         sensitivity: 'normal',

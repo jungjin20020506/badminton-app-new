@@ -236,10 +236,12 @@ function pairKey(a, b) {
  * @param {object} gameState  - 현재 게임 상태 (코트 / 자동매칭 / 경기예정)
  * @param {object} [opts]
  * @param {number} [opts.now] - 현재 시각 (테스트용으로 고정할 수 있게 인자로 받는다)
+ * @param {number} [opts.typicalGameMin] - 평균 경기 시간(분). 관리자 설정(gameMinutes)에서 온다. 없으면 15
  * @returns {object} ctx
  */
 function buildMatchContext(allPlayers, gameState, opts = {}) {
     const now = opts.now ?? Date.now();
+    const typicalGameMin = Number.isFinite(opts.typicalGameMin) && opts.typicalGameMin > 0 ? opts.typicalGameMin : TYPICAL_GAME_MIN;
     const courts = gameState?.inProgressCourts || [];
     const autoMatches = gameState?.autoMatches || {};
     const scheduledMatches = gameState?.scheduledMatches || {};
@@ -303,7 +305,7 @@ function buildMatchContext(allPlayers, gameState, opts = {}) {
 
         // 경기중이라면 지금 몇 분째 뛰고 있고, 앞으로 몇 분쯤 남았는지 (예약 판단용)
         const elapsedMin = court ? minutesSince(court.startTime, now) : 0;
-        const remainingMin = court ? Math.max(0, TYPICAL_GAME_MIN - elapsedMin) : 0;
+        const remainingMin = court ? Math.max(0, typicalGameMin - elapsedMin) : 0;
 
         stats[p.id] = {
             id: p.id,
@@ -602,6 +604,8 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed, isTeamMatch = false) {
         .filter(p => !p.onCourt && p.waitMin >= W.WAIT_KNEE)
         .sort((a, b) => b.waitMin - a.waitMin)
         .map(p => ({ name: p.name, waitMin: Math.round(p.waitMin) }));
+    // 이 조합에서 가장 오래 기다린 사람의 분 (후보 비교 뱃지용 — 15분 미만도 보여준다)
+    const maxWaitMin = Math.round(Math.max(0, ...comboStats.filter(p => !p.onCourt).map(p => p.waitMin)));
 
     const facts = {
         names: comboStats.map(p => p.name),
@@ -616,6 +620,7 @@ function analyzeCombo(comboStats, ctx, poolInfo, isMixed, isTeamMatch = false) {
         levelSpread,
         lonelyNames,
         longWaiters,
+        maxWaitMin,
         thirstRelieved,
         onCourtNames: onCourtPlayers.map(p => p.name),
         waitCourts,
@@ -744,6 +749,36 @@ const TIERS = {
     normal: { key: 'normal', label: '보통',   emoji: '👍' },
     bad:    { key: 'bad',    label: '아쉬움', emoji: '⚠️' },
 };
+
+// ===================================================================================
+// 6-a. 절대 금지 규칙 (하드 제약) — 점수가 아니라 '후보에서 제외'로 처리한다
+// -----------------------------------------------------------------------------------
+//  예전에는 "직전 경기와 똑같은 4명"을 -1000점으로 밀어내는 식이었다. 그 방식은 가중치
+//  하나를 올리다 보면 금지가 뚫릴 수 있고, 무엇이 금지이고 무엇이 감점인지 코드를 다
+//  읽어야 알 수 있었다. 이제 금지는 여기 한 곳에 모아 두고, 채점 전에 걸러낸다.
+//  (걸러내고 남는 조합이 하나도 없으면 — 인원이 딱 4명인 날처럼 — 금지를 풀어 준다.
+//   경기가 아예 안 만들어지는 것보다 낫다. W.SAME_FOUR 감점은 그 경우를 위해 남겨 둔다)
+// ===================================================================================
+const HARD_RULES = [
+    { key: 'sameFour', label: '직전 경기와 완전히 같은 4명', violates: (facts) => !!facts.sameFour },
+];
+function violatesHardRule(facts) {
+    return HARD_RULES.some(rule => rule.violates(facts));
+}
+
+// ===================================================================================
+// 6-b. 우선순위 선언 — 엔진이 무엇을 먼저 보는지 한 줄로 (겹침 > 대기 > 급수 > 경기 수 > 매너리즘 > 바로 시작)
+// -----------------------------------------------------------------------------------
+//  정렬은 총점(가중합) 내림차순이고, 총점이 같으면 조합을 만든 순서를 그대로 둔다(안정 정렬).
+//  ※ 총점이 같을 때 PRIORITY 순으로 항목 점수를 다시 비교하는 '사전식 정렬'도 시도해 봤지만,
+//    시뮬레이터 기준(급수 불일치 15% 미만 · 30명 경기 수 편차 3 이하)이 근소하게 흔들렸다
+//    (16.4% / 편차 4). 실사용 중인 가중치와 한 세트로 다시 튜닝해야 하므로 지금은 켜지 않는다.
+//    이 배열은 analyzeCombo 의 parts 키와 같고, 이유 문장(buildReasonLines)도 이 순서를 따른다.
+// ===================================================================================
+const PRIORITY = ['novelty', 'wait', 'balance', 'games', 'thirst', 'startability'];
+function compareOptions(a, b) {
+    return b.score - a.score;
+}
 
 /** 두 조합이 몇 명이나 겹치는지 */
 function overlapCount(idsA, idsB) {
@@ -907,11 +942,12 @@ function generateMatchOptions({ pool, ctx, mode, maxOnCourt = 2, pages = 3, pend
         };
     });
 
-    // 직전 경기 재탕은 후보에서 아예 뺀다 (다른 선택지가 하나라도 있으면)
-    const withoutStale = scored.filter(s => !s.facts.sameFour);
-    if (withoutStale.length > 0) scored = withoutStale;
+    // 절대 금지 규칙(HARD_RULES)에 걸리는 조합은 후보에서 아예 뺀다 (다른 선택지가 하나라도 있으면)
+    const allowed = scored.filter(s => !violatesHardRule(s.facts));
+    if (allowed.length > 0) scored = allowed;
 
-    scored.sort((a, b) => b.score - a.score);
+    // 총점 → 우선순위(PRIORITY) 순 → 선수 id 순. 같은 상황이면 언제나 같은 순서.
+    scored.sort(compareOptions);
     const total = scored.length;
 
     // ── 티어 구간 나누기 ──
@@ -1050,6 +1086,10 @@ export {
     LEVEL_BALANCE_MAP,
     W as MATCH_WEIGHTS,
     TIERS,
+    HARD_RULES,
+    violatesHardRule,
+    PRIORITY as MATCH_PRIORITY,
+    compareOptions,
     // 설정
     AUTO_MATCH_SENSITIVITIES,
     getSensitivity,

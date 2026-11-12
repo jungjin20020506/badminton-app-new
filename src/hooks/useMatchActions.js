@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { buildMatchContext, buildCandidatePool, generateMatchOptions, getSensitivity } from '../lib/matching';
 import { repairMatchQueues } from '../lib/helpers';
+import { gameMinutesOf } from '../lib/myStatus';
 import { log } from '../lib/logger';
 
 // ===================================================================================
@@ -24,7 +25,8 @@ export function useMatchActions({ isAdmin, allPlayers, gameState, seasonConfig, 
             ? ((gender === '남' ? config.maleSensitivity : config.femaleSensitivity) || masterSens)
             : masterSens;
         const sens = getSensitivity(sensKey);
-        const ctx = buildMatchContext(allPlayers, gameState, { now: Date.now() });
+        // 평균 경기 시간(관리자 설정)을 엔진에도 알려준다 — "경기중인 선수를 예약하면 몇 분 기다리나"가 정확해진다
+        const ctx = buildMatchContext(allPlayers, gameState, { now: Date.now(), typicalGameMin: gameMinutesOf(seasonConfig) });
         const pool = buildCandidatePool(ctx, gender);
         // 예약이 쌓이면 목록 전체가 대기 상태가 되어 코트가 놀기 때문에, 엔진이
         // "이번엔 바로 시작 가능한 조합"을 우선하도록 알려준다.

@@ -1,0 +1,278 @@
+/* ══════════════════════════════════════════════════════════════════
+   [선수 화면] PLAYER HOME  ·  내 상태 · 내 다음 경기 · 오늘 내 기록
+   관리자 화면과 같은 토큰(--card, --volt, --coral …)을 쓰되, 글자는 한 치수 크게.
+   (최소 12.5px — 체육관에서 팔을 뻗어 보는 화면)
+══════════════════════════════════════════════════════════════════ */
+.ph-wrap{ width:100%; display:flex; justify-content:center; }
+.ph-col{ width:100%; max-width:640px; display:flex; flex-direction:column; gap:12px; padding:2px 4px 6px; }
+
+/* ── 맨 위 큰 카드 ── */
+.ph-hero{
+  position:relative; overflow:hidden; border-radius:22px; padding:16px 16px 14px;
+  background:linear-gradient(160deg, var(--card-2) 0%, var(--card) 70%);
+  border:1px solid var(--line-strong);
+  box-shadow:0 18px 40px -26px rgba(0,0,0,.9);
+  animation:fadeUp .35s var(--ease-pop) both;
+}
+.ph-hero::after{
+  content:''; position:absolute; right:-40px; top:-50px; width:180px; height:180px; border-radius:50%;
+  background:radial-gradient(closest-side, rgba(205,251,71,.18), transparent 70%); pointer-events:none;
+}
+.ph-hero.playing{ border-color:rgba(255,106,82,.55); }
+.ph-hero.playing::after{ background:radial-gradient(closest-side, rgba(255,106,82,.22), transparent 70%); }
+.ph-hero.queued{ border-color:rgba(205,251,71,.5); }
+.ph-hero.resting{ border-color:var(--line-strong); }
+.ph-hero.resting::after{ background:radial-gradient(closest-side, rgba(255,212,90,.16), transparent 70%); }
+
+.ph-hero-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ph-kicker{ font-size:11px; font-weight:800; letter-spacing:.18em; text-transform:uppercase; color:var(--dim); }
+.ph-pill{
+  display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px;
+  font-size:12px; font-weight:900; white-space:nowrap;
+  background:rgba(255,255,255,.06); color:var(--text); border:1px solid var(--line-strong);
+}
+.ph-pill i{ width:8px; height:8px; border-radius:50%; background:var(--dim); }
+.ph-pill.waiting i{ background:var(--dim); animation:coxPulse 1.6s ease-in-out infinite; }
+.ph-pill.queued{ color:var(--volt); border-color:rgba(205,251,71,.45); background:var(--volt-soft); }
+.ph-pill.queued i{ background:var(--volt); box-shadow:0 0 8px var(--volt); animation:coxPulse 1.2s ease-in-out infinite; }
+.ph-pill.playing{ color:#FFB1A3; border-color:rgba(255,106,82,.5); background:rgba(255,106,82,.12); }
+.ph-pill.playing i{ background:var(--coral); box-shadow:0 0 8px var(--coral); }
+.ph-pill.resting{ color:#FFE08A; border-color:rgba(255,212,90,.45); background:rgba(255,212,90,.1); }
+.ph-pill.resting i{ background:#FFD45A; }
+
+.ph-headline{
+  margin:10px 0 0; font-family:'Anton','Noto Sans KR',sans-serif; font-weight:800;
+  font-size:30px; line-height:1.05; letter-spacing:.01em; color:var(--text);
+  word-break:keep-all;
+}
+.ph-hero.playing .ph-headline{ color:#FFB1A3; }
+.ph-hero.queued .ph-headline{ color:var(--volt); }
+.ph-sub{ margin:6px 0 0; font-size:14px; font-weight:700; color:var(--dim); line-height:1.45; word-break:keep-all; }
+
+/* 2 vs 2 */
+.ph-lineup{
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:stretch; gap:8px;
+  margin-top:12px; padding:10px; border-radius:16px;
+  background:rgba(255,255,255,.04); border:1px solid var(--line);
+}
+.ph-side{ min-width:0; display:flex; flex-direction:column; gap:6px; }
+.ph-side-label{ font-size:11px; font-weight:800; color:var(--mute); letter-spacing:.06em; }
+.ph-side.mine .ph-side-label{ color:var(--volt); }
+.ph-vs{ align-self:center; font-size:11px; font-weight:900; color:var(--mute); letter-spacing:.1em; padding:0 2px; }
+
+/* 이름 칩 (공용) */
+.ph-name{
+  display:inline-flex; align-items:center; gap:6px; min-width:0; max-width:100%;
+  font-size:13px; font-weight:800; color:var(--text); line-height:1.2;
+}
+.ph-name .nm{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.ph-name .dot{ flex-shrink:0; width:8px; height:8px; border-radius:50%; }
+.ph-name .lv{ flex-shrink:0; font-size:11px; font-weight:900; }
+.ph-name .me-tag{
+  flex-shrink:0; font-size:10px; font-weight:900; line-height:1; padding:3px 5px; border-radius:6px;
+  background:var(--coral); color:#fff;
+}
+.ph-name .gone-tag{ flex-shrink:0; font-size:10px; font-weight:800; color:var(--mute); }
+.ph-name.me .nm{ color:#FFB1A3; }
+.ph-name.gone .nm{ color:var(--mute); text-decoration:line-through; }
+.ph-name.empty{ color:var(--mute); font-weight:700; }
+.ph-name.empty .dot{ background:transparent; border:1.5px dashed var(--mute); }
+.ph-name.big{ font-size:15px; }
+.ph-name.big .dot{ width:10px; height:10px; }
+.ph-name.tm-blue .nm{ color:var(--tm-blue-text); }
+.ph-name.tm-white .nm{ color:var(--tm-white-text); }
+.ph-name.me.tm-blue .nm, .ph-name.me.tm-white .nm{ color:#FFB1A3; }
+
+.ph-note{
+  margin:10px 0 0; padding:9px 11px; border-radius:12px;
+  font-size:12.5px; font-weight:700; line-height:1.45; color:#C3C9D4;
+  background:rgba(255,255,255,.05); border:1px solid var(--line); word-break:keep-all;
+}
+.ph-note.good{ color:#8ee9b0; background:rgba(52,226,122,.08); border-color:rgba(52,226,122,.3); }
+.ph-note.warn{ color:#FFE08A; background:rgba(255,196,0,.08); border-color:rgba(255,196,0,.32); }
+
+.ph-actions{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+.ph-btn{
+  min-height:46px; padding:10px 12px; border-radius:13px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  font-family:'Noto Sans KR',sans-serif; font-size:14px; font-weight:900; white-space:nowrap;
+  border:1px solid transparent; transition:transform .12s var(--ease-pop), filter .15s;
+}
+.ph-btn:active{ transform:scale(.96); }
+.ph-btn svg{ width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.ph-btn.primary{ background:var(--volt); color:#0c0d11; box-shadow:0 8px 22px -10px var(--volt); }
+.ph-btn.ghost{ background:var(--card-2); color:var(--text); border-color:var(--line-strong); }
+.ph-btn.accent{ background:#FFD45A; color:#0c0d11; box-shadow:0 8px 22px -10px #FFD45A; }
+
+/* ── 숫자 3개 ── */
+.ph-stats .cox-stat .v{ font-size:24px; }
+.ph-stats .cox-stat .k{ font-size:11.5px; }
+.ph-w{ color:#8ee9b0; } .ph-l{ color:#FFB1A3; } .ph-sep{ color:var(--mute); margin:0 3px; }
+
+/* ── 섹션 공통 ── */
+.ph-section{ background:var(--card); border:1px solid var(--line); border-radius:18px; padding:12px; }
+.ph-section .cox-secline .lbl{ font-size:14px; }
+.ph-section .cox-secline .lbl .count{ font-size:13px; }
+.ph-empty{ margin:0; padding:14px 8px; text-align:center; font-size:13px; line-height:1.6; color:var(--mute); }
+.ph-list{ display:flex; flex-direction:column; gap:8px; }
+
+/* ── 다음 경기 줄 ── */
+.ph-match{
+  display:flex; align-items:stretch; gap:10px; padding:10px; border-radius:14px;
+  background:rgba(255,255,255,.035); border:1px solid var(--line);
+}
+.ph-match.mine{ border-color:rgba(255,106,82,.6); background:rgba(255,106,82,.07); box-shadow:inset 3px 0 0 0 var(--coral); }
+.ph-match-no{
+  flex-shrink:0; width:40px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
+  border-radius:11px; background:var(--card-2); border:1px solid var(--line);
+}
+.ph-match-no b{ font-family:'Anton','Noto Sans KR',sans-serif; font-size:20px; line-height:1; color:var(--text); }
+.ph-match-no small{ font-size:10px; font-weight:800; color:var(--dim); }
+.ph-match-body{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:6px; }
+.ph-match-sides{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:6px; }
+.ph-match-side{ min-width:0; display:flex; flex-direction:column; gap:3px; }
+.ph-match-vs{ font-size:10.5px; font-weight:900; color:var(--mute); }
+.ph-match-foot{ display:flex; align-items:center; justify-content:space-between; gap:6px; flex-wrap:wrap; }
+.ph-chip-state{
+  display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:999px;
+  font-size:11.5px; font-weight:800; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis;
+  background:rgba(255,255,255,.06); color:#C3C9D4; border:1px solid var(--line-strong);
+}
+.ph-chip-state.good{ color:#8ee9b0; border-color:rgba(52,226,122,.35); background:rgba(52,226,122,.08); }
+.ph-chip-state.wait{ color:#a8b4c8; }
+.ph-chip-state.warn{ color:#FFE08A; border-color:rgba(255,196,0,.35); background:rgba(255,196,0,.08); }
+.ph-mine-tag{
+  flex-shrink:0; font-size:10.5px; font-weight:900; padding:3px 7px; border-radius:999px;
+  background:var(--coral); color:#fff;
+}
+
+/* ── 대기 명단 칩 ── */
+.ph-group{ margin-top:6px; }
+.ph-group + .ph-group{ margin-top:12px; padding-top:10px; border-top:1px dashed var(--line-strong); }
+.ph-group-head{
+  display:flex; align-items:center; gap:7px; margin-bottom:7px;
+  font-size:12.5px; font-weight:800; color:var(--dim);
+}
+.ph-group-head i{ width:8px; height:8px; border-radius:50%; }
+.ph-group-head span{ color:var(--mute); font-weight:700; }
+.ph-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.ph-chip{
+  position:relative; display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:6px 11px 6px 9px;
+  border-radius:999px; background:var(--card-2); border:1px solid var(--line-strong);
+  font-size:13px; font-weight:800; color:var(--text); max-width:100%;
+}
+.ph-chip .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.ph-chip .on{ position:absolute; left:6px; top:5px; width:6px; height:6px; border-radius:50%; background:var(--volt); box-shadow:0 0 6px var(--volt); }
+.ph-chip .nm{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:9em; }
+.ph-chip .lv{ font-size:11px; font-weight:900; }
+.ph-chip .g{ font-size:11px; font-weight:800; color:var(--dim); }
+.ph-chip .rest{ font-size:12px; }
+.ph-chip.me{ border-color:var(--coral); background:rgba(255,106,82,.12); box-shadow:0 0 12px -4px var(--coral); }
+.ph-chip.me .nm{ color:#FFB1A3; }
+.ph-chip.resting{ opacity:.55; filter:grayscale(.6); }
+
+/* ── 코트 타일 ── */
+.ph-courts{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+@media (max-width:359px){ .ph-courts{ grid-template-columns:1fr; } }
+.ph-court{
+  min-width:0; border-radius:16px; padding:10px; background:rgba(255,255,255,.035); border:1px solid var(--line);
+  display:flex; flex-direction:column; gap:8px;
+}
+.ph-court.empty{ border-style:dashed; border-color:var(--line-strong); }
+.ph-court.mine{ border-color:rgba(255,106,82,.65); background:rgba(255,106,82,.08); box-shadow:0 0 16px -6px var(--coral); }
+.ph-court-head{ display:flex; align-items:center; justify-content:space-between; gap:6px; min-height:24px; }
+.ph-court-no{ display:inline-flex; align-items:baseline; gap:3px; }
+.ph-court-no b{ font-family:'Anton','Noto Sans KR',sans-serif; font-size:22px; line-height:1; color:var(--text); }
+.ph-court-no small{ font-size:11px; font-weight:800; color:var(--dim); }
+.ph-court-timer{ font-size:12px; }
+.ph-court-timer > div{ margin:0 !important; font-size:12.5px !important; color:var(--dim) !important; }
+.ph-court.mine .ph-court-timer > div{ color:#FFB1A3 !important; }
+.ph-court-free{ font-size:12px; font-weight:800; color:var(--mute); }
+.ph-court-body{ display:flex; flex-direction:column; gap:4px; }
+.ph-court-side{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.ph-court-vs{ font-size:10.5px; font-weight:900; color:var(--mute); text-align:center; letter-spacing:.1em; }
+.ph-court-body.empty{ min-height:52px; align-items:center; justify-content:center; text-align:center; }
+.ph-court-body.empty span{ font-size:12px; color:var(--mute); font-weight:700; line-height:1.4; word-break:keep-all; }
+
+/* ── 하단 내비 FAB (선수: 내 기록) ── */
+.cox-fab.history svg{ stroke-width:2; }
+
+/* ══ 라이트 모드 ══ */
+:root[data-theme="light"] .ph-hero{ background:#FFFFFF; box-shadow:0 10px 30px -22px rgba(16,24,40,.5); }
+:root[data-theme="light"] .ph-hero::after{ background:radial-gradient(closest-side, rgba(95,138,0,.14), transparent 70%); }
+:root[data-theme="light"] .ph-hero.playing::after{ background:radial-gradient(closest-side, rgba(229,83,58,.14), transparent 70%); }
+:root[data-theme="light"] .ph-hero.queued .ph-headline{ color:var(--volt-ink); }
+:root[data-theme="light"] .ph-hero.playing .ph-headline{ color:#B91C1C; }
+:root[data-theme="light"] .ph-pill{ background:#F1F3F7; }
+:root[data-theme="light"] .ph-pill.queued{ color:var(--volt-ink); border-color:rgba(95,138,0,.35); }
+:root[data-theme="light"] .ph-pill.queued i{ background:var(--volt-ink); box-shadow:none; }
+:root[data-theme="light"] .ph-pill.playing{ color:#B91C1C; }
+:root[data-theme="light"] .ph-pill.resting{ color:#92400E; background:rgba(255,196,0,.14); }
+:root[data-theme="light"] .ph-lineup{ background:#F7F8FA; }
+:root[data-theme="light"] .ph-side.mine .ph-side-label{ color:var(--volt-ink); }
+:root[data-theme="light"] .ph-name.me .nm, :root[data-theme="light"] .ph-chip.me .nm{ color:#B91C1C; }
+:root[data-theme="light"] .ph-name.me.tm-blue .nm, :root[data-theme="light"] .ph-name.me.tm-white .nm{ color:#B91C1C; }
+:root[data-theme="light"] .ph-note{ background:#F7F8FA; color:#3B4454; }
+:root[data-theme="light"] .ph-note.good{ color:#15803D; background:rgba(21,128,61,.08); border-color:rgba(21,128,61,.3); }
+:root[data-theme="light"] .ph-note.warn{ color:#7A4F00; background:rgba(255,196,0,.14); }
+:root[data-theme="light"] .ph-btn.primary{ box-shadow:0 8px 20px -10px rgba(95,138,0,.55); }
+:root[data-theme="light"] .ph-btn.accent{ background:#F5B700; box-shadow:0 8px 20px -10px rgba(245,183,0,.6); }
+:root[data-theme="light"] .ph-w{ color:#15803D; } :root[data-theme="light"] .ph-l{ color:#B91C1C; }
+:root[data-theme="light"] .ph-section, :root[data-theme="light"] .ph-match, :root[data-theme="light"] .ph-court{ background:#FFFFFF; }
+:root[data-theme="light"] .ph-match{ background:#F7F8FA; }
+:root[data-theme="light"] .ph-match.mine{ background:rgba(229,83,58,.08); }
+:root[data-theme="light"] .ph-match-no{ background:#FFFFFF; }
+:root[data-theme="light"] .ph-chip-state{ background:#F1F3F7; color:#3B4454; }
+:root[data-theme="light"] .ph-chip-state.good{ color:#15803D; background:rgba(21,128,61,.08); }
+:root[data-theme="light"] .ph-chip-state.warn{ color:#7A4F00; background:rgba(255,196,0,.14); }
+:root[data-theme="light"] .ph-chip{ background:#F7F8FA; }
+:root[data-theme="light"] .ph-chip .on{ background:var(--volt-ink); box-shadow:none; }
+:root[data-theme="light"] .ph-chip.me{ background:rgba(229,83,58,.1); box-shadow:none; }
+:root[data-theme="light"] .ph-court{ background:#F7F8FA; }
+:root[data-theme="light"] .ph-court.mine{ background:rgba(229,83,58,.08); box-shadow:none; }
+:root[data-theme="light"] .ph-court.mine .ph-court-timer > div{ color:#B91C1C !important; }
+:root[data-theme="light"] .ph-name .lv, :root[data-theme="light"] .ph-chip .lv{ filter:saturate(1.1) brightness(.85); }
+
+/* ══ 내 기록 창 (MyHistoryModal) ══ */
+.mh-summary{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:10px; }
+.mh-tile{
+  min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
+  padding:12px 6px 10px; border-radius:14px; background:var(--card-2); border:1px solid var(--line);
+  text-align:center;
+}
+.mh-tile b{ font-family:'Anton','Noto Sans KR',sans-serif; font-size:24px; line-height:1; color:var(--volt); white-space:nowrap; }
+.mh-tile b.sm{ font-family:'Noto Sans KR',sans-serif; font-weight:900; font-size:15px; color:var(--text); max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.mh-tile b .w{ color:#8ee9b0; } .mh-tile b .l{ color:#FFB1A3; } .mh-tile b i{ font-style:normal; color:var(--mute); margin:0 3px; }
+.mh-tile span{ font-size:11.5px; font-weight:800; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+.mh-teamline{ margin:0 0 10px; text-align:center; font-size:12.5px; font-weight:800; color:#C3C9D4; }
+.mh-teamline .sep{ color:var(--mute); margin:0 6px; }
+.mh-list{ display:flex; flex-direction:column; gap:7px; }
+.mh-empty{ margin:0; padding:18px 8px; text-align:center; font-size:13.5px; line-height:1.6; color:var(--mute); }
+.mh-row{ border-radius:13px; padding:9px 11px; background:rgba(255,255,255,.04); border:1px solid var(--line); }
+.mh-row.manual{ font-size:12.5px; color:var(--dim); }
+.mh-row-head{ display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+.mh-no{ font-size:12px; font-weight:900; color:var(--volt); }
+.mh-time{ font-size:12px; font-weight:700; color:var(--mute); font-variant-numeric:tabular-nums; }
+.mh-row-body{ display:flex; flex-direction:column; gap:3px; }
+.mh-line{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px; font-size:13.5px; font-weight:800; color:var(--text); }
+.mh-line .k{ flex-shrink:0; width:30px; font-size:11px; font-weight:800; color:var(--mute); }
+.mh-line .none{ color:var(--mute); }
+.mh-person{ display:inline-flex; align-items:center; gap:5px; }
+.mh-person i{ width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+:root[data-theme="light"] .mh-tile b{ color:var(--volt-ink); }
+:root[data-theme="light"] .mh-tile b .w{ color:#15803D; } :root[data-theme="light"] .mh-tile b .l{ color:#B91C1C; }
+:root[data-theme="light"] .mh-no{ color:var(--volt-ink); }
+:root[data-theme="light"] .mh-row{ background:#F7F8FA; }
+:root[data-theme="light"] .mh-teamline{ color:#3B4454; }
+
+/* ── 경기 4명 묶음 (내 편/상대 구분 없음 — 파트너는 코트에서 랜덤) ── */
+.ph-four{ display:flex; flex-direction:column; gap:6px; min-width:0; }
+.ph-four-label{ font-size:11px; font-weight:800; color:var(--volt); letter-spacing:.06em; }
+.ph-four-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; min-width:0; }
+.ph-hero .ph-four{ margin-top:12px; padding:10px 12px; border-radius:16px; background:rgba(255,255,255,.04); border:1px solid var(--line); }
+.ph-hero .ph-four-grid{ gap:8px 10px; }
+/* 타일이 화면 반 폭이라 이름은 한 줄에 하나씩 (두 칸으로 나누면 이름이 '로봇···'처럼 잘린다) */
+.ph-court-body{ display:grid; grid-template-columns:1fr; gap:4px; }
+.ph-court-body.empty{ display:flex; }
+:root[data-theme="light"] .ph-hero .ph-four{ background:#F7F8FA; }
+:root[data-theme="light"] .ph-four-label{ color:var(--volt-ink); }

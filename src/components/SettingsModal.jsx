@@ -31,11 +31,11 @@ const SensitivitySelect = ({ value, onChange, label }) => (
         ))}
     </div>
 );
-const Stepper = ({ value, onChange, min = 1, label }) => (
+const Stepper = ({ value, onChange, min = 1, max = Infinity, label }) => (
     <div className="cox-stepper" role="group" aria-label={label}>
         <button type="button" onClick={() => onChange(Math.max(min, value - 1))} disabled={value <= min} aria-label={`${label} 줄이기`}>−</button>
         <span className="val" style={{ minWidth: 44, fontSize: 26 }}>{value}</span>
-        <button type="button" onClick={() => onChange(value + 1)} aria-label={`${label} 늘리기`}>+</button>
+        <button type="button" onClick={() => onChange(Math.min(max, value + 1))} disabled={value >= max} aria-label={`${label} 늘리기`}>+</button>
     </div>
 );
 
@@ -50,9 +50,11 @@ export function SettingsModal({
     const initial = useMemo(() => {
         const cfg = seasonConfig.autoMatchConfig || {};
         const sensitivity = cfg.sensitivity || 'normal';
+        const gm = Number(seasonConfig.gameMinutes);
         return {
             scheduled: scheduledCount,
             courts: courtCount,
+            gameMinutes: Number.isFinite(gm) && gm > 0 ? Math.min(40, Math.max(3, Math.round(gm))) : 8,
             announcement: seasonConfig.announcement || '',
             autoMatchConfig: {
                 ...cfg, sensitivity,
@@ -70,6 +72,7 @@ export function SettingsModal({
 
     const [scheduled, setScheduled] = useState(initial.scheduled);
     const [courts, setCourts] = useState(initial.courts);
+    const [gameMinutes, setGameMinutes] = useState(initial.gameMinutes);
     const [announcement, setAnnouncement] = useState(initial.announcement);
     const [autoMatchConfig, setAutoMatchConfig] = useState(initial.autoMatchConfig);
     const [photoFile, setPhotoFile] = useState(null);
@@ -82,6 +85,8 @@ export function SettingsModal({
     const [newPlayerForm, setNewPlayerForm] = useState({ name: '', level: 'A조', gender: '남', isGuest: false, team: TEAM_BLUE });
     const [showAutoGuide, setShowAutoGuide] = useState(false);
     const [saving, setSaving] = useState(false);
+    // [설정 분할] '오늘 운영'(경기 방식·매칭·코트 수·동기화·요약·고급) / '클럽 설정'(관리자·공지·명단·선수 추가)
+    const [tab, setTab] = useState('today');
 
     const rosterNames = useMemo(
         () => Object.values(roster || {}).map((r) => r.name).filter(Boolean).sort((a, b) => a.localeCompare(b, 'ko')),
@@ -97,6 +102,7 @@ export function SettingsModal({
         const list = [];
         if (scheduled !== initial.scheduled) list.push('경기 예정 코트 수');
         if (courts !== initial.courts) list.push('경기 진행 코트 수');
+        if (gameMinutes !== initial.gameMinutes) list.push('평균 경기 시간');
         if (announcement !== initial.announcement) list.push('공지 내용');
         const a = autoMatchConfig, b = initial.autoMatchConfig;
         if (a.announcementType !== b.announcementType) list.push('공지 방식');
@@ -104,8 +110,12 @@ export function SettingsModal({
         if (a.sensitivity !== b.sensitivity || a.perGenderSensitivity !== b.perGenderSensitivity || a.maleSensitivity !== b.maleSensitivity || a.femaleSensitivity !== b.femaleSensitivity) list.push('매칭 민감도');
         if (adminList.join('|') !== initial.adminList.join('|')) list.push('관리자 목록');
         return list;
-    }, [scheduled, courts, announcement, autoMatchConfig, photoFile, adminList, initial]);
+    }, [scheduled, courts, gameMinutes, announcement, autoMatchConfig, photoFile, adminList, initial]);
     const dirty = changes.length > 0;
+    // 탭별로 '바뀐 항목' 수를 세어 탭 이름 옆에 보여준다 (다른 탭에 저장 안 한 변경이 있어도 알 수 있게)
+    const TODAY_ITEMS = ['경기 예정 코트 수', '경기 진행 코트 수', '평균 경기 시간', '매칭 민감도'];
+    const todayDirty = changes.filter((c) => TODAY_ITEMS.includes(c)).length;
+    const clubDirty = changes.length - todayDirty;
 
     // ── 관리자 목록 편집 (저장 때 반영) ──
     const handleAddAdmin = () => {
@@ -128,9 +138,9 @@ export function SettingsModal({
     const doSave = useCallback(async () => {
         setSaving(true);
         try {
-            await onSave({ scheduled, courts, announcement, autoMatchConfig: { ...autoMatchConfig, photoFile }, adminNames: adminList });
+            await onSave({ scheduled, courts, gameMinutes, announcement, autoMatchConfig: { ...autoMatchConfig, photoFile }, adminNames: adminList });
         } finally { setSaving(false); }
-    }, [onSave, scheduled, courts, announcement, autoMatchConfig, photoFile, adminList]);
+    }, [onSave, scheduled, courts, gameMinutes, announcement, autoMatchConfig, photoFile, adminList]);
 
     const handleSave = () => {
         if (!dirty) { onCancel(); return; }
@@ -180,6 +190,17 @@ export function SettingsModal({
                 </div>
             )}
         >
+            {/* ── 탭: 오늘 운영 / 클럽 설정 ── */}
+            <div className="cox-seg" role="tablist" aria-label="설정 구분">
+                <button type="button" role="tab" aria-selected={tab === 'today'} className={`cox-seg-btn ${tab === 'today' ? 'on' : ''}`} onClick={() => setTab('today')}>
+                    🏸 오늘 운영{todayDirty > 0 && <span className="cox-seg-badge" aria-label={`바뀐 항목 ${todayDirty}개`}>{todayDirty}</span>}
+                </button>
+                <button type="button" role="tab" aria-selected={tab === 'club'} className={`cox-seg-btn ${tab === 'club' ? 'on' : ''}`} onClick={() => setTab('club')}>
+                    🏛️ 클럽 설정{clubDirty > 0 && <span className="cox-seg-badge" aria-label={`바뀐 항목 ${clubDirty}개`}>{clubDirty}</span>}
+                </button>
+            </div>
+
+            {tab === 'today' && (<>
             {/* ── [청백전] 경기 방식 — 즉시 적용 ── */}
             <div className={`p-3 rounded-lg tm-mode-box ${isTeam ? 'team' : ''}`} data-tut="set-mode">
                 <div className="flex justify-between items-center mb-2">
@@ -265,6 +286,83 @@ export function SettingsModal({
                 </div>
             </div>
 
+            {/* ── 코트 수 · 평균 경기 시간 ── */}
+            <div className={SECTION} data-tut="set-general">
+                <h3 className="font-semibold mb-3 block text-center">코트 수</h3>
+                <div className="flex items-center justify-around">
+                    <div className="text-center">
+                        <p className="text-sm mb-1">경기 예정</p>
+                        <Stepper label="경기 예정 코트 수" value={scheduled} onChange={setScheduled} />
+                    </div>
+                    <div className="text-center">
+                        <p className="text-sm mb-1">경기 진행</p>
+                        <Stepper label="경기 진행 코트 수" value={courts} onChange={setCourts} />
+                    </div>
+                </div>
+                <div className="mt-4 pt-3 border-t border-gray-600 text-center">
+                    <p className="text-sm mb-1">⏱ 평균 경기 시간 (분)</p>
+                    <Stepper label="평균 경기 시간" value={gameMinutes} min={3} max={40} onChange={setGameMinutes} />
+                    <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                        선수 화면의 <b>"약 n분 뒤 시작"</b>과 자동 매칭의 예약 판단에 쓰입니다.<br />
+                        코트 수 · 지금 경기중인 코트의 남은 시간 · 대기 순번을 모두 넣어 계산해요.
+                    </p>
+                </div>
+            </div>
+
+            {/* ── 소모임 연동 (동기화) ── */}
+            <div className={`${SECTION} space-y-3`} data-tut="set-somoim">
+                <h3 className="font-semibold block text-center border-b border-gray-600 pb-2">🏸 소모임 정모 동기화</h3>
+                <button type="button" onClick={onSomoimSync} className="cox-btn ghost block">🔄 소모임 정모 동기화 (참석자 → 선수카드)</button>
+                {somoimSync?.lastResult && (
+                    <div className="bg-gray-800 rounded-lg p-2.5 text-xs text-gray-300 space-y-1">
+                        <p className="text-gray-400">마지막 동기화: {new Date(somoimSync.lastResult.at).toLocaleString('ko-KR')}{somoimSync.lastResult.trigger === 'auto' ? ' (자동)' : ' (수동)'}</p>
+                        {somoimSync.lastResult.noEvent ? <p>당일 정모 없음</p> : (
+                            <>
+                                <p>생성 {somoimSync.lastResult.created?.length || 0}명 · 재입장 {somoimSync.lastResult.activated?.length || 0}명 · 이미 입장 {somoimSync.lastResult.already?.length || 0}명</p>
+                                {somoimSync.lastResult.unmatched?.length > 0 && <p className="text-yellow-400">⚠ 명단 미등록: {somoimSync.lastResult.unmatched.join(', ')}</p>}
+                            </>
+                        )}
+                    </div>
+                )}
+                {somoimSync?.lastError && (
+                    <div className="cox-box danger text-xs">⚠ 마지막 자동 동기화 실패 (오류코드: {somoimSync.lastError.code}) — {new Date(somoimSync.lastError.at).toLocaleString('ko-KR')}</div>
+                )}
+                <p className="text-[10px] text-gray-500 text-center leading-relaxed">정모가 있는 날 <b>오후 6시</b>에 참석 인원의 선수카드가 자동 생성됩니다.<br />버튼을 누르면 지금 즉시 동기화합니다. (여러 번 눌러도 안전) · 명단 편집은 <b>클럽 설정</b> 탭에</p>
+            </div>
+
+            {/* ── 하루 요약 카드 ── */}
+            <div className={`${SECTION} space-y-2`} data-tut="set-summary">
+                <h3 className="font-semibold block text-center border-b border-gray-600 pb-2">📸 오늘의 운동 요약</h3>
+                <button type="button" onClick={() => setShowDailySummary(true)} className="cox-btn ghost block">📸 하루 요약 카드 만들기</button>
+                <p className="text-[10px] text-gray-500 text-center leading-relaxed">오늘 참석 멤버(게스트 포함)·총 경기 수·1인 평균 경기 수를<br />멋진 카드 한 장으로 만들어 <b>단톡방에 바로 공유</b>합니다.</p>
+            </div>
+
+            {/* ── 고급 기능 ── */}
+            <div className={`${SECTION} space-y-2`} data-tut="set-advanced">
+                <h3 className="font-semibold mb-2 block text-center">고급 기능</h3>
+                <div className="bg-gray-800 p-2 rounded border border-gray-600 mb-4">
+                    <p className="text-sm font-semibold text-center mb-2 text-cyan-400">🤖 테스트 로봇 생성 (개발용)</p>
+                    <div className="flex justify-around gap-2 mb-2">
+                        <div className="flex-1 text-center">
+                            <label className="block text-xs mb-1 text-gray-400" htmlFor="robot-male">👨 남자 수</label>
+                            <input id="robot-male" type="number" min="0" value={robotMaleCount} onChange={(e) => setRobotMaleCount(Number(e.target.value))} className="cox-field text-center" />
+                        </div>
+                        <div className="flex-1 text-center">
+                            <label className="block text-xs mb-1 text-gray-400" htmlFor="robot-female">👩 여자 수</label>
+                            <input id="robot-female" type="number" min="0" value={robotFemaleCount} onChange={(e) => setRobotFemaleCount(Number(e.target.value))} className="cox-field text-center" />
+                        </div>
+                    </div>
+                    <button type="button" className="cox-btn ghost block sm" disabled={robotMaleCount === 0 && robotFemaleCount === 0}
+                        onClick={() => { onGenerateRobots(robotMaleCount, robotFemaleCount); setRobotMaleCount(0); setRobotFemaleCount(0); }}>
+                        로봇 생성하기
+                    </button>
+                </div>
+                <button type="button" onClick={onSystemReset} className="cox-btn ghost block" style={{ borderColor: 'rgba(255,196,0,.4)', color: '#FFE08A' }}>모두 대기로 이동</button>
+                <button type="button" onClick={onClearPlayerHistory} className="cox-btn ghost block" style={{ borderColor: 'rgba(255,106,82,.45)', color: 'var(--coral)' }}>선수 히스토리 삭제</button>
+            </div>
+            </>)}
+
+            {tab === 'club' && (<>
             {/* ── 관리자 권한 (저장 때 반영) ── */}
             <div className={SECTION} data-tut="set-admin">
                 <h3 className="font-semibold text-lg text-yellow-400 arcade-font block mb-1">👑 관리자 권한</h3>
@@ -304,21 +402,6 @@ export function SettingsModal({
                 <p className="text-xs text-gray-500 mt-2">· 이름은 <b>입장할 때 쓰는 이름</b>과 정확히 같아야 합니다(띄어쓰기 주의).<br />· 관리자는 최소 1명이 필요해서 마지막 한 명은 뺄 수 없습니다.</p>
             </div>
 
-            {/* ── 일반 설정 ── */}
-            <div className={SECTION} data-tut="set-general">
-                <h3 className="font-semibold mb-3 block text-center">코트 수</h3>
-                <div className="flex items-center justify-around">
-                    <div className="text-center">
-                        <p className="text-sm mb-1">경기 예정</p>
-                        <Stepper label="경기 예정 코트 수" value={scheduled} onChange={setScheduled} />
-                    </div>
-                    <div className="text-center">
-                        <p className="text-sm mb-1">경기 진행</p>
-                        <Stepper label="경기 진행 코트 수" value={courts} onChange={setCourts} />
-                    </div>
-                </div>
-            </div>
-
             {/* ── 시즌 공지 ── */}
             <div className={`${SECTION} space-y-3`} data-tut="set-notice">
                 <h3 className="font-semibold block text-center border-b border-gray-600 pb-2">시즌 공지 설정</h3>
@@ -349,33 +432,11 @@ export function SettingsModal({
                 )}
             </div>
 
-            {/* ── 소모임 연동 ── */}
-            <div className={`${SECTION} space-y-3`} data-tut="set-somoim">
-                <h3 className="font-semibold block text-center border-b border-gray-600 pb-2">🏸 소모임 연동</h3>
-                <button type="button" onClick={onOpenRoster} className="cox-btn ghost block">👥 선수 정보 관리 (명단)</button>
-                <button type="button" onClick={onSomoimSync} className="cox-btn ghost block">🔄 소모임 정모 동기화 (참석자 → 선수카드)</button>
-                {somoimSync?.lastResult && (
-                    <div className="bg-gray-800 rounded-lg p-2.5 text-xs text-gray-300 space-y-1">
-                        <p className="text-gray-400">마지막 동기화: {new Date(somoimSync.lastResult.at).toLocaleString('ko-KR')}{somoimSync.lastResult.trigger === 'auto' ? ' (자동)' : ' (수동)'}</p>
-                        {somoimSync.lastResult.noEvent ? <p>당일 정모 없음</p> : (
-                            <>
-                                <p>생성 {somoimSync.lastResult.created?.length || 0}명 · 재입장 {somoimSync.lastResult.activated?.length || 0}명 · 이미 입장 {somoimSync.lastResult.already?.length || 0}명</p>
-                                {somoimSync.lastResult.unmatched?.length > 0 && <p className="text-yellow-400">⚠ 명단 미등록: {somoimSync.lastResult.unmatched.join(', ')}</p>}
-                            </>
-                        )}
-                    </div>
-                )}
-                {somoimSync?.lastError && (
-                    <div className="cox-box danger text-xs">⚠ 마지막 자동 동기화 실패 (오류코드: {somoimSync.lastError.code}) — {new Date(somoimSync.lastError.at).toLocaleString('ko-KR')}</div>
-                )}
-                <p className="text-[10px] text-gray-500 text-center leading-relaxed">정모가 있는 날 <b>오후 6시</b>에 참석 인원의 선수카드가 자동 생성됩니다.<br />버튼을 누르면 지금 즉시 동기화합니다. (여러 번 눌러도 안전)</p>
-            </div>
-
-            {/* ── 하루 요약 카드 ── */}
-            <div className={`${SECTION} space-y-2`} data-tut="set-summary">
-                <h3 className="font-semibold block text-center border-b border-gray-600 pb-2">📸 오늘의 운동 요약</h3>
-                <button type="button" onClick={() => setShowDailySummary(true)} className="cox-btn ghost block">📸 하루 요약 카드 만들기</button>
-                <p className="text-[10px] text-gray-500 text-center leading-relaxed">오늘 참석 멤버(게스트 포함)·총 경기 수·1인 평균 경기 수를<br />멋진 카드 한 장으로 만들어 <b>단톡방에 바로 공유</b>합니다.</p>
+            {/* ── 선수 명단 ── */}
+            <div className={`${SECTION} space-y-2`} data-tut="set-roster">
+                <h3 className="font-semibold block text-center border-b border-gray-600 pb-2">👥 선수 명단</h3>
+                <button type="button" onClick={onOpenRoster} className="cox-btn ghost block">👥 선수 정보 관리 (이름 · 급수 · 성별)</button>
+                <p className="text-[10px] text-gray-500 text-center leading-relaxed">회원은 이 명단에 있어야 이름만으로 입장할 수 있어요. 게스트는 입장할 때 직접 급수를 고릅니다.</p>
             </div>
 
             {/* ── 선수 수동 추가 ── */}
@@ -427,29 +488,7 @@ export function SettingsModal({
                 )}
             </div>
 
-            {/* ── 고급 기능 ── */}
-            <div className={`${SECTION} space-y-2`} data-tut="set-advanced">
-                <h3 className="font-semibold mb-2 block text-center">고급 기능</h3>
-                <div className="bg-gray-800 p-2 rounded border border-gray-600 mb-4">
-                    <p className="text-sm font-semibold text-center mb-2 text-cyan-400">🤖 테스트 로봇 생성 (개발용)</p>
-                    <div className="flex justify-around gap-2 mb-2">
-                        <div className="flex-1 text-center">
-                            <label className="block text-xs mb-1 text-gray-400" htmlFor="robot-male">👨 남자 수</label>
-                            <input id="robot-male" type="number" min="0" value={robotMaleCount} onChange={(e) => setRobotMaleCount(Number(e.target.value))} className="cox-field text-center" />
-                        </div>
-                        <div className="flex-1 text-center">
-                            <label className="block text-xs mb-1 text-gray-400" htmlFor="robot-female">👩 여자 수</label>
-                            <input id="robot-female" type="number" min="0" value={robotFemaleCount} onChange={(e) => setRobotFemaleCount(Number(e.target.value))} className="cox-field text-center" />
-                        </div>
-                    </div>
-                    <button type="button" className="cox-btn ghost block sm" disabled={robotMaleCount === 0 && robotFemaleCount === 0}
-                        onClick={() => { onGenerateRobots(robotMaleCount, robotFemaleCount); setRobotMaleCount(0); setRobotFemaleCount(0); }}>
-                        로봇 생성하기
-                    </button>
-                </div>
-                <button type="button" onClick={onSystemReset} className="cox-btn ghost block" style={{ borderColor: 'rgba(255,196,0,.4)', color: '#FFE08A' }}>모두 대기로 이동</button>
-                <button type="button" onClick={onClearPlayerHistory} className="cox-btn ghost block" style={{ borderColor: 'rgba(255,106,82,.45)', color: 'var(--coral)' }}>선수 히스토리 삭제</button>
-            </div>
+            </>)}
 
             {showAutoGuide && <AutoMatchGuideModal onClose={() => setShowAutoGuide(false)} />}
             {showDailySummary && <DailySummaryModal allPlayers={allPlayers} onClose={() => setShowDailySummary(false)} />}

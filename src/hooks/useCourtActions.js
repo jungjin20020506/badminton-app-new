@@ -4,6 +4,7 @@ import { db, playersRef, gameStateRef, runTx, writeAuditLog } from '../lib/fireb
 import { PLAYERS_PER_MATCH, TEAM_BLUE, TEAM_WHITE, getTeamOf, emptyTeamScores, teamScoreKey } from '../lib/helpers';
 import { playStart, playFinish } from '../lib/sound';
 import { log } from '../lib/logger';
+import { toastSuccess } from '../lib/toast';
 
 // ===================================================================================
 // [코트 운영] 경기 시작 / 종료 / 취소 / 코트 이동·교환 / 점수판 수정
@@ -155,6 +156,31 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
         playFinish();
     }, []);
 
+    // [경기 취소] 잘못 넣은 경기를 기록 없이 되돌린다 (일반 · 청백전 공용)
+    //  경기 수도 올라가지 않고 히스토리도 남지 않는다 — 코트만 비우고 선수들은 대기 명단으로 돌아간다.
+    //  코트가 이미 비어 있으면(다른 관리자가 먼저 종료/취소) 아무것도 하지 않는다.
+    const handleCancelMatch = useCallback((courtIndex) => {
+        setModal({ type: 'confirm', data: {
+            title: '경기 취소',
+            body: `${courtIndex + 1}번 코트 경기를 취소할까요?\n승패·경기 수·히스토리를 남기지 않고 코트만 비웁니다.\n선수들은 대기 명단으로 돌아갑니다.`,
+            confirmLabel: '취소하기',
+            cancelLabel: '돌아가기',
+            onConfirm: async () => {
+                setModal({ type: null, data: null });
+                try {
+                    await updateGameState((currentState) => {
+                        const newState = JSON.parse(JSON.stringify(currentState));
+                        if (!Array.isArray(newState.inProgressCourts) || !newState.inProgressCourts[courtIndex]) return { newState };
+                        newState.inProgressCourts[courtIndex] = null;
+                        return { newState };
+                    }, '경기 취소에 실패했습니다.');
+                } catch { return; }
+                writeAuditLog('경기취소', { by: currentUser?.name || null, courtIndex });
+                toastSuccess(`${courtIndex + 1}번 코트 경기를 취소했어요 (기록 없음)`);
+            },
+        } });
+    }, [updateGameState, currentUser, setModal]);
+
     const handleEndMatch = useCallback((courtIndex) => {
         const court = gameState?.inProgressCourts?.[courtIndex];
         if (!court || !court.players) return;
@@ -165,14 +191,18 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
                 title: '경기 종료',
                 body: '경기를 종료하고 코트를 비우시겠습니까? (선수들의 매칭 히스토리가 기록됩니다.)',
                 confirmLabel: '종료',
+                cancelLabel: '돌아가기',
                 onConfirm: async () => {
                     setModal({ type: null, data: null });
                     try { await finishCourtTx(courtIndex, null); }
                     catch (e) { log.error(e); setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' } }); }
                 },
+                // 잘못 넣은 경기 — 아래 작은 글씨로 '경기 취소' (경기 수·히스토리를 남기지 않는다)
+                secondaryLabel: '경기를 잘못 넣었나요? 기록 없이 경기 취소',
+                onSecondary: () => handleCancelMatch(courtIndex),
             },
         });
-    }, [gameState, teamMode, finishCourtTx, setModal]);
+    }, [gameState, teamMode, finishCourtTx, handleCancelMatch, setModal]);
 
     const handleTeamPickWinner = useCallback(async (courtIndex, winnerSide) => {
         setModal({ type: null, data: null });
@@ -180,21 +210,7 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
         catch (e) { log.error(e); setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' } }); }
     }, [finishCourtTx, setModal]);
 
-    const handleTeamCancelMatch = useCallback((courtIndex) => {
-        setModal({ type: 'confirm', data: {
-            title: '경기 취소',
-            body: `${courtIndex + 1}번 코트 경기를 취소할까요?\n승패·경기 수·히스토리를 남기지 않고 코트만 비웁니다.`,
-            confirmLabel: '취소하기',
-            onConfirm: async () => {
-                setModal({ type: null, data: null });
-                await updateGameState((currentState) => {
-                    const newState = JSON.parse(JSON.stringify(currentState));
-                    newState.inProgressCourts[courtIndex] = null;
-                    return { newState };
-                }, '경기 취소에 실패했습니다.').catch(() => {});
-            },
-        } });
-    }, [updateGameState, setModal]);
+    const handleTeamCancelMatch = handleCancelMatch;
 
     const handleTeamScoreSave = useCallback(async (scores) => {
         try {
@@ -223,5 +239,5 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
         setCourtMove({ sourceIndex: null });
     }, [updateGameState, setCourtMove]);
 
-    return { handleStartMatch, handleStartAutoMatch, finishCourtTx, handleEndMatch, handleTeamPickWinner, handleTeamCancelMatch, handleTeamScoreSave, handleMoveOrSwapCourt, db };
+    return { handleStartMatch, handleStartAutoMatch, finishCourtTx, handleEndMatch, handleCancelMatch, handleTeamPickWinner, handleTeamCancelMatch, handleTeamScoreSave, handleMoveOrSwapCourt, db };
 }

@@ -1,64 +1,115 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ModalShell } from './ModalShell';
 import { ResultBadge } from './shared';
-import { getTeamOf, getWinLoss, TEAM_META } from '../../lib/helpers';
+import { getTeamOf, getWinLoss, getLevelColor, TEAM_META } from '../../lib/helpers';
 
-/** [내 기록] 일반 선수가 자기 카드를 탭하면 보이는 오늘의 기록 (조회 전용) */
+// ===================================================================================
+// [내 기록] 오늘 내가 친 경기 — 선수 화면의 '📋 내 기록' 버튼 / 하단 가운데 버튼 / 프로필 메뉴에서 연다
+//  · 위: 오늘 경기 수 · 함께 친 사람 수 · 가장 많이 만난 사람 (청백전: 승·패·순위)
+//  · 아래: 경기 한 판씩 — 몇 시, 함께/상대 (이름 옆 급수 색 점)
+// ===================================================================================
+function timeLabel(ts) {
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+}
+
+function Person({ id, allPlayers }) {
+    const p = allPlayers?.[id];
+    const color = p ? getLevelColor(p.level, p.isGuest) : '#8C93A1';
+    return (
+        <span className="mh-person">
+            <i style={{ background: color }} aria-hidden="true" />
+            {p?.name || '알수없음'}
+        </span>
+    );
+}
+
 export function MyHistoryModal({ player, allPlayers, onClose, teamMode = false, rankInfo = null }) {
-    const games = player?.todayRecentGames || [];
-    const getPlayerName = (id) => allPlayers[id]?.name || '알수없음';
+    const games = useMemo(() => (Array.isArray(player?.todayRecentGames) ? player.todayRecentGames : []), [player?.todayRecentGames]);
     const { wins, losses } = getWinLoss(player);
     const myTeam = getTeamOf(player);
 
+    // 함께 친 사람(같은 편 + 상대) 집계 — 관리자 조정 기록은 제외
+    const { metCount, topMet } = useMemo(() => {
+        const count = {};
+        games.forEach((g) => {
+            if (!g || g.isManual) return;
+            [...(g.partners || []), ...(g.opponents || [])].filter(Boolean).forEach((id) => { count[id] = (count[id] || 0) + 1; });
+        });
+        const entries = Object.entries(count).sort((a, b) => b[1] - a[1]);
+        return { metCount: entries.length, topMet: entries.length ? entries[0] : null };
+    }, [games]);
+
+    const realGames = games.filter((g) => g && !g.isManual);
+
     return (
         <ModalShell
-            title="🏸 내 기록"
+            title="📋 내 기록"
             titleClass="display accent"
+            subtitle={player?.name ? `${player.name} · 오늘` : '오늘'}
             onClose={onClose}
             zIndex={60}
             footer={<button type="button" className="cox-btn primary" onClick={onClose}>확인</button>}
         >
-            <div className="cox-box accent text-center mb-3">
-                <p className="text-sm text-gray-400">오늘 경기 수</p>
-                <p className="text-3xl font-bold text-yellow-400 arcade-font">{games.length}<span className="text-base ml-1">경기</span></p>
-                {teamMode && (
-                    <>
-                        <p className="mt-1 text-sm font-black">
-                            {myTeam && <span style={{ color: TEAM_META[myTeam].text }}>{TEAM_META[myTeam].label} · </span>}
-                            <span className="text-green-300">{wins}승</span>
-                            <span className="text-gray-500 mx-1">·</span>
-                            <span className="text-red-300">{losses}패</span>
-                            {rankInfo && rankInfo.rate !== null && <span className="text-yellow-300 ml-2">승률 {rankInfo.rate}%</span>}
-                        </p>
-                        {rankInfo && (
-                            <p className="mt-1 text-xs text-gray-300">
-                                🏆 {rankInfo.teamRank ? `${myTeam ? TEAM_META[myTeam].label : '팀'} 내 ${rankInfo.teamRank}위 / ${rankInfo.teamCount}명` : '팀 미정'}
-                                <span className="text-gray-500 mx-1">·</span>
-                                전체 {rankInfo.overallRank}위 / {rankInfo.overallCount}명
-                            </p>
-                        )}
-                    </>
+            <div className="mh-summary">
+                <div className="mh-tile">
+                    <b>{games.length}</b>
+                    <span>오늘 경기</span>
+                </div>
+                {teamMode ? (
+                    <div className="mh-tile">
+                        <b><span className="w">{wins}</span><i>:</i><span className="l">{losses}</span></b>
+                        <span>승 : 패{rankInfo && rankInfo.rate !== null ? ` · ${rankInfo.rate}%` : ''}</span>
+                    </div>
+                ) : (
+                    <div className="mh-tile">
+                        <b>{metCount}</b>
+                        <span>함께 친 사람</span>
+                    </div>
                 )}
+                <div className="mh-tile">
+                    <b className="sm">{topMet ? (allPlayers?.[topMet[0]]?.name || '알수없음') : '-'}</b>
+                    <span>{topMet ? `가장 자주 · ${topMet[1]}번` : '아직 없음'}</span>
+                </div>
             </div>
+            {teamMode && (
+                <p className="mh-teamline">
+                    {myTeam && <span style={{ color: TEAM_META[myTeam].text }}>{TEAM_META[myTeam].label}</span>}
+                    {rankInfo && (
+                        <>
+                            {myTeam && <span className="sep">·</span>}
+                            🏆 {rankInfo.teamRank ? `${myTeam ? TEAM_META[myTeam].label : '팀'} 내 ${rankInfo.teamRank}위 / ${rankInfo.teamCount}명` : '팀 미정'}
+                            <span className="sep">·</span>
+                            전체 {rankInfo.overallRank}위 / {rankInfo.overallCount}명
+                        </>
+                    )}
+                </p>
+            )}
 
-            <div className="space-y-1.5">
+            <div className="mh-list">
                 {games.length === 0 && (
-                    <p className="text-sm text-gray-500 text-center py-4">아직 오늘 경기 기록이 없어요.<br />곧 매칭에 뽑힐 거예요!</p>
+                    <p className="mh-empty">아직 오늘 경기 기록이 없어요.<br />곧 매칭에 뽑힐 거예요!</p>
                 )}
                 {games.map((game, i) => (
                     game.isManual ? (
-                        <div key={i} className="cox-box soft text-sm text-gray-400">관리자 조정 기록</div>
+                        <div key={i} className="mh-row manual">관리자 조정 기록</div>
                     ) : (
-                        <div key={i} className="cox-box soft text-sm">
-                            <p>
+                        <div key={i} className="mh-row">
+                            <div className="mh-row-head">
+                                <span className="mh-no">{realGames.length - realGames.indexOf(game)}경기</span>
+                                <span className="mh-time">{timeLabel(game.timestamp)}</span>
                                 <ResultBadge game={game} />
-                                <span className="text-gray-500 text-xs mr-1.5">함께</span>
-                                <span className="text-green-300 font-semibold">{game.partners.map(getPlayerName).join(', ') || '-'}</span>
-                            </p>
-                            <p className="mt-0.5">
-                                <span className="text-gray-500 text-xs mr-1.5">상대</span>
-                                <span className="text-gray-200">{game.opponents.map(getPlayerName).join(', ') || '-'}</span>
-                            </p>
+                            </div>
+                            {/* 내 편/상대를 나누지 않는다 — 파트너는 코트에서 선수들끼리 랜덤으로 정하므로 '같이 친 3명'만 */}
+                            <div className="mh-row-body">
+                                <div className="mh-line">
+                                    <span className="k">같이</span>
+                                    {[...(game.partners || []), ...(game.opponents || [])].filter(Boolean).length
+                                        ? [...(game.partners || []), ...(game.opponents || [])].filter(Boolean).map((id) => <Person key={id} id={id} allPlayers={allPlayers} />)
+                                        : <span className="none">-</span>}
+                                </div>
+                            </div>
                         </div>
                     )
                 ))}

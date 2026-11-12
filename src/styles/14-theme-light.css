@@ -237,3 +237,19 @@
 
 /* [청백전] 대기 명단의 '백팀' 제목 — 인라인 팀 색(#F3F4F6)이 흰 배경에서 안 보이므로 라이트 모드에선 진하게 */
 :root[data-theme="light"] .tm-wait-group[data-team="white"] .lbl > span:not(.tick):not(.count){ color:#3B4454 !important; }
+
+/* ── [후보 비교] 지표 뱃지 ── */
+:root[data-theme="light"] .mo-legend{ color:var(--dim); }
+:root[data-theme="light"] .mo-metric{ background:#FFFFFF; border-color:var(--line-strong); }
+:root[data-theme="light"] .mo-metric i{ color:var(--dim); }
+:root[data-theme="light"] .mo-metric b, :root[data-theme="light"] .mo-metric.mid b{ color:var(--text); }
+:root[data-theme="light"] .mo-metric.good{ background:rgba(21,128,61,.08); border-color:rgba(21,128,61,.35); }
+:root[data-theme="light"] .mo-metric.good b{ color:#15803D; }
+:root[data-theme="light"] .mo-metric.bad{ background:rgba(185,28,28,.07); border-color:rgba(185,28,28,.3); }
+:root[data-theme="light"] .mo-metric.bad b{ color:#B91C1C; }
+
+/* ── 세그먼트 탭 ── */
+:root[data-theme="light"] .cox-seg{ background:#F1F3F7; box-shadow:none; }
+:root[data-theme="light"] .cox-seg-btn.on{ background:#FFFFFF; box-shadow:0 1px 3px rgba(16,24,40,.12); }
+:root[data-theme="light"] .cox-seg-badge{ background:var(--volt-ink); color:#fff; }
+:root[data-theme="light"] .cox-confirm-secondary{ text-decoration-color:rgba(16,24,40,.25); }
