@@ -46,4 +46,5 @@ export const TIMING = {
 export const KST = {
     dailyResetHour: 2,   // 새벽 2시 — 하루 초기화 기준
     autoSyncHour: 18,    // 오후 6시 — 소모임 자동 동기화
+    waitResetHour: 19,   // 저녁 7시 — 운동 시작. 이 시각부터 모든 선수의 대기 시간을 0분에서 다시 센다
 };

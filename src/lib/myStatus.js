@@ -7,8 +7,9 @@
 //   · queued  : 자동 매칭 / 경기 예정 목록에 이름이 올라감 — 몇 번째, 누구와,
 //               경기중인 동료가 있으면 어느 코트가 끝나야 하는지와 예상 분
 //   · waiting : 대기 명단 — 기다린 지 몇 분
-//  공통: gamesToday(오늘 경기 수), waitMin(마지막 경기 끝난 뒤 지난 분)
+//  공통: gamesToday(오늘 경기 수), waitMin(마지막 경기 끝난 뒤 지난 분 — 저녁 7시 KST 이후부터만 센다)
 // ===================================================================================
+import { getWaitStartAt } from './dates.js';
 
 /** 배드민턴 한 경기가 보통 몇 분 걸리는지 (매칭 엔진과 같은 값) */
 const TYPICAL_GAME_MIN = 15;
@@ -47,7 +48,8 @@ function splitLineup(ids, meId) {
  */
 function getMyStatus({ me, gameState, activePlayers, now = Date.now() }) {
     const games = Array.isArray(me?.todayRecentGames) ? me.todayRecentGames : [];
-    const lastTs = games[0]?.timestamp || me?.entryTime;
+    // [대기 시간 초기화] 저녁 7시(KST) 이전 시각은 7시로 끌어올린다 — 매칭 엔진과 같은 규칙
+    const lastTs = getWaitStartAt(games[0]?.timestamp || me?.entryTime, now);
     const base = {
         gamesToday: games.length,
         waitMin: Math.round(minutesSince(lastTs, now)),

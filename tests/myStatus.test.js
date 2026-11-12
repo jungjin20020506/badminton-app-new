@@ -83,6 +83,27 @@ describe('getMyStatus', () => {
         expect(s.canStartNow).toBe(false);
     });
 
+    it('[대기 시간 초기화] 17시에 와서 한 경기도 안 쳤어도 20시엔 60분 (19시부터 센다)', () => {
+        const me = { ...players.me, entryTime: new Date('2026-11-12T17:00:00+09:00').toISOString(), todayRecentGames: [] };
+        const s = getMyStatus({ me, gameState: baseState(), activePlayers: players, now: NOW });
+        expect(s.waitMin).toBe(60);
+    });
+
+    it('[대기 시간 초기화] 19시 정각엔 모두 0분, 19시 이후 경기 종료 시각은 그대로', () => {
+        const at19 = new Date('2026-11-12T19:00:00+09:00').getTime();
+        const early = { ...players.me, entryTime: new Date('2026-11-12T17:00:00+09:00').toISOString(), todayRecentGames: [] };
+        expect(getMyStatus({ me: early, gameState: baseState(), activePlayers: players, now: at19 }).waitMin).toBe(0);
+        expect(getMyStatus({ me: early, gameState: baseState(), activePlayers: players, now: at19 + 5 * 60000 }).waitMin).toBe(5);
+        // 19:48 에 경기를 끝낸 사람은 20:00 에 12분 — 초기화와 무관
+        expect(getMyStatus({ me: players.me, gameState: baseState(), activePlayers: players, now: NOW }).waitMin).toBe(12);
+    });
+
+    it('[대기 시간 초기화] 19시 전(18:30)에는 입장 시각부터 그대로 센다', () => {
+        const at1830 = new Date('2026-11-12T18:30:00+09:00').getTime();
+        const me = { ...players.me, entryTime: new Date('2026-11-12T17:00:00+09:00').toISOString(), todayRecentGames: [] };
+        expect(getMyStatus({ me, gameState: baseState(), activePlayers: players, now: at1830 }).waitMin).toBe(90);
+    });
+
     it('깨진 시각 값이 있어도 NaN 없이 0으로', () => {
         const me = { ...players.me, todayRecentGames: [{ timestamp: 'garbage', partners: [], opponents: [] }] };
         const s = getMyStatus({ me, gameState: baseState(), activePlayers: players, now: NOW });

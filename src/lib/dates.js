@@ -32,3 +32,36 @@ export const getKstParts = (now = new Date()) => {
         hour: s.getUTCHours(),
     };
 };
+
+/**
+ * [대기 시간 초기화] now 기준으로 가장 최근에 지난 저녁 7시(KST)의 시각(ms).
+ * 운동은 저녁 7시에 시작하므로, 일찍 온 선수의 "입장 후 기다린 시간"이 시작 전부터
+ * 쌓이지 않게 모든 선수의 대기 시간을 이 시각부터 다시 센다.
+ *  · 19:00 이전(예: 18:30)이면 '어제 19:00' — 오늘 입장한 선수에겐 아무 영향 없음
+ *  · 19:00 이후(예: 20:10)면 '오늘 19:00'
+ * @param {number|Date} [now]
+ * @returns {number} ms
+ */
+export const getWaitResetAt = (now = Date.now()) => {
+    const ms = now instanceof Date ? now.getTime() : now;
+    const KST_OFFSET = 9 * 60 * 60 * 1000;
+    const kst = new Date(ms + KST_OFFSET);
+    const resetKst = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), KST.waitResetHour);
+    const resetAt = resetKst - KST_OFFSET;
+    return resetAt <= ms ? resetAt : resetAt - 24 * 60 * 60 * 1000;
+};
+
+/**
+ * [대기 시간 초기화] 대기 시간을 세기 시작할 시각(ms).
+ * 마지막 경기 종료(또는 입장) 시각과 가장 최근 저녁 7시 중 더 늦은 쪽.
+ * 시각이 없거나 잘못됐으면 null (= 대기 시간 0분으로 본다).
+ * @param {string|number|Date|null|undefined} timestamp 마지막 경기 종료 시각 또는 입장 시각
+ * @param {number} [now]
+ * @returns {number|null} ms
+ */
+export const getWaitStartAt = (timestamp, now = Date.now()) => {
+    if (!timestamp) return null;
+    const ms = new Date(timestamp).getTime();
+    if (!Number.isFinite(ms)) return null;
+    return Math.max(ms, getWaitResetAt(now));
+};

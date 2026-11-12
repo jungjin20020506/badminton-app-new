@@ -38,6 +38,7 @@
 // ===================================================================================
 // 1. 기본 유틸
 // ===================================================================================
+import { getWaitStartAt } from './dates.js';
 
 /**
  * k개짜리 조합을 모두 만든다. (예: 8명 중 4명 뽑는 모든 경우)
@@ -298,7 +299,8 @@ function buildMatchContext(allPlayers, gameState, opts = {}) {
             : realHistory;
 
         // 마지막으로 경기를 끝낸 시각 (없으면 입장 시각)
-        const lastRealTs = realHistory[0]?.timestamp || p.entryTime;
+        // [대기 시간 초기화] 저녁 7시(KST) 이전 시각은 7시로 끌어올린다 — 일찍 와서 기다린 시간은 세지 않는다
+        const lastRealTs = getWaitStartAt(realHistory[0]?.timestamp || p.entryTime, now);
         const waitMin = court
             ? 0 // 코트에서 뛰는 중이면 '기다리는 중'이 아니다
             : minutesSince(lastRealTs, now);
