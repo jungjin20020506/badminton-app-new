@@ -75,7 +75,7 @@ export function MyHistoryModal({ player, allPlayers, onClose, teamMode = false, 
             </div>
             {teamMode && (
                 <p className="mh-teamline">
-                    {myTeam && <span style={{ color: TEAM_META[myTeam].text }}>{TEAM_META[myTeam].label}</span>}
+                    {myTeam && <span style={{ color: TEAM_META[myTeam].textVar }}>{TEAM_META[myTeam].label}</span>}
                     {rankInfo && (
                         <>
                             {myTeam && <span className="sep">·</span>}

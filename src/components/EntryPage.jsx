@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { getDoc, doc } from 'firebase/firestore';
 import { playersRef } from '../lib/firebase';
 import { CoxMark } from './Logo';
@@ -43,12 +43,16 @@ function EntryPage({ onEnter, roster, teamMode = false }) {
     }, []);
 
     // [청백전] 이름을 다 치면 명단에서 급수/성별을 미리 채워 준다 (수정 가능)
+    //  같은 이름에 대해서는 한 번만 채운다 — 예전엔 명단이 갱신되거나 이름 칸을 다시 건드릴 때마다
+    //  사용자가 직접 고른 급수(예: S조)를 명단 값으로 되돌려 버렸다
+    const prefilledNameRef = useRef(null);
     useEffect(() => {
         if (!teamMode) return;
         const name = (formData.name || '').trim();
-        if (!name) return;
+        if (!name || prefilledNameRef.current === name) return;
         const entry = Object.values(roster || {}).find(r => r.name === name);
         if (entry) {
+            prefilledNameRef.current = name;
             setFormData(prev => ({
                 ...prev,
                 level: TEAM_LEVELS.includes(entry.level) ? entry.level : prev.level,

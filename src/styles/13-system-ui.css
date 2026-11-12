@@ -54,9 +54,13 @@
   background:rgba(255,255,255,.1); color:var(--text); font-size:11px; font-weight:800;
 }
 
+/* ── 업데이트 배너: 휴대폰에서는 하단 메뉴(약 78px) 위에, 데스크톱에서는 바닥에서 20px ── */
+.cox-update-banner{ bottom:20px; }
+@media (max-width:767px){ .cox-update-banner{ bottom:calc(96px + env(safe-area-inset-bottom, 0px)); } }
+
 /* ── 오류 화면 (ErrorBoundary) ── */
 .cox-error-screen{
-  min-height:100vh; display:flex; align-items:center; justify-content:center;
+  min-height:100vh; min-height:100dvh; display:flex; align-items:center; justify-content:center;
   padding:24px 18px; background:var(--ink); color:var(--text);
   font-family:'Noto Sans KR', system-ui, sans-serif;
 }
@@ -87,7 +91,8 @@
 .cox-modal-backdrop.sheet{ align-items:flex-end; padding:0; }
 @media (min-width:640px){ .cox-modal-backdrop.sheet{ align-items:center; padding:16px; } }
 .cox-modal{
-  position:relative; width:100%; max-width:400px; max-height:calc(100vh - 32px);
+  /* dvh — 주소창이 보이는 모바일 브라우저에서 vh 는 실제 화면보다 커서 시트 맨 위(제목·닫기)가 화면 밖으로 밀렸다 */
+  position:relative; width:100%; max-width:400px; max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px);
   display:flex; flex-direction:column;
   background:var(--card); color:var(--text);
   border:1px solid var(--line-strong); border-radius:22px;
@@ -97,7 +102,7 @@
 }
 .cox-modal.md{ max-width:480px; }
 .cox-modal.lg{ max-width:560px; }
-.cox-modal-backdrop.sheet .cox-modal{ border-radius:22px 22px 0 0; max-height:94vh; }
+.cox-modal-backdrop.sheet .cox-modal{ border-radius:22px 22px 0 0; max-height:94vh; max-height:94dvh; }
 @media (min-width:640px){ .cox-modal-backdrop.sheet .cox-modal{ border-radius:22px; } }
 .cox-modal.tone-danger{ border-color:rgba(255,106,82,.45); }
 .cox-modal.tone-accent{ border-color:rgba(205,251,71,.4); box-shadow:0 30px 80px -24px rgba(0,0,0,.92), 0 0 24px -8px rgba(205,251,71,.35); }

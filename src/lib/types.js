@@ -30,6 +30,7 @@
  * @property {'active'|'inactive'} status  현황판에 있는지
  * @property {boolean} isResting       휴식 중
  * @property {string} [restUntil]      [휴식 타이머] 이 시각(ISO)이 지나면 자동 복귀
+ * @property {boolean} [leftWhilePlaying] 경기 중에 '나가기'를 눌렀음 — 그 경기가 끝나는 순간 status 를 inactive 로 바꾸고 이 표시는 지운다
  * @property {string} entryTime        최초 입장 시각(ISO). 재입장해도 덮어쓰지 않음
  * @property {GameRecord[]} todayRecentGames 최신이 앞, 최대 20개
  * @property {('청'|'백')|null} [team]  [청백전] 소속 팀

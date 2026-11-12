@@ -92,6 +92,7 @@ export function useMatchActions({ isAdmin, allPlayers, gameState, seasonConfig, 
         let failReason = null;
         try {
             await updateGameState((currentState) => {
+                failReason = null; // 트랜잭션이 재시도되면 처음부터 다시 판단 (이전 시도의 사유가 남지 않게)
                 const newState = JSON.parse(JSON.stringify(currentState));
                 if (!newState.autoMatches) newState.autoMatches = {};
                 const queuedIds = new Set([

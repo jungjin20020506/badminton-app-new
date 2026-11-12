@@ -93,13 +93,13 @@ export default defineConfig(({ mode }) => ({
       injectManifest: {
         injectionPoint: undefined
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'COCKSLIGHTING',
         short_name: 'COCKSLIGHTING',
         description: '실시간 배드민턴 경기 관리 시스템',
-        theme_color: '#000000',
-        background_color: '#000000',
+        theme_color: '#08090C', // index.html 의 <meta name="theme-color"> 와 같은 값
+        background_color: '#08090C',
         display: 'standalone',
         icons: [
           {
@@ -110,7 +110,8 @@ export default defineConfig(({ mode }) => ({
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable' // 안드로이드 둥근/사각 아이콘 틀에 맞춰 잘라 쓸 수 있게
           }
         ]
       }

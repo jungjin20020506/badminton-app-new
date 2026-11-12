@@ -14,7 +14,7 @@ import { GHOST_ADMIN_NAME, STORAGE_KEYS } from './lib/constants';
 import { getThemePreference, cycleTheme, subscribeTheme, THEME_LABEL } from './lib/theme';
 import { startRest, resumeFromRest, restRemainingMin } from './lib/rest';
 import {
-    getAdminNames, generateId, filterTodayGames, calculateLocations, PLAYERS_PER_MATCH,
+    getAdminNames, generateId, filterTodayGames, calculateLocations, findQueueLocation, PLAYERS_PER_MATCH,
     isTeamMode, MATCH_MODE_NORMAL, MATCH_MODE_TEAM, TEAM_BLUE, TEAM_WHITE, TEAM_META,
     getTeamOf, emptyTeamScores,
 } from './lib/helpers';
@@ -150,28 +150,41 @@ export default function App() {
 
     // ── 코트 운영 · 자동 매칭 ─────────────────────────────────────────────────
     const court = useCourtActions({ gameState, allPlayers, inProgressPlayerIds, teamMode, currentUser, updateGameState, setModal, setCourtMove });
+
+    // [청백전] 승패 선택창이 떠 있는 사이 다른 관리자가 그 코트를 먼저 끝내면 창은 사라지지만 modal 상태는 남아
+    // 점수판 탭 등 "모달이 없을 때만" 동작하는 것들이 멈췄다 — 코트가 비면 모달 상태도 닫는다
+    useEffect(() => {
+        if (modal?.type !== 'teamMatchEnd') return;
+        if (!gameState?.inProgressCourts?.[modal.data?.courtIndex]?.players) closeModal();
+    }, [modal, gameState, closeModal]);
     const matching = useMatchActions({ isAdmin, allPlayers, gameState, seasonConfig, inProgressPlayerIds, teamMode, updateGameState, setModal });
 
     // ── 선수 이동 · 선택 ──────────────────────────────────────────────────────
+    // 예약 칸(자동 매칭·경기 예정)에서 빼서 대기 명단으로. 경기중이면서 예약된 선수는 findPlayerLocation 이
+    // '코트'를 돌려주므로, 예약 칸 위치는 최신 상태에서 직접 찾는다 (예전엔 ✕ 를 눌러도 아무 일이 없었다)
     const handleReturnToWaiting = useCallback(async (player) => {
-        const loc = findPlayerLocation(player.id);
-        if (!loc || loc.location === 'waiting') return;
+        if (!findQueueLocation(gameState, player.id)) return;
         await updateGameState((currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
+            const loc = findQueueLocation(newState, player.id);
+            if (!loc) return { newState };
             if (loc.location === 'schedule') newState.scheduledMatches[String(loc.matchIndex)][loc.slotIndex] = null;
             if (loc.location === 'auto') newState.autoMatches[String(loc.matchIndex)][loc.slotIndex] = null;
             return { newState };
         }, '선수를 대기 명단으로 옮기는 데 실패했습니다.').catch(() => {});
-    }, [findPlayerLocation, updateGameState]);
+    }, [gameState, updateGameState]);
 
     const handleDeleteFromWaiting = useCallback((player) => {
         setModal({ type: 'confirm', data: {
             title: '선수 내보내기', body: `${player.name} 선수를 내보낼까요? (기록은 유지됩니다)`, confirmLabel: '내보내기',
             onConfirm: async () => {
-                await updateDoc(doc(playersRef, player.id), { status: 'inactive' }).catch(() => {
+                try {
+                    await updateDoc(doc(playersRef, player.id), { status: 'inactive' });
+                    setModal(CLOSED_MODAL);
+                } catch {
+                    // 실패하면 확인창 대신 오류창 (예전엔 닫기가 뒤따라 실행돼 오류창이 바로 덮였다)
                     setModal({ type: 'alert', data: { title: '오류', body: '선수 내보내기에 실패했습니다.' } });
-                });
-                setModal(CLOSED_MODAL);
+                }
             },
         } });
     }, []);
@@ -195,11 +208,14 @@ export default function App() {
         }
         if (!firstSelectedId) { setSelectedPlayerIds([playerId]); return; }
         if (selectedPlayerIds.length === 1 && firstSelectedLoc.location !== 'waiting') {
+            // 경기중이면서 예약된 선수는 findPlayerLocation 이 '코트'를 돌려주므로 예약 칸 위치를 따로 찾는다
+            const qFirst = findQueueLocation(gameState, firstSelectedId) || firstSelectedLoc;
+            const qLoc = findQueueLocation(gameState, playerId) || loc;
             // [청백전] 경기 예정 칸은 왼쪽 2칸 청 · 오른쪽 2칸 백 — 다른 팀 칸으로 가는 교환은 막는다
-            if (teamMode && firstSelectedLoc.location === 'schedule' && loc.location === 'schedule') {
+            if (teamMode && qFirst.location === 'schedule' && qLoc.location === 'schedule') {
                 const slotTeam = (i) => (i < 2 ? TEAM_BLUE : TEAM_WHITE);
                 const a = allPlayers[firstSelectedId], b = allPlayers[playerId];
-                if (getTeamOf(a) !== slotTeam(loc.slotIndex) || getTeamOf(b) !== slotTeam(firstSelectedLoc.slotIndex)) {
+                if (getTeamOf(a) !== slotTeam(qLoc.slotIndex) || getTeamOf(b) !== slotTeam(qFirst.slotIndex)) {
                     setSelectedPlayerIds([]);
                     setModal({ type: 'alert', data: { title: '자리를 바꿀 수 없어요', body: '경기 예정은 왼쪽 2칸이 청팀, 오른쪽 2칸이 백팀 자리예요.\n같은 팀 칸끼리만 바꿀 수 있습니다.' } });
                     return;
@@ -214,17 +230,19 @@ export default function App() {
                     if (l.location === 'schedule') newState.scheduledMatches[String(l.matchIndex)][l.slotIndex] = value;
                     if (l.location === 'auto') newState.autoMatches[String(l.matchIndex)][l.slotIndex] = value;
                 };
-                const ok = (l) => l.location === 'schedule' || l.location === 'auto';
-                if (!ok(firstSelectedLoc) || !ok(loc)) return { newState };
-                const valA = getValue(firstSelectedLoc);
-                const valB = getValue(loc);
-                setValue(firstSelectedLoc, valB);
-                setValue(loc, valA);
+                // 최신 상태에서 두 선수의 예약 칸을 다시 찾는다 (둘 중 하나라도 예약 칸에 없으면 아무것도 바꾸지 않음)
+                const a = findQueueLocation(newState, firstSelectedId);
+                const b = findQueueLocation(newState, playerId);
+                if (!a || !b) return { newState };
+                const valA = getValue(a);
+                const valB = getValue(b);
+                setValue(a, valB);
+                setValue(b, valA);
                 return { newState };
             }, '선수 위치를 바꾸는 데 실패했습니다.').catch(() => {});
             setSelectedPlayerIds([]);
         } else setSelectedPlayerIds([playerId]);
-    }, [isAdmin, currentUser, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove, teamMode, allPlayers]);
+    }, [isAdmin, currentUser, selectedPlayerIds, findPlayerLocation, updateGameState, courtMove, teamMode, allPlayers, gameState]);
 
     const handleSlotClick = useCallback(async (context) => {
         if (!isAdmin || selectedPlayerIds.length === 0) return;
@@ -402,6 +420,7 @@ export default function App() {
                     todayWins: keepWl ? (existingData.todayWins || 0) : 0,
                     todayLosses: keepWl ? (existingData.todayLosses || 0) : 0,
                     isResting: existingData.isResting || false, // 재입장해도 휴식 상태는 유지
+                    leftWhilePlaying: false, // 경기 중 나갔다가 다시 들어오면 '끝나면 내보내기' 표시는 지운다
                 };
             } else {
                 playerData = {
@@ -455,7 +474,9 @@ export default function App() {
                         }
                         return { newState };
                     }).catch(() => {}); // 실패해도 퇴장은 진행 (예약 정리는 repair 가 한다)
-                    if (isPlaying) await updateDoc(doc(playersRef, currentUser.id), { isResting: true });
+                    // 경기 중에 나가면 코트는 그대로 두고 '휴식'으로만 표시 → 관리자가 경기를 끝내는 순간
+                    // leftWhilePlaying 을 보고 내보낸다 (예전엔 끝난 뒤에도 ☕∞ 로 대기 명단에 영원히 남았다)
+                    if (isPlaying) await updateDoc(doc(playersRef, currentUser.id), { isResting: true, leftWhilePlaying: true });
                     else await updateDoc(doc(playersRef, currentUser.id), { status: 'inactive' });
                     localStorage.removeItem(STORAGE_KEYS.currentUserId);
                     setCurrentUser(null);
@@ -575,10 +596,12 @@ export default function App() {
         } });
     }, [activePlayers]);
 
+    // 돌려주는 값: 추가됐으면 true, 아니면 false (설정창이 폼을 비울지 판단하는 데 쓴다)
     const handleAdminAddPlayer = useCallback(async (formData) => {
-        const { name, level, gender, isGuest } = formData;
+        const { level, gender, isGuest } = formData;
+        const name = (formData.name || '').trim(); // 입장할 때와 같은 규칙 — 뒤에 붙은 공백으로 '홍길동_' 같은 두 번째 문서가 생기지 않게
         const team = formData.team === TEAM_BLUE || formData.team === TEAM_WHITE ? formData.team : null;
-        if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' } }); return; }
+        if (!name) { setModal({ type: 'alert', data: { title: '오류', body: '이름을 입력해주세요.' } }); return false; }
         const id = generateId(name);
         try {
             const playerDocRef = doc(playersRef, id);
@@ -588,9 +611,11 @@ export default function App() {
                 : { id, name, level, gender, isGuest, team, entryTime: new Date().toISOString(), isResting: false, status: 'active', todayRecentGames: [], todayWins: 0, todayLosses: 0 };
             await setDoc(playerDocRef, playerData, { merge: true });
             setModal({ type: 'alert', data: { title: '추가 완료', body: `${name} 선수가 수동으로 추가되었습니다.` } });
+            return true;
         } catch (error) {
             log.error('Admin add player failed: ', error);
             setModal({ type: 'alert', data: { title: '오류', body: '선수 추가 처리 중 문제가 발생했습니다.' } });
+            return false;
         }
     }, []);
 
@@ -755,9 +780,10 @@ export default function App() {
                 </div>
             )}
 
-            {/* [소모임 동기화] 자동 동기화 실패 배너 */}
+            {/* [소모임 동기화] 자동 동기화 실패 배너
+                sticky 를 빼서 앱바(sticky top:0)와 같은 자리에 겹쳐 휴식·프로필 버튼을 가리지 않게 — 스크롤하면 같이 올라간다 */}
             {showSyncErrorBanner && (
-                <div className="bg-orange-600 text-white p-3 flex items-center justify-between shadow-lg sticky top-0 z-[54]" role="alert">
+                <div className="bg-orange-600 text-white p-3 flex items-center justify-between shadow-lg z-[54]" role="alert">
                     <p className="flex-1 pr-2 font-bold text-[11px] leading-tight">
                         ⚠️ 소모임 동기화에 실패하였습니다 (오류코드: {somoimSync?.lastError?.code || 'UNKNOWN'}) 관리자에게 문의해주세요.
                     </p>
@@ -773,8 +799,8 @@ export default function App() {
                     courtIndex={modal.data.courtIndex}
                     court={gameState.inProgressCourts[modal.data.courtIndex]}
                     allPlayers={allPlayers}
-                    onPickWinner={(side) => court.handleTeamPickWinner(modal.data.courtIndex, side)}
-                    onCancelMatch={() => court.handleTeamCancelMatch(modal.data.courtIndex)}
+                    onPickWinner={(side) => court.handleTeamPickWinner(modal.data.courtIndex, side, modal.data.matchId || null)}
+                    onCancelMatch={() => court.handleTeamCancelMatch(modal.data.courtIndex, modal.data.matchId || null)}
                     onClose={closeModal}
                 />
             )}
@@ -790,7 +816,7 @@ export default function App() {
             <Suspense fallback={null}>
                 {modal?.type === 'matchOptions' && (
                     <MatchOptionsModal
-                        key={`${modal.data.gender}-${modal.data.result.totalCombos}-${Object.keys(autoMatches).length}`}
+                        key={`${modal.data.gender}-${modal.data.result.totalCombos}`}
                         genderLabel={modal.data.genderLabel}
                         result={modal.data.result}
                         queueCount={Object.keys(autoMatches).length}
@@ -842,7 +868,7 @@ export default function App() {
                         <span className="cox-livedot" aria-hidden="true"></span>
                         <span>
                             {isAdmin ? '👑 관리자' : `${currentUser.name} 님`}
-                            {myTeam && <b style={{ color: TEAM_META[myTeam].text }}> · {TEAM_META[myTeam].label}</b>}
+                            {myTeam && <b style={{ color: TEAM_META[myTeam].textVar }}> · {TEAM_META[myTeam].label}</b>}
                             {onlineCount > 0 && <b className="cox-online-count"> · {onlineCount}명 접속 중</b>}
                         </span>
                     </div>

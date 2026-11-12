@@ -38,6 +38,8 @@ export default async function handler(req, res) {
                 scheduledMatches: {},
                 autoMatches: {},
                 teamScores: { blue: 0, white: 0 },
+                teamResultLog: [],                 // [청백전] 어제 득점 기록이 '오늘 득점 기록'에 남지 않게
+                lastTeamResult: FieldValue.delete(),
             }, { merge: true });
             return true;
         });

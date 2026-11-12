@@ -1,6 +1,7 @@
 // ===================================================================================
-// 공용 상수·헬퍼 (다른 어떤 모듈도 import하지 않는 최하층)
+// 공용 상수·헬퍼 (순수 함수만 — dates.js/constants.js 외에는 아무것도 import 하지 않는다)
 // ===================================================================================
+import { getDailyResetKey } from './dates.js';
 
 // ===================================================================================
 // [관리자 권한] 관리자 이름 목록
@@ -53,8 +54,10 @@ const TEAM_BLUE = '청';
 const TEAM_WHITE = '백';
 const TEAMS = [TEAM_BLUE, TEAM_WHITE];
 const TEAM_META = {
-    [TEAM_BLUE]:  { key: 'blue',  label: '청팀', short: '청', color: '#3B82F6', soft: 'rgba(59,130,246,.22)',  text: '#93C5FD' },
-    [TEAM_WHITE]: { key: 'white', label: '백팀', short: '백', color: '#E5E7EB', soft: 'rgba(229,231,235,.20)', text: '#F3F4F6' },
+    // textVar: 화면 글자색은 이걸 쓴다 — CSS 변수라 라이트 테마에서 자동으로 진한 색으로 바뀐다
+    //          (text 를 인라인으로 직접 쓰면 백팀 글자(#F3F4F6)가 흰 배경에서 보이지 않는다)
+    [TEAM_BLUE]:  { key: 'blue',  label: '청팀', short: '청', color: '#3B82F6', soft: 'rgba(59,130,246,.22)',  text: '#93C5FD', textVar: 'var(--tm-blue-text)' },
+    [TEAM_WHITE]: { key: 'white', label: '백팀', short: '백', color: '#E5E7EB', soft: 'rgba(229,231,235,.20)', text: '#F3F4F6', textVar: 'var(--tm-white-text)' },
 };
 /** 청백전 모드인지 (seasonConfig 기준) */
 const isTeamMode = (seasonConfig) => seasonConfig?.matchMode === MATCH_MODE_TEAM;
@@ -72,10 +75,35 @@ const getWinLoss = (player) => ({
 
 const generateId = (name) => name.replace(/\s+/g, '_');
 
-const filterTodayGames = (games) => {
+// '오늘 경기'는 새벽 2시(KST) 기준 운영일로 판단한다. 예전엔 기기 달력 날짜(자정 경계)를 써서
+// 자정을 넘긴 뒤 다시 입장한 선수의 오늘 기록·승패가 0으로 지워지고, 매칭에서 '한 경기도 안 친 사람'으로 잡혔다.
+const filterTodayGames = (games, now = new Date()) => {
     if (!games || games.length === 0) return [];
-    const today = new Date().toDateString();
-    return new Date(games[0].timestamp).toDateString() === today ? games : [];
+    const first = new Date(games[0]?.timestamp);
+    if (Number.isNaN(first.getTime())) return [];
+    return getDailyResetKey(first) === getDailyResetKey(now) ? games : [];
+};
+
+/**
+ * 선수가 들어 있는 '예약 칸'(자동 매칭 → 경기 예정 순)을 찾는다. 없으면 null.
+ * calculateLocations 는 코트를 마지막에 덮어써서 "경기중이면서 다음 경기에 예약된" 선수는 'court' 로만
+ * 나오므로, 예약 칸에서 빼거나 자리를 바꿀 때는 이 함수로 칸을 찾아야 한다.
+ * @param {object} gameState
+ * @param {string} playerId
+ * @returns {{location:'auto'|'schedule', matchIndex:number, slotIndex:number}|null}
+ */
+const findQueueLocation = (gameState, playerId) => {
+    if (!gameState || !playerId) return null;
+    const scan = (bucket, location) => {
+        for (const key of Object.keys(bucket || {})) {
+            const m = bucket[key];
+            if (!Array.isArray(m)) continue;
+            const slotIndex = m.indexOf(playerId);
+            if (slotIndex !== -1) return { location, matchIndex: parseInt(key, 10), slotIndex };
+        }
+        return null;
+    };
+    return scan(gameState.autoMatches, 'auto') || scan(gameState.scheduledMatches, 'schedule');
 };
 
 const getLevelColor = (level, isGuest) => {
@@ -201,7 +229,7 @@ const repairMatchQueues = (gameState, allPlayers) => {
 
 export {
     DEFAULT_ADMIN_NAMES, getAdminNames, isAdminName, setAdminNamesCache,
-    PLAYERS_PER_MATCH, LEVEL_ORDER, generateId, filterTodayGames, getLevelColor, calculateLocations,
+    PLAYERS_PER_MATCH, LEVEL_ORDER, generateId, filterTodayGames, getLevelColor, calculateLocations, findQueueLocation,
     isPlayerUsable, repairMatchQueues,
     // [청백전]
     MATCH_MODE_NORMAL, MATCH_MODE_TEAM, TEAM_BLUE, TEAM_WHITE, TEAMS, TEAM_META,

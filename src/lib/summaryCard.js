@@ -1,4 +1,5 @@
 import { getLevelColor } from './helpers';
+import { getDailyResetKey } from './dates';
 
 // ===================================================================================
 // [하루 요약 카드] 오늘의 운동 리포트 — 관리자 설정 ▸ 📸 하루 요약 카드
@@ -9,10 +10,12 @@ import { getLevelColor } from './helpers';
 // ===================================================================================
 
 function computeDailySummary(allPlayers) {
+    // '오늘' = 새벽 2시(KST) 기준 운영일 — 자정을 넘긴 운동도 같은 날로 센다 (기기 달력 날짜가 아니다)
+    const todayKey = getDailyResetKey(new Date());
     const isToday = (iso) => {
         if (!iso) return false;
         const d = new Date(iso);
-        return !isNaN(d) && d.toDateString() === new Date().toDateString();
+        return !isNaN(d) && getDailyResetKey(d) === todayKey;
     };
     // 오늘 참석 = 오늘 입장했거나(entryTime) 오늘 경기 기록이 있는 선수 (테스트 로봇 제외)
     const attendees = Object.values(allPlayers || {}).filter(p =>

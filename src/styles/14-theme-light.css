@@ -253,3 +253,20 @@
 :root[data-theme="light"] .cox-seg-btn.on{ background:#FFFFFF; box-shadow:0 1px 3px rgba(16,24,40,.12); }
 :root[data-theme="light"] .cox-seg-badge{ background:var(--volt-ink); color:#fff; }
 :root[data-theme="light"] .cox-confirm-secondary{ text-decoration-color:rgba(16,24,40,.25); }
+
+/* ── Tailwind 파스텔 글자색(-200/-300) 되돌리기 ──
+   다크 테마용 연한 색이 흰 카드 위에 그대로 올라가 설정창 설명·사용설명서·입장 오류 문구가 거의 보이지 않았다 */
+:root[data-theme="light"] .cox-dark .text-green-300{ color:#15803D !important; }
+:root[data-theme="light"] .cox-dark .text-yellow-300{ color:#A16207 !important; }
+:root[data-theme="light"] .cox-dark .text-blue-300, :root[data-theme="light"] .cox-dark .text-blue-200{ color:#1D4ED8 !important; }
+:root[data-theme="light"] .cox-dark .text-pink-300{ color:#BE185D !important; }
+:root[data-theme="light"] .cox-dark .text-purple-300{ color:#6D28D9 !important; }
+:root[data-theme="light"] .cox-dark .text-teal-300{ color:#0F766E !important; }
+:root[data-theme="light"] .cox-dark .text-orange-300{ color:#C2410C !important; }
+:root[data-theme="light"] .cox-dark .text-red-200{ color:#B91C1C !important; }
+:root[data-theme="light"] .cox-dark .bg-red-900\/40{ background:rgba(229,83,58,.14) !important; }
+
+/* ── 급수 글자(C조 노랑 · D조 초록)는 흰 바탕에서 흐리다 — 후보 칩 · 순위표 · 선수 명단에서 진하게 ── */
+:root[data-theme="light"] .mo-chip-sub span:first-child,
+:root[data-theme="light"] .tm-rank-row small,
+:root[data-theme="light"] .roster-level{ filter:saturate(1.2) brightness(.72); }

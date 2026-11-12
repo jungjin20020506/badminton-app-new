@@ -33,7 +33,7 @@ export function UpdateBanner() {
     if (pendingBuild) {
         return (
             <div
-                className="fixed bottom-5 left-4 right-4 z-[90] rounded-xl flex items-center justify-between gap-3 px-4 py-3 max-w-md mx-auto"
+                className="cox-update-banner fixed left-4 right-4 z-[90] rounded-xl flex items-center justify-between gap-3 px-4 py-3 max-w-md mx-auto"
                 style={{
                     background: '#1a1f16',
                     border: '1px solid rgba(205,251,71,.55)',

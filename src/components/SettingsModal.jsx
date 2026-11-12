@@ -192,10 +192,11 @@ export function SettingsModal({
         >
             {/* ── 탭: 오늘 운영 / 클럽 설정 ── */}
             <div className="cox-seg" role="tablist" aria-label="설정 구분">
-                <button type="button" role="tab" aria-selected={tab === 'today'} className={`cox-seg-btn ${tab === 'today' ? 'on' : ''}`} onClick={() => setTab('today')}>
+                <button type="button" role="tab" aria-selected={tab === 'today'} className={`cox-seg-btn ${tab === 'today' ? 'on' : ''}`} onClick={(e) => { setTab('today'); e.currentTarget.closest('.cox-modal-body')?.scrollTo({ top: 0 }); }}>
                     🏸 오늘 운영{todayDirty > 0 && <span className="cox-seg-badge" aria-label={`바뀐 항목 ${todayDirty}개`}>{todayDirty}</span>}
                 </button>
-                <button type="button" role="tab" aria-selected={tab === 'club'} className={`cox-seg-btn ${tab === 'club' ? 'on' : ''}`} onClick={() => setTab('club')}>
+                {/* 탭을 바꾸면 맨 위부터 — 아래쪽을 보다가 탭을 바꾸면 새 탭의 중간부터 보이던 문제 */}
+                <button type="button" role="tab" aria-selected={tab === 'club'} className={`cox-seg-btn ${tab === 'club' ? 'on' : ''}`} onClick={(e) => { setTab('club'); e.currentTarget.closest('.cox-modal-body')?.scrollTo({ top: 0 }); }}>
                     🏛️ 클럽 설정{clubDirty > 0 && <span className="cox-seg-badge" aria-label={`바뀐 항목 ${clubDirty}개`}>{clubDirty}</span>}
                 </button>
             </div>
@@ -221,9 +222,9 @@ export function SettingsModal({
                 </div>
                 {isTeam && teamScores && (
                     <div className="mt-2 flex items-center justify-center gap-3 text-sm font-black">
-                        <span style={{ color: TEAM_META[TEAM_BLUE].text }}>청 {teamScores.blue ?? 0}</span>
+                        <span style={{ color: TEAM_META[TEAM_BLUE].textVar }}>청 {teamScores.blue ?? 0}</span>
                         <span className="text-gray-500">:</span>
-                        <span style={{ color: TEAM_META[TEAM_WHITE].text }}>백 {teamScores.white ?? 0}</span>
+                        <span style={{ color: TEAM_META[TEAM_WHITE].textVar }}>백 {teamScores.white ?? 0}</span>
                     </div>
                 )}
                 <p className="text-[10px] text-gray-400 mt-2 leading-relaxed text-center">
@@ -477,8 +478,10 @@ export function SettingsModal({
                             </div>
                         )}
                         <button type="button" className="cox-btn primary block sm"
-                            onClick={() => {
-                                onAdminAddPlayer(isTeam ? { ...newPlayerForm, isGuest: false } : { ...newPlayerForm, team: null });
+                            onClick={async () => {
+                                // 실제로 추가됐을 때만 폼을 비운다 (이름이 비어 오류창이 뜨면 입력한 내용은 그대로)
+                                const ok = await onAdminAddPlayer(isTeam ? { ...newPlayerForm, isGuest: false } : { ...newPlayerForm, team: null });
+                                if (!ok) return;
                                 setNewPlayerForm({ name: '', level: 'A조', gender: '남', isGuest: false, team: TEAM_BLUE });
                                 setShowAddPlayerForm(false);
                             }}>

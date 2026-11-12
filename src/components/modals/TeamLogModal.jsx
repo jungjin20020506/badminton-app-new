@@ -13,9 +13,9 @@ export function TeamLogModal({ log, teamScores, allPlayers, onClose }) {
             titleClass="display accent"
             subtitle={(
                 <span className="font-black text-sm">
-                    <span style={{ color: TEAM_META[TEAM_BLUE].text }}>청 {teamScores?.blue ?? 0}</span>
+                    <span style={{ color: TEAM_META[TEAM_BLUE].textVar }}>청 {teamScores?.blue ?? 0}</span>
                     <span className="text-gray-500 mx-2">:</span>
-                    <span style={{ color: TEAM_META[TEAM_WHITE].text }}>백 {teamScores?.white ?? 0}</span>
+                    <span style={{ color: TEAM_META[TEAM_WHITE].textVar }}>백 {teamScores?.white ?? 0}</span>
                 </span>
             )}
             onClose={onClose}

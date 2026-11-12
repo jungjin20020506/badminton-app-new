@@ -64,9 +64,14 @@ export function AdminEditPlayerModal({ player, allPlayers, onClose, setModal, te
             body: `[경고] ${player.name} 선수를 완전히 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?`,
             confirmLabel: '삭제',
             onConfirm: async () => {
-                await deleteDoc(doc(playersRef, player.id));
-                onClose();
-                setModal({ type: null, data: null });
+                try {
+                    await deleteDoc(doc(playersRef, player.id));
+                    onClose();
+                    setModal({ type: null, data: null });
+                } catch (e) {
+                    log.error('선수 완전 삭제 실패:', e);
+                    setModal({ type: 'alert', data: { title: '오류', body: '선수 삭제에 실패했습니다. 다시 시도해주세요.' } });
+                }
             },
         } });
     };

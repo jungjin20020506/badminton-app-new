@@ -8,7 +8,10 @@
 
 /* ── 맨 위 큰 카드 ── */
 .ph-hero{
-  position:relative; overflow:hidden; border-radius:22px; padding:16px 16px 14px;
+  /* overflow:clip — hidden 과 달리 '스크롤 자체가 불가능'. hidden 이면 안의 버튼을 탭할 때 브라우저가
+     포커스를 맞추려고 카드 내부를 가로로 밀어(::after 장식 원이 오른쪽으로 40px 삐져나와 있다)
+     "NOW PLAYING · 1번 코트" 글자가 왼쪽으로 잘려 보이던 문제. 구형 브라우저는 hidden 으로 폴백 */
+  position:relative; overflow:hidden; overflow:clip; border-radius:22px; padding:16px 16px 14px;
   background:linear-gradient(160deg, var(--card-2) 0%, var(--card) 70%);
   border:1px solid var(--line-strong);
   box-shadow:0 18px 40px -26px rgba(0,0,0,.9);

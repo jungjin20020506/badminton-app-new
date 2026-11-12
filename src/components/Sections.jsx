@@ -42,7 +42,7 @@ const WaitingListSection = React.memo(({ maleWaitingPlayers, femaleWaitingPlayer
                     <div className="cox-secline mb-1.5">
                         <div className="lbl" style={{ fontSize: 12 }}>
                             <span className="tick" style={{ background: meta.color, boxShadow: `0 0 8px ${meta.color}` }}></span>
-                            <span style={{ color: meta.text }}>{meta.label}</span>
+                            <span style={{ color: meta.textVar }}>{meta.label}</span>
                             <span className="count">{list.length}</span>
                         </div>
                     </div>
@@ -349,11 +349,16 @@ const AutoMatchesSection = React.memo(({ autoMatches, players, allPlayers, isAdm
 const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, isAdmin, handleEndMatch, currentUser, courtMove, setCourtMove, handleMoveOrSwapCourt, onlineIds, teamMode = false, aceIds = null }) => {
     const pressTimerRef = useRef(null);
     const courtRef = useRef(null);
+    // 길게 눌러 '이동 모드'가 켜진 직후 손을 떼면 같은 요소에 click 이 따라온다 — 그 click 이
+    // 바로 아래 handleClick 의 "같은 코트를 누르면 취소" 분기를 타서 이동 모드가 켜지자마자 꺼졌다.
+    // 타이머가 울린 시각을 기억해 두고 600ms 안의 click 은 무시한다.
+    const longPressFiredAtRef = useRef(0);
 
     const handlePressStart = useCallback(() => {
         if (!isAdmin) return;
         if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
         pressTimerRef.current = setTimeout(() => {
+            longPressFiredAtRef.current = Date.now();
             setCourtMove({ sourceIndex: courtIndex });
             pressTimerRef.current = null;
         }, 800);
@@ -368,6 +373,7 @@ const InProgressCourt = React.memo(({ courtIndex, court, players, allPlayers, is
 
     const handleClick = useCallback(() => {
         if (!isAdmin || courtMove.sourceIndex === null) return;
+        if (Date.now() - longPressFiredAtRef.current < 600) return; // 길게 누른 손을 뗄 때 따라오는 click
 
         if (courtMove.sourceIndex === courtIndex) {
             setCourtMove({ sourceIndex: null });

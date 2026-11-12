@@ -160,7 +160,7 @@ export function RosterManageModal({ roster, onClose, setModal }) {
                                 {entry.somoimMid && <span title="소모임 계정 연동됨" aria-label="소모임 계정 연동됨" className="text-xs">🔗</span>}
                             </span>
                             <span className="flex items-center gap-2 flex-shrink-0">
-                                <span className="text-xs font-bold" style={{ color: getLevelColor(entry.level, false) }}>{entry.level}</span>
+                                <span className="roster-level text-xs font-bold" style={{ color: getLevelColor(entry.level, false) }}>{entry.level}</span>
                                 <span className={`text-xs font-bold ${entry.gender === '남' ? 'text-blue-400' : 'text-pink-400'}`}>{entry.gender}</span>
                                 <span className="text-gray-500 text-xs" aria-hidden="true">{editingId === entry.id ? '▲' : '▼'}</span>
                             </span>

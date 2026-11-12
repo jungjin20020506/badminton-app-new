@@ -139,36 +139,42 @@ const readyPromise = Promise.all([allPlayersPromise, gameStatePromise, seasonCon
 
 // --- 3. Firestore 리스너 설정 ---
 const activePlayersQuery = query(playersRef, where("status", "==", "active"));
-let isInitialLoad = true;
-let inactivePlayersFetched = false;
+// 나가 있는(inactive) 선수는 처음 한 번만 통째로 읽어 둔다 — 히스토리·기록창에서 이름을 보여주기 위해.
+// 첫 스냅샷이 캐시·서버에서 연달아 두 번 오더라도 getDocs 는 한 번만 돌고(단일 Promise), 뒤에 온
+// 스냅샷은 그 결과를 기다렸다가 자기 데이터를 덮어쓰므로 오래된 쪽이 최신을 덮는 일이 없다.
+let inactiveFetchPromise = null;
+const fetchInactivePlayersOnce = () => {
+    if (!inactiveFetchPromise) {
+        inactiveFetchPromise = getDocs(query(playersRef, where("status", "==", "inactive")))
+            .then((snap) => { const out = {}; snap.forEach((d) => { out[d.id] = d.data(); }); return out; })
+            .catch((e) => { log.error('[선수] 나간 선수 목록 로딩 실패:', e); return {}; });
+    }
+    return inactiveFetchPromise;
+};
 
 onSnapshot(activePlayersQuery, async (snapshot) => {
     const activePlayers = {};
     snapshot.forEach(doc => activePlayers[doc.id] = doc.data());
 
-    if (isInitialLoad && !inactivePlayersFetched) {
-        const inactiveSnapshot = await getDocs(query(playersRef, where("status", "==", "inactive")));
-        inactiveSnapshot.forEach(doc => {
-            if (!activePlayers[doc.id]) {
-                allPlayersData[doc.id] = doc.data();
-            }
-        });
-        inactivePlayersFetched = true;
-    }
+    const inactivePlayers = await fetchInactivePlayersOnce();
+    const merged = { ...inactivePlayers, ...allPlayersData, ...activePlayers };
 
-    allPlayersData = { ...allPlayersData, ...activePlayers };
-
-    Object.keys(allPlayersData).forEach(playerId => {
-        const player = allPlayersData[playerId];
-        if(player.status === 'active' && !activePlayers[playerId]){
-            delete allPlayersData[playerId];
+    // 이번 스냅샷에 없는 '활성' 선수 = 방금 나간 선수. 예전엔 여기서 통째로 지워 버려서 그 선수와 친
+    // 모든 기록이 '알수없음 / 나간 선수'로 보였다 — 지우지 않고 '나감'으로만 바꿔 이름을 유지한다
+    Object.keys(merged).forEach(playerId => {
+        const player = merged[playerId];
+        if (player && player.status === 'active' && !activePlayers[playerId]) {
+            merged[playerId] = { ...player, status: 'inactive' };
         }
     });
-
+    allPlayersData = merged;
 
     if(resolveAllPlayers) { resolveAllPlayers(); resolveAllPlayers = null; }
-    isInitialLoad = false;
     notifySubscribers();
+}, (error) => {
+    // 읽기 실패(보안 규칙·오프라인 첫 실행 등)에도 로딩 화면이 영원히 돌지 않게
+    log.error('[선수] 목록 로딩 실패:', error);
+    if (resolveAllPlayers) { resolveAllPlayers(); resolveAllPlayers = null; }
 });
 
 
@@ -217,6 +223,11 @@ onSnapshot(gameStateRef, { includeMetadataChanges: true }, (doc) => {
   gameStateData = normalizeGameState(doc.exists() ? doc.data() : null);
   if(resolveGameState) { resolveGameState(); resolveGameState = null; }
   notifySubscribers();
+}, (error) => {
+  log.error('[경기 상태] 로딩 실패:', error);
+  if (!gameStateData) gameStateData = normalizeGameState(null);
+  if (resolveGameState) { resolveGameState(); resolveGameState = null; }
+  notifySubscribers();
 });
 
 // config/season 기본값 — 문서가 없을 때뿐 아니라, 설정 저장으로 처음 만들어진 문서에 seasonId 등이
@@ -252,6 +263,11 @@ if (seasonConfigData && !seasonConfigData.autoMatchConfig) {
     setAdminNamesCache(getAdminNames(seasonConfigData));
 
     if(resolveSeasonConfig) { resolveSeasonConfig(); resolveSeasonConfig = null; }
+    notifySubscribers();
+}, (error) => {
+    log.error('[설정] 로딩 실패:', error);
+    if (!seasonConfigData) { seasonConfigData = DEFAULT_SEASON_CONFIG(); setAdminNamesCache(getAdminNames(seasonConfigData)); }
+    if (resolveSeasonConfig) { resolveSeasonConfig(); resolveSeasonConfig = null; }
     notifySubscribers();
 });
 
@@ -412,6 +428,8 @@ const runDailyResetIfDue = async () => {
                 scheduledMatches: {},
                 autoMatches: {},
                 teamScores: { blue: 0, white: 0 }, // [청백전] 점수판도 하루 단위로 초기화 (경기 방식 설정은 유지)
+                teamResultLog: [],                 // [청백전] 어제 득점 기록이 '오늘 득점 기록'에 남지 않게
+                lastTeamResult: deleteField(),
             }, { merge: true });
             return true;
         });

@@ -9,9 +9,11 @@ import { restRemainingMin } from '../lib/rest';
 const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction, onLongPress, isCurrentUser, isMovable = true, isSelectedForWin = false, isPlaying = false, isOnline = false, teamMode = false, isAce = false }) => {
     const pressTimerRef = useRef(null);
     const cardRef = useRef(null);
+    // 길게 눌러 수정창이 열린 뒤 손을 떼면 click 이 따라와 카드가 '선택'(라임 테두리)되던 문제 — 600ms 안의 click 은 무시
+    const longPressFiredAtRef = useRef(0);
 
     const stableOnLongPress = useCallback(() => {
-        if(onLongPress) onLongPress(player);
+        if(onLongPress) { longPressFiredAtRef.current = Date.now(); onLongPress(player); }
     }, [onLongPress, player]);
 
     const handlePressStart = useCallback((e) => {
@@ -147,7 +149,7 @@ const PlayerCard = React.memo(({ player, context, isAdmin, onCardClick, onAction
             // [휴식 타이머] cox-card-resting: 아래 배지 자리만큼 안쪽 여백을 줘서 이름·급수 글자와 절대 겹치지 않게 (카드 높이는 그대로)
             className={`player-card p-1 rounded-md relative flex flex-col justify-center text-center h-14 w-full ${player.isResting ? 'filter grayscale' : ''} ${showRestBadge ? 'cox-card-resting' : ''} ${isPlaying ? 'cox-card-playing' : ''} ${teamClass}`}
             style={cardStyle}
-            onClick={isMovable && onCardClick ? () => onCardClick() : null}
+            onClick={isMovable && onCardClick ? () => { if (Date.now() - longPressFiredAtRef.current < 600) return; onCardClick(); } : null}
             role={isMovable && onCardClick ? 'button' : undefined}
             tabIndex={isMovable && onCardClick ? 0 : undefined}
             aria-pressed={isMovable && onCardClick ? !!(context.selected || isSelectedForWin) : undefined}
@@ -197,6 +199,11 @@ const EmptySlot = ({ onSlotClick, slotTeam = null }) => (
     <div
         className={`player-slot h-14 bg-black/30 rounded-md flex flex-col items-center justify-center text-gray-600 border-2 border-dashed border-gray-700 cursor-pointer hover:bg-gray-700/50 hover:border-yellow-400 transition-all ${slotTeam ? `tm-slot ${TEAM_META[slotTeam].key}` : ''}`}
         onClick={onSlotClick}
+        // 키보드로도 고른 선수를 빈 칸에 넣을 수 있게 (선수 카드는 이미 Enter/Space 를 받는다)
+        role={onSlotClick ? 'button' : undefined}
+        tabIndex={onSlotClick ? 0 : undefined}
+        aria-label={onSlotClick ? `빈 자리${slotTeam ? ` (${TEAM_META[slotTeam].label})` : ''} — 고른 선수를 여기에 넣기` : undefined}
+        onKeyDown={onSlotClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSlotClick(); } } : undefined}
     >
         <span className="text-xl font-bold leading-none">+</span>
         {slotTeam && <span className="tm-slot-label">{TEAM_META[slotTeam].label}</span>}

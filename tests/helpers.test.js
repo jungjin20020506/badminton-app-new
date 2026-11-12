@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-    generateId, filterTodayGames, getLevelColor, calculateLocations, repairMatchQueues,
+    generateId, filterTodayGames, getLevelColor, calculateLocations, findQueueLocation, repairMatchQueues,
     getAdminNames, DEFAULT_ADMIN_NAMES, isPlayerUsable,
 } from '../src/lib/helpers.js';
 
@@ -100,5 +100,43 @@ describe('repairMatchQueues (교착 해소)', () => {
         expect(isPlayerUsable(player('x', { isResting: true }))).toBe(false);
         expect(isPlayerUsable(player('x', { status: 'inactive' }))).toBe(false);
         expect(isPlayerUsable(undefined)).toBe(false);
+    });
+});
+
+describe('filterTodayGames (새벽 2시 KST 운영일 기준)', () => {
+    const iso = (s) => new Date(s).toISOString();
+    it('자정을 넘긴 새벽 1시에도 저녁에 친 경기는 "오늘" 기록이다', () => {
+        const games = [{ timestamp: iso('2026-11-12T22:30:00+09:00'), partners: [], opponents: [] }];
+        expect(filterTodayGames(games, new Date('2026-11-13T01:00:00+09:00'))).toEqual(games);
+    });
+    it('새벽 2시가 지나면 어제 기록이라 비운다', () => {
+        const games = [{ timestamp: iso('2026-11-12T22:30:00+09:00'), partners: [], opponents: [] }];
+        expect(filterTodayGames(games, new Date('2026-11-13T02:00:00+09:00'))).toEqual([]);
+    });
+    it('비었거나 시각이 깨졌으면 빈 배열', () => {
+        expect(filterTodayGames([], new Date())).toEqual([]);
+        expect(filterTodayGames(null, new Date())).toEqual([]);
+        expect(filterTodayGames([{ timestamp: 'garbage' }], new Date())).toEqual([]);
+    });
+});
+
+describe('findQueueLocation (경기중이면서 예약된 선수도 예약 칸을 찾는다)', () => {
+    const gs = {
+        autoMatches: { '0': ['a', 'b', 'c', 'd'], '1': ['e', null, 'f', 'g'] },
+        scheduledMatches: { '0': ['h', null, null, 'i'] },
+        inProgressCourts: [{ players: ['a', 'x', 'y', 'z'], startTime: new Date().toISOString() }],
+    };
+    it('코트에 있어도 자동 매칭 칸을 돌려준다 (calculateLocations 는 court 를 돌려준다)', () => {
+        expect(findQueueLocation(gs, 'a')).toEqual({ location: 'auto', matchIndex: 0, slotIndex: 0 });
+        expect(calculateLocations(gs, { a: player('a') }).a.location).toBe('court');
+    });
+    it('경기 예정 칸·빈 칸 섞인 줄도 찾는다', () => {
+        expect(findQueueLocation(gs, 'f')).toEqual({ location: 'auto', matchIndex: 1, slotIndex: 2 });
+        expect(findQueueLocation(gs, 'i')).toEqual({ location: 'schedule', matchIndex: 0, slotIndex: 3 });
+    });
+    it('예약 칸에 없으면 null', () => {
+        expect(findQueueLocation(gs, 'x')).toBe(null);
+        expect(findQueueLocation(null, 'a')).toBe(null);
+        expect(findQueueLocation(gs, null)).toBe(null);
     });
 });

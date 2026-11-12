@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { doc } from 'firebase/firestore';
+import { doc, deleteField } from 'firebase/firestore';
 import { db, playersRef, gameStateRef, runTx, writeAuditLog } from '../lib/firebase';
 import { PLAYERS_PER_MATCH, TEAM_BLUE, TEAM_WHITE, getTeamOf, emptyTeamScores, teamScoreKey } from '../lib/helpers';
 import { playStart, playFinish } from '../lib/sound';
@@ -87,13 +87,16 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
     // 경기 종료 트랜잭션 (일반 · 청백전 공용)
     //  result: null → 일반 모드, 히스토리만 기록
     //  result: { winnerSide:'A'|'B' } → [청백전] 이긴 쪽 todayWins+1, 진 쪽 todayLosses+1, 통일된 팀이면 팀 점수 +1
-    const finishCourtTx = useCallback(async (courtIndex, result) => {
-        await runTx('경기 종료', async (transaction) => {
+    //  expectedMatchId: 종료 버튼을 눌렀을 때 그 코트에 있던 경기의 id. 확인창이 떠 있는 사이 다른 관리자가
+    //  이 코트를 끝내고 새 경기를 시작했으면(또는 코트를 옮겼으면) 엉뚱한 경기를 기록하지 않도록 중단한다.
+    const finishCourtTx = useCallback(async (courtIndex, result, expectedMatchId = null) => {
+        const outcome = await runTx('경기 종료', async (transaction) => {
             const gameStateDoc = await transaction.get(gameStateRef);
             if (!gameStateDoc.exists()) throw new Error('게임 상태가 존재하지 않습니다.');
             const currentState = gameStateDoc.data();
             const currentCourt = currentState.inProgressCourts[courtIndex];
-            if (!currentCourt || !currentCourt.players) return; // 이미 다른 관리자에 의해 종료됨
+            if (!currentCourt || !currentCourt.players) return 'gone'; // 이미 다른 관리자에 의해 종료됨
+            if (expectedMatchId && currentCourt.matchId && currentCourt.matchId !== expectedMatchId) return 'changed';
 
             const allMatchPlayerIds = currentCourt.players;
             const validPlayerIds = allMatchPlayerIds.filter(Boolean);
@@ -131,6 +134,8 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
                     else update.todayLosses = (Number(pData.todayLosses) || 0) + 1;
                 }
                 const recentGames = (pData.todayRecentGames || []).slice(0, 19); // 최근 20경기 유지
+                // 경기 중에 '나가기'를 누른 선수는 기록을 남긴 뒤 현황판에서 내보낸다 (App 의 handleLogout 참고)
+                if (pData.leftWhilePlaying) { update.status = 'inactive'; update.isResting = false; update.leftWhilePlaying = deleteField(); }
                 transaction.update(pDoc.ref, { ...update, todayRecentGames: [gameRecord, ...recentGames] });
             });
 
@@ -152,14 +157,19 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
                 ].slice(0, 60);
             }
             transaction.set(gameStateRef, newState);
+            return 'done';
         });
-        playFinish();
-    }, []);
+        if (outcome === 'changed') {
+            setModal({ type: 'alert', data: { title: '경기가 바뀌었어요', body: `${courtIndex + 1}번 코트는 그새 다른 관리자가 종료하고 새 경기가 시작됐어요.\n화면을 확인한 뒤 다시 눌러주세요.` } });
+            return;
+        }
+        if (outcome === 'done') playFinish();
+    }, [setModal]);
 
     // [경기 취소] 잘못 넣은 경기를 기록 없이 되돌린다 (일반 · 청백전 공용)
     //  경기 수도 올라가지 않고 히스토리도 남지 않는다 — 코트만 비우고 선수들은 대기 명단으로 돌아간다.
     //  코트가 이미 비어 있으면(다른 관리자가 먼저 종료/취소) 아무것도 하지 않는다.
-    const handleCancelMatch = useCallback((courtIndex) => {
+    const handleCancelMatch = useCallback((courtIndex, expectedMatchId = null) => {
         setModal({ type: 'confirm', data: {
             title: '경기 취소',
             body: `${courtIndex + 1}번 코트 경기를 취소할까요?\n승패·경기 수·히스토리를 남기지 않고 코트만 비웁니다.\n선수들은 대기 명단으로 돌아갑니다.`,
@@ -167,14 +177,24 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
             cancelLabel: '돌아가기',
             onConfirm: async () => {
                 setModal({ type: null, data: null });
+                let outcome = 'done';
                 try {
                     await updateGameState((currentState) => {
+                        outcome = 'done';
                         const newState = JSON.parse(JSON.stringify(currentState));
-                        if (!Array.isArray(newState.inProgressCourts) || !newState.inProgressCourts[courtIndex]) return { newState };
+                        const cur = Array.isArray(newState.inProgressCourts) ? newState.inProgressCourts[courtIndex] : null;
+                        if (!cur) { outcome = 'gone'; return { newState }; }
+                        // 확인창이 떠 있는 사이 다른 관리자가 이 코트에 새 경기를 넣었으면 그 경기를 지우지 않는다
+                        if (expectedMatchId && cur.matchId && cur.matchId !== expectedMatchId) { outcome = 'changed'; return { newState }; }
                         newState.inProgressCourts[courtIndex] = null;
                         return { newState };
                     }, '경기 취소에 실패했습니다.');
                 } catch { return; }
+                if (outcome === 'changed') {
+                    setModal({ type: 'alert', data: { title: '경기가 바뀌었어요', body: `${courtIndex + 1}번 코트는 그새 다른 관리자가 종료하고 새 경기가 시작됐어요.\n화면을 확인한 뒤 다시 눌러주세요.` } });
+                    return;
+                }
+                if (outcome === 'gone') return; // 이미 비어 있음 — 조용히 끝
                 writeAuditLog('경기취소', { by: currentUser?.name || null, courtIndex });
                 toastSuccess(`${courtIndex + 1}번 코트 경기를 취소했어요 (기록 없음)`);
             },
@@ -184,7 +204,7 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
     const handleEndMatch = useCallback((courtIndex) => {
         const court = gameState?.inProgressCourts?.[courtIndex];
         if (!court || !court.players) return;
-        if (teamMode) { setModal({ type: 'teamMatchEnd', data: { courtIndex } }); return; }
+        if (teamMode) { setModal({ type: 'teamMatchEnd', data: { courtIndex, matchId: court.matchId || null } }); return; }
         setModal({
             type: 'confirm',
             data: {
@@ -194,19 +214,19 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
                 cancelLabel: '돌아가기',
                 onConfirm: async () => {
                     setModal({ type: null, data: null });
-                    try { await finishCourtTx(courtIndex, null); }
+                    try { await finishCourtTx(courtIndex, null, court.matchId || null); }
                     catch (e) { log.error(e); setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' } }); }
                 },
                 // 잘못 넣은 경기 — 아래 작은 글씨로 '경기 취소' (경기 수·히스토리를 남기지 않는다)
                 secondaryLabel: '경기를 잘못 넣었나요? 기록 없이 경기 취소',
-                onSecondary: () => handleCancelMatch(courtIndex),
+                onSecondary: () => handleCancelMatch(courtIndex, court.matchId || null),
             },
         });
     }, [gameState, teamMode, finishCourtTx, handleCancelMatch, setModal]);
 
-    const handleTeamPickWinner = useCallback(async (courtIndex, winnerSide) => {
+    const handleTeamPickWinner = useCallback(async (courtIndex, winnerSide, expectedMatchId = null) => {
         setModal({ type: null, data: null });
-        try { await finishCourtTx(courtIndex, { winnerSide }); }
+        try { await finishCourtTx(courtIndex, { winnerSide }, expectedMatchId); }
         catch (e) { log.error(e); setModal({ type: 'alert', data: { title: '오류', body: '결과 처리에 실패했습니다.' } }); }
     }, [finishCourtTx, setModal]);
 
@@ -226,10 +246,8 @@ export function useCourtActions({ gameState, allPlayers, inProgressPlayerIds, te
         if (sourceIndex === targetIndex) return;
         await updateGameState((currentState) => {
             const newState = JSON.parse(JSON.stringify(currentState));
-            if (newState.inProgressCourts.length < newState.numInProgressCourts) {
-                newState.inProgressCourts.length = newState.numInProgressCourts;
-                newState.inProgressCourts.fill(null, newState.inProgressCourts.length);
-            }
+            // 코트 수보다 배열이 짧으면 null 로 채운다 (예전 코드는 fill 시작 위치가 끝이라 아무것도 안 채웠다)
+            while (newState.inProgressCourts.length < newState.numInProgressCourts) newState.inProgressCourts.push(null);
             const a = newState.inProgressCourts[sourceIndex] || null;
             const b = newState.inProgressCourts[targetIndex] || null;
             newState.inProgressCourts[sourceIndex] = b;
